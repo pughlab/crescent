@@ -9,18 +9,19 @@ Description
 ================
 Runs Seurat's clustering on either 10X files from cellranger (barcodes.tsv, genes.tsv and matrix.mtx)
 or a Dropseq *file* with cell barcodes in columns and genes in rows.
-The clustering procedure is based on http://satijalab.org/seurat/pbmc3k_tutorial.html
+The clustering procedure is based on this Seurat tutorial http://satijalab.org/seurat/pbmc3k_tutorial.html
 
 It allows to provide one-line commands.
 
-Various parameters for Seurat are defined based on the Seurat tutorial or from empirical observations.<br />
+Parameters for Seurat are defined based on the Seurat tutorial or from empirical observations.<br />
 For example, *pseudocount.use* for FindAllMarkers() is set to 1e-99, instead of the default is 1 (see https://goo.gl/3VzQ3L)
 
 Parameters can be changed in section "Tailored parameters".
  
 Outfiles
 ================
-Are *pdf files from the t-SNE, violin plots, clustering etc., as shown in the link above.
+Are \*pdf files from the t-SNE, violin plots, clustering etc., as shown in the Seurat tutorial.<br />
+Future versions will have an html report.
 
 General workflow
 ================
