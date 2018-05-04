@@ -1,0 +1,342 @@
+####################################
+### Javier Diaz - javier.diazmejia@gmail.com
+### Script made based on http://satijalab.org/seurat/pbmc3k_tutorial.html
+### Things missing from this tutorial:
+### 1) Further subdivisions within cell types (i.e. granularity of clusters)
+### 2) Assigning cell type identity to clusters (needs supervised annotations, maybe GSEA enrichment)
+### 3) Using saveRDS
+### 4) Use knitr() to produce better html plot layout (https://yihui.name/knitr/demo/stitch/)
+####################################
+
+####################################
+### Required libraries
+####################################
+### 'Seurat'   - which can be installed in R console with install.packages('Seurat')
+### 'dplyr'    - which can be installed in R console with install.packages('dplyr')
+### 'optparse' - which can be installed in R console with install.packages('optparse')
+
+suppressPackageStartupMessages(library(Seurat))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(optparse))
+
+####################################
+### Turning warnings off for the sake of a cleaner aoutput
+####################################
+oldw <- getOption("warn")
+options( warn = -1 )
+
+
+####################################
+### Get inputs from command line argumets
+####################################
+
+option_list <- list(
+  make_option(c("-i", "--input"), default="NA",
+    help="Either the path/name to a 10X *directory* with barcodes.tsv, genes.tsv and matrix.mtx files; or path/name of a Dropseq *file* with cell barcodes in columns and genes in rows"),
+
+  make_option(c("-t", "--input_type"), default="NA",
+    help="Indicates if input is either a '10X' directory or a 'Dropseq' matrix file"),
+
+  make_option(c("-o", "--outdir"), default="NA",
+    help="A path/name for the results directory"),
+
+  make_option(c("-p", "--prefix_outfiles"), default="NA",
+    help="A prefix for outfile names, for example your project ID")
+)
+opt <- parse_args(OptionParser(option_list=option_list))
+
+Input          <- opt$input
+InputType      <- opt$input_type
+Outdir         <- opt$outdir
+PrefixOutfiles <- opt$prefix_outfiles
+Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+
+####################################
+### Tailored parameters
+### Some of these parameters are the defaults provided by Seurat developers, others are tailored according to clusters/t-SNE granularity
+###
+### Parameters for Seurat filters
+MinCells<-3
+MinGenes<-200
+LowThresholds<-c(200,-Inf)
+HighThresholds<-c(2500,0.05)
+### Parameters for Seurat normalization
+ScaleFactor<-10000
+### Parameters for Seurat variable gene detection
+XLowCutoff<-0.0125
+XHighCutoff<-3
+YCutoff<-0.5
+### Parameters for PCA
+PrintPCA.PcsPrint<-1:5
+PrintPCA.GenesPrint<-5
+VizPCA.PcsUse<-1:6
+PCHeatmapCellsUse<-500
+PCHeatmapComponentsToPlot<-18
+JackStrawNumReplicate<-100
+JackStrawPlotPcs<-1:18 ### These are the number of PCs to plot to see their influence data, but won't influence the plots themselves
+### Parameters for Clustering
+FindClusters.DimsUse<-1:10 ### These should be tailored based on the number of PCs found to influence data (e.g. from JackStrawPlotPcs and/or PCElbowPlot plots)
+FindClusters.Resolution<-0.6
+### Parameters for Cluster Biomarkers
+FindAllMarkers.MinPct    <- 0.25
+FindAllMarkers.ThreshUse <- 0.25
+FindAllMarkers.PrintTopN <- 10
+FindMarkers.Pseudocount  <- 1e-99 ### Default is 1, which sounds high for a Log level correction. Also see https://goo.gl/3VzQ3L
+NumberOfGenesToPlotFeatures <-16
+NumberOfGenesPerClusterToPlotTsne <-2
+NumberOfGenesPerClusterToPlotHeatmap <-10
+
+StartTime<-Sys.time()
+
+
+####################################
+### Create outdirs
+####################################
+
+dir.create(file.path(Outdir, "SEURAT"), showWarnings = FALSE)
+dir.create(file.path(Tempdir), showWarnings = FALSE)
+
+####################################
+### Load data
+####################################
+if(regexpr("^10X$", InputType, ignore.case = T)[1] == 1) {
+  print("Loading 10X infiles")
+  input.matrix <- Read10X(data.dir = Input)
+}else if (regexpr("^Dropseq$", InputType, ignore.case = T)[1] == 1) {
+  print("Loading Drop-seq matrix")
+  library(data.table)
+  input.matrix <- data.frame(fread(Input),row.names=1)
+}else{
+  stop(paste("Unexpected type of infile: ", InputType, sep=""))
+}
+dim(input.matrix)
+
+seurat.object  <- CreateSeuratObject(raw.data = input.matrix, min.cells = MinCells, min.genes = MinGenes, project = PrefixOutfiles)
+seurat.object
+
+####################################
+### Get  mitochondrial genes
+####################################
+mito.genes <- grep(pattern = "^MT-", x = rownames(x = seurat.object@data), value = TRUE)
+percent.mito <- Matrix::colSums(seurat.object@raw.data[mito.genes, ])/Matrix::colSums(seurat.object@raw.data)
+seurat.object <- AddMetaData(object = seurat.object, metadata = percent.mito, col.name = "percent.mito")
+
+####################################
+### Voilin plots for data UNfiltered by Seurat
+####################################
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VlnPlot.pdf", sep=""))
+VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+dev.off()
+### For HTML
+VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+
+####################################
+### Gene scatter plots for data UNfiltered by Seurat
+####################################
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".GenePlot.pdf", sep=""),width=14, height=7)
+par(mfrow = c(1, 2))
+GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "percent.mito")
+GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "nGene")
+dev.off()
+### For HTML
+GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "percent.mito")
+GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "nGene")
+
+####################################
+### Filter cells based gene counts and mitochondrial representation
+####################################
+seurat.object<-FilterCells(object = seurat.object, subset.names = c("nGene", "percent.mito"), low.thresholds = LowThresholds, high.thresholds = HighThresholds)
+seurat.object
+
+####################################
+### Voilin plots for data filtered by Seurat
+####################################
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VlnPlot.seurat_filtered.pdf", sep=""))
+VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+dev.off()
+### For HTML
+VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+
+####################################
+### Gene scatter plots for data filtered by Seurat
+####################################
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".GenePlot.seurat_filtered.pdf", sep=""), width=14, height=7)
+par(mfrow = c(1, 2))
+GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "percent.mito")
+GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "nGene")
+dev.off()
+### For HTML
+GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "percent.mito")
+GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "nGene")
+
+####################################
+### Normalize data
+####################################
+seurat.object <- NormalizeData(object = seurat.object, normalization.method = "LogNormalize", scale.factor = ScaleFactor)
+
+####################################
+### Detect, save list and plot variable genes
+####################################
+### Note: Seurat developers recommend to set default parameters to mark visual outliers on the dispersion plot
+### x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5
+### but the exact parameter settings may vary based on the data type, heterogeneity in the sample, and normalization strategy.
+seurat.object <- FindVariableGenes(object = seurat.object, mean.function = ExpMean, dispersion.function = LogVMR, x.low.cutoff = XLowCutoff, x.high.cutoff = XHighCutoff, y.cutoff = YCutoff, do.plot=F)
+length(x = seurat.object@var.genes)
+write(file=paste(Tempdir,"/",PrefixOutfiles,".VariableGenes.txt", sep=""), x=seurat.object@var.genes)
+#
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VariableGenes.pdf", sep=""))
+VariableGenePlot(object = seurat.object,  x.low.cutoff = XLowCutoff, x.high.cutoff = XHighCutoff, y.cutoff = YCutoff)
+dev.off()
+### For HTML
+VariableGenePlot(object = seurat.object,  x.low.cutoff = XLowCutoff, x.high.cutoff = XHighCutoff, y.cutoff = YCutoff)
+
+####################################
+### Scale data and remove unwanted sources of variation such as:
+### cell cycle stage,  batch (if applicable), cell alignment rate (as provided by Drop-seq tools for Drop-seq data)
+####################################
+seurat.object <- ScaleData(object = seurat.object, vars.to.regress = c("nUMI", "percent.mito"), display.progress=F)
+
+####################################
+### Perform linear dimensional reduction by PCA
+### Examine and visualize PCA results a few different ways
+####################################
+seurat.object <- RunPCA(object = seurat.object, pc.genes = seurat.object@var.genes, do.print = T, pcs.print = PrintPCA.PcsPrint, genes.print = PrintPCA.GenesPrint)
+#
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VizPCA.pdf", sep=""), width=7, height=10)
+VizPCA(object = seurat.object, pcs.use = VizPCA.PcsUse)
+dev.off()
+### For HTML
+VizPCA(object = seurat.object, pcs.use = VizPCA.PcsUse)
+#
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".PCAPlot.pdf", sep=""))
+PCAPlot(object = seurat.object, dim.1 = 1, dim.2 = 2, no.legend=T)
+dev.off()
+### For HTML
+PCAPlot(object = seurat.object, dim.1 = 1, dim.2 = 2, no.legend=T)
+#
+seurat.object <- ProjectPCA(object = seurat.object, do.print = FALSE)
+#
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".PCHeatmap.C1.pdf", sep=""))
+PCHeatmap(object = seurat.object, pc.use = 1, cells.use = PCHeatmapCellsUse, do.balanced = TRUE, label.columns = FALSE)
+dev.off()
+### For HTML
+PCHeatmap(object = seurat.object, pc.use = 1, cells.use = PCHeatmapCellsUse, do.balanced = TRUE, label.columns = FALSE)
+#
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".PCHeatmap.C1to",PCHeatmapComponentsToPlot,".pdf", sep=""), width=7, height=12)
+PCHeatmap(object = seurat.object, pc.use = 1:PCHeatmapComponentsToPlot, cells.use = PCHeatmapCellsUse, do.balanced = TRUE, label.columns = FALSE, use.full = FALSE)
+dev.off()
+### For HTML
+PCHeatmap(object = seurat.object, pc.use = 1:PCHeatmapComponentsToPlot, cells.use = PCHeatmapCellsUse, do.balanced = TRUE, label.columns = FALSE, use.full = FALSE)
+
+####################################
+### Determine statistically significant principal components
+####################################
+### NOTE: This process can take a long time for big datasets, comment out for
+### expediency.  More approximate techniques such as those implemented in
+### PCElbowPlot() can be used to reduce computation time
+seurat.object <- JackStraw(object = seurat.object, num.replicate = JackStrawNumReplicate, display.progress = FALSE)
+#
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".JackStraw.C1toC12.pdf", sep=""))
+JackStrawPlot(object = seurat.object, PCs = JackStrawPlotPcs)
+dev.off()
+### For HTML
+JackStrawPlot(object = seurat.object, PCs = JackStrawPlotPcs)
+#
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".PCElbowPlot.pdf", sep=""))
+PCElbowPlot(object = seurat.object)
+dev.off()
+### For HTML
+PCElbowPlot(object = seurat.object)
+
+####################################
+### Cluster the cells
+####################################
+seurat.object <- FindClusters(object = seurat.object, reduction.type = "pca", dims.use = FindClusters.DimsUse, resolution = FindClusters.Resolution, print.output = 0, save.SNN = TRUE)
+write.table(x=seurat.object@ident, file=paste(Tempdir,"/",PrefixOutfiles,".CellClusters.tab", sep=""), sep="\t", quote = F)
+
+####################################
+### Run Non-linear dimensional reduction (tSNE)
+####################################
+seurat.object <- RunTSNE(object = seurat.object, dims.use = FindClusters.DimsUse, do.fast = TRUE)
+### Note that you can set do.label=T to help label individual clusters
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".TSNEPlot.pdf", sep=""))
+TSNEPlot(object = seurat.object, do.label = TRUE,label.size=10)
+dev.off()
+### For HTML
+TSNEPlot(object = seurat.object, do.label = TRUE,label.size=10)
+
+####################################
+### Finding differentially expressed genes (cluster biomarkers)
+####################################
+### Finding markers for every cluster compared to all remaining cells
+### only.pos allows to report only the positive ones
+### Using min.pct and thresh.use to speed comparisons up. Other options to further speed are logfc.threshold, min.diff.pct, and  max.cells.per.ident
+### See http://satijalab.org/seurat/de_vignette.html
+#########
+# ### Other options
+# ### find all markers of cluster 1
+# cluster1.markers <- FindMarkers(object = seurat.object, ident.1 = 1, min.pct = FindAllMarkers.MinPct)
+# print(x = head(x = cluster1.markers, n = 5))
+# ###
+# ### find all markers distinguishing cluster 5 from clusters 0 and 3
+# cluster5.markers <- FindMarkers(object = seurat.object, ident.1 = 5, ident.2 = c(0, 3), min.pct = FindAllMarkers.MinPct)
+# print(x = head(x = cluster5.markers, n = 5))
+#########
+seurat.object.markers <- FindAllMarkers(object = seurat.object, only.pos = TRUE, min.pct = FindAllMarkers.MinPct, thresh.use = FindAllMarkers.ThreshUse, pseudocount.use=FindMarkers.Pseudocount)
+write.table(data.frame("GENE"=rownames(seurat.object.markers),seurat.object.markers),paste(Tempdir,"/",PrefixOutfiles,".MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
+### Get top-2 genes sorted by cluster, then by p-value
+top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% top_n(NumberOfGenesPerClusterToPlotTsne, avg_logFC))
+NumberOfClusters<-length(summary(top_genes_by_cluster_for_tsne[,"cluster"]))
+
+####################################
+### Violin plots for top genes are not shown by now
+####################################
+NumberOfPanesForFeaturesPlot<-(NumberOfClusters*NumberOfGenesPerClusterToPlotTsne)
+top_genes_by_cluster_for_tsne.list<-top_genes_by_cluster_for_tsne[c(1:NumberOfPanesForFeaturesPlot),"gene"][[1]]
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VlnPlot_AfterClusters.pdf", sep=""))
+VlnPlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.list), use.raw = TRUE, y.log = TRUE, adjust.use=1,point.size.use = 0.5)
+dev.off()
+### For HTML
+VlnPlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.list), use.raw = TRUE, y.log = TRUE, adjust.use=1,point.size.use = 0.5)
+
+####################################
+### t-SNE plots showing each cluster top genes
+####################################
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".TSNEPlot_EachTopGene.pdf", sep=""))
+FeaturePlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.list), cols.use = c("grey", "blue"), reduction.use = "tsne")
+dev.off()
+### For HTML
+FeaturePlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.list), cols.use = c("grey", "blue"), reduction.use = "tsne")
+
+####################################
+### Heatmaps
+####################################
+top_genes_by_cluster_for_heatmap <- seurat.object.markers %>% group_by(cluster) %>% top_n(NumberOfGenesPerClusterToPlotHeatmap, avg_logFC)
+# setting slim.col.label to TRUE will print just the cluster IDS instead of every cell name
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".Heatmap.pdf", sep=""))
+DoHeatmap(object = seurat.object, genes.use = top_genes_by_cluster_for_heatmap$gene, slim.col.label = TRUE, remove.key = TRUE, title = PrefixOutfiles, cex.row = 6)
+dev.off()
+### For HTML
+DoHeatmap(object = seurat.object, genes.use = top_genes_by_cluster_for_heatmap$gene, slim.col.label = TRUE, remove.key = TRUE, title = PrefixOutfiles, cex.row = 6)
+
+####################################
+### Moving outfiles into ourdir
+####################################
+outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles),full.names = F)
+sapply(outfiles_to_move,FUN=function(eachFile){ 
+  file.rename(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/SEURAT/",eachFile,sep=""))
+})
+
+####################################
+### Turning warnings on
+####################################
+options(warn = oldw)
+
+####################################
+### Report time used
+####################################
+EndTime<-Sys.time()
+TookTime<-(EndTime - StartTime)
+print("END - All done!!!")
+print(TookTime)
+
