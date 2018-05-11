@@ -20,6 +20,7 @@ Parameters can be changed in section "Tailored parameters".
  
 Outfiles
 ================
+A table with the cell clusters.<br />
 Are \*pdf files from the t-SNE, violin plots, clustering etc., as shown in the Seurat tutorial.<br />
 Future versions will have an html report.
 
@@ -49,7 +50,7 @@ To display help commands type: <br />
 `Rscript Runs_Seurat_Clustering.R -h`
 
 To run the script type something like:<br />
-`Rscript Runs_Seurat_Clustering.R -i path_to_input -o path_to_outdir -p prefix_for_outfiles -t 10X_or_Dropseq`
+`Rscript ~/bin/Runs_Seurat_Clustering.R -i ~/path_to_/filtered_gene_bc_matrices -t 10X -o ~/example/outfiles -p example_10X`
 
 Inputs Description
 ================
@@ -57,6 +58,8 @@ Inputs Description
 Either:<br />
 a) a 10X *directory* cointaining outfiles from cellranger (barcodes.tsv, genes.tsv and matrix.mtx), or<br />
 b) a Dropseq *file* with cell barcodes in columns and genes in rows
+
+Example infiles are provided in folder 'examples'
 
 Outputs Description
 ================
