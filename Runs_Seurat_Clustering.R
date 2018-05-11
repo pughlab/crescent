@@ -11,9 +11,11 @@
 ####################################
 ### Required libraries
 ####################################
-### 'Seurat'   - which can be installed in R console with install.packages('Seurat')
-### 'dplyr'    - which can be installed in R console with install.packages('dplyr')
-### 'optparse' - which can be installed in R console with install.packages('optparse')
+### 'Seurat'     to run QC, differential gene expression and clustering analyses
+### 'dplyr'      needed by Seurat for data manupulation
+### 'optparse'   to handle one-line-commands
+### 'data.table' to read tables quicker than read.table - only needed is using '-t Dropseq'
+####################################
 
 suppressPackageStartupMessages(library(Seurat))
 suppressPackageStartupMessages(library(dplyr))
@@ -31,17 +33,18 @@ options( warn = -1 )
 ####################################
 
 option_list <- list(
-  make_option(c("-i", "--input"), default="NA",
-    help="Either the path/name to a 10X *directory* with barcodes.tsv, genes.tsv and matrix.mtx files; or path/name of a Dropseq *file* with cell barcodes in columns and genes in rows"),
-
   make_option(c("-t", "--input_type"), default="NA",
-    help="Indicates if input is either a '10X' directory or a 'Dropseq' matrix file"),
+              help="Indicates if input is either a '10X' directory or a 'Dropseq' matrix file"),
+  
+  make_option(c("-i", "--input"), default="NA",
+  help="Either the path/name to a 10X *directory* with barcodes.tsv, genes.tsv and matrix.mtx files;
+  or path/name of a  <tab> delimited Dropseq *file* with cell barcodes in columns and genes in rows"),
 
   make_option(c("-o", "--outdir"), default="NA",
     help="A path/name for the results directory"),
 
   make_option(c("-p", "--prefix_outfiles"), default="NA",
-    help="A prefix for outfile names, for example your project ID")
+    help="A prefix for outfile names, e.g. your project ID")
 )
 opt <- parse_args(OptionParser(option_list=option_list))
 
@@ -52,10 +55,12 @@ PrefixOutfiles <- opt$prefix_outfiles
 Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
 
 ####################################
-### Tailored parameters
+### Define tailored parameters
+####################################
 ### Some of these parameters are the defaults provided by Seurat developers, others are tailored according to clusters/t-SNE granularity
 ###
 ### Parameters for Seurat filters
+
 MinCells<-3
 MinGenes<-200
 LowThresholds<-c(200,-Inf)
@@ -86,15 +91,15 @@ NumberOfGenesToPlotFeatures <-16
 NumberOfGenesPerClusterToPlotTsne <-2
 NumberOfGenesPerClusterToPlotHeatmap <-10
 
-StartTime<-Sys.time()
+StartTimeOverall<-Sys.time()
 
 
 ####################################
 ### Create outdirs
 ####################################
 
-dir.create(file.path(Outdir, "SEURAT"), showWarnings = FALSE)
-dir.create(file.path(Tempdir), showWarnings = FALSE)
+dir.create(file.path(Outdir, "SEURAT"), recursive = T)
+dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
 
 ####################################
 ### Load data
@@ -107,9 +112,13 @@ if(regexpr("^10X$", InputType, ignore.case = T)[1] == 1) {
   library(data.table)
   input.matrix <- data.frame(fread(Input),row.names=1)
 }else{
-  stop(paste("Unexpected type of infile: ", InputType, sep=""))
+  stop(paste("Unexpected type of infile: ", InputType, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n", sep=""))
 }
 dim(input.matrix)
+
+####################################
+### Create a Seurat object
+####################################
 
 seurat.object  <- CreateSeuratObject(raw.data = input.matrix, min.cells = MinCells, min.genes = MinGenes, project = PrefixOutfiles)
 seurat.object
@@ -117,7 +126,7 @@ seurat.object
 ####################################
 ### Get  mitochondrial genes
 ####################################
-mito.genes <- grep(pattern = "^MT-", x = rownames(x = seurat.object@data), value = TRUE)
+mito.genes <- grep(pattern = "^MT-", x = rownames(x = seurat.object@data), value = T)
 percent.mito <- Matrix::colSums(seurat.object@raw.data[mito.genes, ])/Matrix::colSums(seurat.object@raw.data)
 seurat.object <- AddMetaData(object = seurat.object, metadata = percent.mito, col.name = "percent.mito")
 
@@ -214,19 +223,19 @@ dev.off()
 ### For HTML
 PCAPlot(object = seurat.object, dim.1 = 1, dim.2 = 2, no.legend=T)
 #
-seurat.object <- ProjectPCA(object = seurat.object, do.print = FALSE)
+seurat.object <- ProjectPCA(object = seurat.object, do.print = F)
 #
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".PCHeatmap.C1.pdf", sep=""))
-PCHeatmap(object = seurat.object, pc.use = 1, cells.use = PCHeatmapCellsUse, do.balanced = TRUE, label.columns = FALSE)
+PCHeatmap(object = seurat.object, pc.use = 1, cells.use = PCHeatmapCellsUse, do.balanced = T, label.columns = F)
 dev.off()
 ### For HTML
-PCHeatmap(object = seurat.object, pc.use = 1, cells.use = PCHeatmapCellsUse, do.balanced = TRUE, label.columns = FALSE)
+PCHeatmap(object = seurat.object, pc.use = 1, cells.use = PCHeatmapCellsUse, do.balanced = T, label.columns = F)
 #
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".PCHeatmap.C1to",PCHeatmapComponentsToPlot,".pdf", sep=""), width=7, height=12)
-PCHeatmap(object = seurat.object, pc.use = 1:PCHeatmapComponentsToPlot, cells.use = PCHeatmapCellsUse, do.balanced = TRUE, label.columns = FALSE, use.full = FALSE)
+PCHeatmap(object = seurat.object, pc.use = 1:PCHeatmapComponentsToPlot, cells.use = PCHeatmapCellsUse, do.balanced = T, label.columns = F, use.full = F)
 dev.off()
 ### For HTML
-PCHeatmap(object = seurat.object, pc.use = 1:PCHeatmapComponentsToPlot, cells.use = PCHeatmapCellsUse, do.balanced = TRUE, label.columns = FALSE, use.full = FALSE)
+PCHeatmap(object = seurat.object, pc.use = 1:PCHeatmapComponentsToPlot, cells.use = PCHeatmapCellsUse, do.balanced = T, label.columns = F, use.full = F)
 
 ####################################
 ### Determine statistically significant principal components
@@ -234,7 +243,7 @@ PCHeatmap(object = seurat.object, pc.use = 1:PCHeatmapComponentsToPlot, cells.us
 ### NOTE: This process can take a long time for big datasets, comment out for
 ### expediency.  More approximate techniques such as those implemented in
 ### PCElbowPlot() can be used to reduce computation time
-seurat.object <- JackStraw(object = seurat.object, num.replicate = JackStrawNumReplicate, display.progress = FALSE)
+seurat.object <- JackStraw(object = seurat.object, num.replicate = JackStrawNumReplicate, display.progress = F)
 #
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".JackStraw.C1toC12.pdf", sep=""))
 JackStrawPlot(object = seurat.object, PCs = JackStrawPlotPcs)
@@ -251,19 +260,19 @@ PCElbowPlot(object = seurat.object)
 ####################################
 ### Cluster the cells
 ####################################
-seurat.object <- FindClusters(object = seurat.object, reduction.type = "pca", dims.use = FindClusters.DimsUse, resolution = FindClusters.Resolution, print.output = 0, save.SNN = TRUE)
+seurat.object <- FindClusters(object = seurat.object, reduction.type = "pca", dims.use = FindClusters.DimsUse, resolution = FindClusters.Resolution, print.output = 0, save.SNN = T)
 write.table(x=seurat.object@ident, file=paste(Tempdir,"/",PrefixOutfiles,".CellClusters.tab", sep=""), sep="\t", quote = F)
 
 ####################################
 ### Run Non-linear dimensional reduction (tSNE)
 ####################################
-seurat.object <- RunTSNE(object = seurat.object, dims.use = FindClusters.DimsUse, do.fast = TRUE)
+seurat.object <- RunTSNE(object = seurat.object, dims.use = FindClusters.DimsUse, do.fast = T)
 ### Note that you can set do.label=T to help label individual clusters
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".TSNEPlot.pdf", sep=""))
-TSNEPlot(object = seurat.object, do.label = TRUE,label.size=10)
+TSNEPlot(object = seurat.object, do.label = T,label.size=10)
 dev.off()
 ### For HTML
-TSNEPlot(object = seurat.object, do.label = TRUE,label.size=10)
+TSNEPlot(object = seurat.object, do.label = T,label.size=10)
 
 ####################################
 ### Finding differentially expressed genes (cluster biomarkers)
@@ -282,7 +291,7 @@ TSNEPlot(object = seurat.object, do.label = TRUE,label.size=10)
 # cluster5.markers <- FindMarkers(object = seurat.object, ident.1 = 5, ident.2 = c(0, 3), min.pct = FindAllMarkers.MinPct)
 # print(x = head(x = cluster5.markers, n = 5))
 #########
-seurat.object.markers <- FindAllMarkers(object = seurat.object, only.pos = TRUE, min.pct = FindAllMarkers.MinPct, thresh.use = FindAllMarkers.ThreshUse, pseudocount.use=FindMarkers.Pseudocount)
+seurat.object.markers <- FindAllMarkers(object = seurat.object, only.pos = T, min.pct = FindAllMarkers.MinPct, thresh.use = FindAllMarkers.ThreshUse, pseudocount.use=FindMarkers.Pseudocount)
 write.table(data.frame("GENE"=rownames(seurat.object.markers),seurat.object.markers),paste(Tempdir,"/",PrefixOutfiles,".MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
 ### Get top-2 genes sorted by cluster, then by p-value
 top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% top_n(NumberOfGenesPerClusterToPlotTsne, avg_logFC))
@@ -294,10 +303,10 @@ NumberOfClusters<-length(summary(top_genes_by_cluster_for_tsne[,"cluster"]))
 NumberOfPanesForFeaturesPlot<-(NumberOfClusters*NumberOfGenesPerClusterToPlotTsne)
 top_genes_by_cluster_for_tsne.list<-top_genes_by_cluster_for_tsne[c(1:NumberOfPanesForFeaturesPlot),"gene"][[1]]
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VlnPlot_AfterClusters.pdf", sep=""))
-VlnPlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.list), use.raw = TRUE, y.log = TRUE, adjust.use=1,point.size.use = 0.5)
+VlnPlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.list), use.raw = T, y.log = T, adjust.use=1,point.size.use = 0.5)
 dev.off()
 ### For HTML
-VlnPlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.list), use.raw = TRUE, y.log = TRUE, adjust.use=1,point.size.use = 0.5)
+VlnPlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.list), use.raw = T, y.log = T, adjust.use=1,point.size.use = 0.5)
 
 ####################################
 ### t-SNE plots showing each cluster top genes
@@ -312,12 +321,12 @@ FeaturePlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_t
 ### Heatmaps
 ####################################
 top_genes_by_cluster_for_heatmap <- seurat.object.markers %>% group_by(cluster) %>% top_n(NumberOfGenesPerClusterToPlotHeatmap, avg_logFC)
-# setting slim.col.label to TRUE will print just the cluster IDS instead of every cell name
+# setting slim.col.label to T will print just the cluster IDS instead of every cell name
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".Heatmap.pdf", sep=""))
-DoHeatmap(object = seurat.object, genes.use = top_genes_by_cluster_for_heatmap$gene, slim.col.label = TRUE, remove.key = TRUE, title = PrefixOutfiles, cex.row = 6)
+DoHeatmap(object = seurat.object, genes.use = top_genes_by_cluster_for_heatmap$gene, slim.col.label = T, remove.key = T, title = PrefixOutfiles, cex.row = 6)
 dev.off()
 ### For HTML
-DoHeatmap(object = seurat.object, genes.use = top_genes_by_cluster_for_heatmap$gene, slim.col.label = TRUE, remove.key = TRUE, title = PrefixOutfiles, cex.row = 6)
+DoHeatmap(object = seurat.object, genes.use = top_genes_by_cluster_for_heatmap$gene, slim.col.label = T, remove.key = T, title = PrefixOutfiles, cex.row = 6)
 
 ####################################
 ### Moving outfiles into ourdir
@@ -335,8 +344,14 @@ options(warn = oldw)
 ####################################
 ### Report time used
 ####################################
-EndTime<-Sys.time()
-TookTime<-(EndTime - StartTime)
-print("END - All done!!!")
-print(TookTime)
+EndTimeOverall<-Sys.time()
+TookTimeOverall<-(EndTimeOverall - StartTimeOverall)
+print("END - All done!!! in:")
+print(TookTimeOverall)
+
+####################################
+### Finish
+####################################
+
+quit()
 
