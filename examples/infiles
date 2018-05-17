@@ -1,6 +1,5 @@
 Download 10X infile examples from:<br />
-https://github.com/jdime/example_files/tree/master/examples/inputs/from_cellranger/outs/filtered_gene_bc_matrices<br /><br />
+https://github.com/jdime/example_files/tree/master/examples/inputs/from_cellranger/outs/filtered_gene_bc_matrices
 
-Download Dropseq (genes in rows, cell barcodes in columns) infile examples from:<br />
-https://github.com/jdime/example_files/tree/master/examples/inputs/gene_rows_cell_columns<br /><br />
-
+Download Dropseq (genes in rows, cell barcodes in columns) infile examples from:
+https://github.com/jdime/example_files/tree/master/examples/inputs/gene_rows_cell_columns
