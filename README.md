@@ -63,26 +63,28 @@ Example infiles are provided in folder 'examples'
 
 Outputs Description
 ================
-| First Header |  Second Header |
-| ------------------------------ |  --------------------- |
-| *CellClusters.tab              |  CellClusters          |
-| *GenePlot.pdf                  |  GenePlot              |
-| *GenePlot.seurat_filtered.pdf  |  GenePlot              |
-| *Heatmap.pdf                   |  Heatmap               |
-| *JackStraw.C1toC12.pdf         |  JackStraw             |
-| *MarkersPerCluster.tsv         |  MarkersPerCluster     |
-| *PCAPlot.pdf                   |  PCAPlot               |
-| *PCElbowPlot.pdf               |  PCElbowPlot           |
-| *PCHeatmap.C1.pdf              |  PCHeatmap             |
-| *PCHeatmap.C1to18.pdf          |  PCHeatmap             |
-| *TSNEPlot.pdf                  |  TSNEPlot              |
-| *TSNEPlot_EachTopGene.pdf      |  TSNEPlot_EachTopGene  |
-| *VariableGenes.pdf             |  VariableGenes         |
-| *VariableGenes.txt             |  VariableGenes         |
-| *VizPCA.pdf                    |  VizPCA                |
-| *VlnPlot.pdf                   |  VlnPlot               |
-| *VlnPlot.seurat_filtered.pdf   |  VlnPlot               |
-| *VlnPlot_AfterClusters.pdf     |  VlnPlot_AfterClusters |
+| Extension |  Contents |
+| ------------------------------ |  ---------------------  |
+| *CellClusters.tsv              |  Cell clusters          |
+| *MarkersPerCluster.tsv         |  Markers per cluster    |
+| *CPUusage.tsv                  |  CPU time usage         |
+| *UsedOptions.txt               |  Options used in run    |
+| *GenePlot.pdf                  |  GenePlot               |
+| *GenePlot.seurat_filtered.pdf  |  GenePlot after filters |
+| *Heatmap.pdf                   |  Heatmap                |
+| *JackStraw.C1toC12.pdf         |  JackStraw              |
+| *PCAPlot.pdf                   |  PCAPlot                |
+| *PCElbowPlot.pdf               |  PCElbowPlot            |
+| *PCHeatmap.C1.pdf              |  PCHeatmap cluster 1    |
+| *PCHeatmap.C1toN.pdf           |  PCHeatmap all clusters |
+| *TSNEPlot.pdf                  |  TSNEPlot               |
+| *TSNEPlot_EachTopGene.pdf      |  TSNEPlot_EachTopGene   |
+| *VariableGenes.pdf             |  VariableGenes          |
+| *VariableGenes.txt             |  VariableGenes          |
+| *VizPCA.pdf                    |  VizPCA                 |
+| *VlnPlot.pdf                   |  VlnPlot                |
+| *VlnPlot.seurat_filtered.pdf   |  VlnPlot                |
+| *VlnPlot_AfterClusters.pdf     |  VlnPlot_AfterClusters  |
 
 
 Authors
