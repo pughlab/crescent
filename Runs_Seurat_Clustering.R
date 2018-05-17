@@ -133,7 +133,7 @@ seurat.object <- AddMetaData(object = seurat.object, metadata = percent.mito, co
 ####################################
 ### Voilin plots for data UNfiltered by Seurat
 ####################################
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VlnPlot.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VlnPlot.pdf", sep=""))
 VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
 dev.off()
 ### For HTML
@@ -142,7 +142,7 @@ VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito
 ####################################
 ### Gene scatter plots for data UNfiltered by Seurat
 ####################################
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".GenePlot.pdf", sep=""),width=14, height=7)
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_GenePlot.pdf", sep=""),width=14, height=7)
 par(mfrow = c(1, 2))
 GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "percent.mito")
 GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "nGene")
@@ -160,7 +160,7 @@ seurat.object
 ####################################
 ### Voilin plots for data filtered by Seurat
 ####################################
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VlnPlot.seurat_filtered.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VlnPlot.seurat_filtered.pdf", sep=""))
 VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
 dev.off()
 ### For HTML
@@ -169,7 +169,7 @@ VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito
 ####################################
 ### Gene scatter plots for data filtered by Seurat
 ####################################
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".GenePlot.seurat_filtered.pdf", sep=""), width=14, height=7)
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_GenePlot.seurat_filtered.pdf", sep=""), width=14, height=7)
 par(mfrow = c(1, 2))
 GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "percent.mito")
 GenePlot(object = seurat.object, gene1 = "nUMI", gene2 = "nGene")
@@ -191,9 +191,9 @@ seurat.object <- NormalizeData(object = seurat.object, normalization.method = "L
 ### but the exact parameter settings may vary based on the data type, heterogeneity in the sample, and normalization strategy.
 seurat.object <- FindVariableGenes(object = seurat.object, mean.function = ExpMean, dispersion.function = LogVMR, x.low.cutoff = XLowCutoff, x.high.cutoff = XHighCutoff, y.cutoff = YCutoff, do.plot=F)
 length(x = seurat.object@var.genes)
-write(file=paste(Tempdir,"/",PrefixOutfiles,".VariableGenes.txt", sep=""), x=seurat.object@var.genes)
+write(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VariableGenes.txt", sep=""), x=seurat.object@var.genes)
 #
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VariableGenes.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VariableGenes.pdf", sep=""))
 VariableGenePlot(object = seurat.object,  x.low.cutoff = XLowCutoff, x.high.cutoff = XHighCutoff, y.cutoff = YCutoff)
 dev.off()
 ### For HTML
@@ -211,13 +211,13 @@ seurat.object <- ScaleData(object = seurat.object, vars.to.regress = c("nUMI", "
 ####################################
 seurat.object <- RunPCA(object = seurat.object, pc.genes = seurat.object@var.genes, do.print = T, pcs.print = PrintPCA.PcsPrint, genes.print = PrintPCA.GenesPrint)
 #
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VizPCA.pdf", sep=""), width=7, height=10)
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VizPCA.pdf", sep=""), width=7, height=10)
 VizPCA(object = seurat.object, pcs.use = VizPCA.PcsUse)
 dev.off()
 ### For HTML
 VizPCA(object = seurat.object, pcs.use = VizPCA.PcsUse)
 #
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".PCAPlot.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCAPlot.pdf", sep=""))
 PCAPlot(object = seurat.object, dim.1 = 1, dim.2 = 2, no.legend=T)
 dev.off()
 ### For HTML
@@ -225,13 +225,13 @@ PCAPlot(object = seurat.object, dim.1 = 1, dim.2 = 2, no.legend=T)
 #
 seurat.object <- ProjectPCA(object = seurat.object, do.print = F)
 #
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".PCHeatmap.C1.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCHeatmap.C1.pdf", sep=""))
 PCHeatmap(object = seurat.object, pc.use = 1, cells.use = PCHeatmapCellsUse, do.balanced = T, label.columns = F)
 dev.off()
 ### For HTML
 PCHeatmap(object = seurat.object, pc.use = 1, cells.use = PCHeatmapCellsUse, do.balanced = T, label.columns = F)
 #
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".PCHeatmap.C1to",PCHeatmapComponentsToPlot,".pdf", sep=""), width=7, height=12)
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCHeatmap.C1to",PCHeatmapComponentsToPlot,".pdf", sep=""), width=7, height=12)
 PCHeatmap(object = seurat.object, pc.use = 1:PCHeatmapComponentsToPlot, cells.use = PCHeatmapCellsUse, do.balanced = T, label.columns = F, use.full = F)
 dev.off()
 ### For HTML
@@ -245,13 +245,13 @@ PCHeatmap(object = seurat.object, pc.use = 1:PCHeatmapComponentsToPlot, cells.us
 ### PCElbowPlot() can be used to reduce computation time
 seurat.object <- JackStraw(object = seurat.object, num.replicate = JackStrawNumReplicate, display.progress = F)
 #
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".JackStraw.C1toC12.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_JackStraw.C1toC12.pdf", sep=""))
 JackStrawPlot(object = seurat.object, PCs = JackStrawPlotPcs)
 dev.off()
 ### For HTML
 JackStrawPlot(object = seurat.object, PCs = JackStrawPlotPcs)
 #
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".PCElbowPlot.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCElbowPlot.pdf", sep=""))
 PCElbowPlot(object = seurat.object)
 dev.off()
 ### For HTML
@@ -260,15 +260,25 @@ PCElbowPlot(object = seurat.object)
 ####################################
 ### Cluster the cells
 ####################################
+StartTimeClustering<-Sys.time()
 seurat.object <- FindClusters(object = seurat.object, reduction.type = "pca", dims.use = FindClusters.DimsUse, resolution = FindClusters.Resolution, print.output = 0, save.SNN = T)
-write.table(x=seurat.object@ident, file=paste(Tempdir,"/",PrefixOutfiles,".CellClusters.tab", sep=""), sep="\t", quote = F)
+EndTimeClustering<-Sys.time()
+
+CellNames<-seurat.object@cell.names
+ClusterIdent<-seurat.object@ident
+Headers<-paste("CLUSTERS","seurat_clusters",sep="\t")
+clusters_data<-paste(CellNames,ClusterIdent,sep="\t")
+OutfileClusters<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_CellClusters.tsv", sep="")
+write.table(Headers,file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(data.frame(clusters_data),file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
 
 ####################################
 ### Run Non-linear dimensional reduction (tSNE)
 ####################################
 seurat.object <- RunTSNE(object = seurat.object, dims.use = FindClusters.DimsUse, do.fast = T)
 ### Note that you can set do.label=T to help label individual clusters
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".TSNEPlot.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot.pdf", sep=""))
 TSNEPlot(object = seurat.object, do.label = T,label.size=10)
 dev.off()
 ### For HTML
@@ -292,7 +302,7 @@ TSNEPlot(object = seurat.object, do.label = T,label.size=10)
 # print(x = head(x = cluster5.markers, n = 5))
 #########
 seurat.object.markers <- FindAllMarkers(object = seurat.object, only.pos = T, min.pct = FindAllMarkers.MinPct, thresh.use = FindAllMarkers.ThreshUse, pseudocount.use=FindMarkers.Pseudocount)
-write.table(data.frame("GENE"=rownames(seurat.object.markers),seurat.object.markers),paste(Tempdir,"/",PrefixOutfiles,".MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
+write.table(data.frame("GENE"=rownames(seurat.object.markers),seurat.object.markers),paste(Tempdir,"/",PrefixOutfiles,".SEURAT_MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
 ### Get top-2 genes sorted by cluster, then by p-value
 top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% top_n(NumberOfGenesPerClusterToPlotTsne, avg_logFC))
 NumberOfClusters<-length(summary(top_genes_by_cluster_for_tsne[,"cluster"]))
@@ -302,7 +312,7 @@ NumberOfClusters<-length(summary(top_genes_by_cluster_for_tsne[,"cluster"]))
 ####################################
 NumberOfPanesForFeaturesPlot<-(NumberOfClusters*NumberOfGenesPerClusterToPlotTsne)
 top_genes_by_cluster_for_tsne.list<-top_genes_by_cluster_for_tsne[c(1:NumberOfPanesForFeaturesPlot),"gene"][[1]]
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".VlnPlot_AfterClusters.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VlnPlot_AfterClusters.pdf", sep=""))
 VlnPlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.list), use.raw = T, y.log = T, adjust.use=1,point.size.use = 0.5)
 dev.off()
 ### For HTML
@@ -311,7 +321,7 @@ VlnPlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.
 ####################################
 ### t-SNE plots showing each cluster top genes
 ####################################
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".TSNEPlot_EachTopGene.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_EachTopGene.pdf", sep=""))
 FeaturePlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_tsne.list), cols.use = c("grey", "blue"), reduction.use = "tsne")
 dev.off()
 ### For HTML
@@ -322,16 +332,46 @@ FeaturePlot(object = seurat.object, features.plot = c(top_genes_by_cluster_for_t
 ####################################
 top_genes_by_cluster_for_heatmap <- seurat.object.markers %>% group_by(cluster) %>% top_n(NumberOfGenesPerClusterToPlotHeatmap, avg_logFC)
 # setting slim.col.label to T will print just the cluster IDS instead of every cell name
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".Heatmap.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_Heatmap.pdf", sep=""))
 DoHeatmap(object = seurat.object, genes.use = top_genes_by_cluster_for_heatmap$gene, slim.col.label = T, remove.key = T, title = PrefixOutfiles, cex.row = 6)
 dev.off()
 ### For HTML
 DoHeatmap(object = seurat.object, genes.use = top_genes_by_cluster_for_heatmap$gene, slim.col.label = T, remove.key = T, title = PrefixOutfiles, cex.row = 6)
 
 ####################################
+### Report used options
+####################################
+OutfileOptionsUsed<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_UsedOptions.txt", sep="")
+TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
+write(file = OutfileOptionsUsed, x=c(TimeOfRun,"\n","Options used:"))
+
+countOptions<-0
+for (optionInput in opt) {
+  countOptions = countOptions + 1
+  write(file = OutfileOptionsUsed, x=paste(names(opt[countOptions]), optionInput, sep="\t"), append = T)
+}
+
+####################################
+### Report time used
+####################################
+EndTimeOverall<-Sys.time()
+
+TookTimeClustering<-round((EndTimeClustering - StartTimeClustering), digits = 1)
+TookTimeOverall   <-(EndTimeOverall - StartTimeOverall)
+
+OutfileCPUusage<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_CPUusage.tsv", sep="")
+ReportTime<-c(
+  paste("clustering",TookTimeClustering,"minutes",collapse = "\t"),
+  paste("overall",TookTimeOverall,"minutes",collapse = "\t")
+)
+
+write(file = OutfileCPUusage, x=c(ReportTime))
+
+
+####################################
 ### Moving outfiles into ourdir
 ####################################
-outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles),full.names = F)
+outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".SEURAT_", sep=""), full.names = F)
 sapply(outfiles_to_move,FUN=function(eachFile){ 
   file.rename(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/SEURAT/",eachFile,sep=""))
 })
@@ -342,16 +382,11 @@ sapply(outfiles_to_move,FUN=function(eachFile){
 options(warn = oldw)
 
 ####################################
-### Report time used
-####################################
-EndTimeOverall<-Sys.time()
-TookTimeOverall<-(EndTimeOverall - StartTimeOverall)
-print("END - All done!!! in:")
-print(TookTimeOverall)
-
-####################################
 ### Finish
 ####################################
+
+print("END - All done!!! Took time in minutes:")
+print(ReportTime)
 
 quit()
 
