@@ -301,7 +301,11 @@ TSNEPlot(object = seurat.object, do.label = T,label.size=10)
 # cluster5.markers <- FindMarkers(object = seurat.object, ident.1 = 5, ident.2 = c(0, 3), min.pct = FindAllMarkers.MinPct)
 # print(x = head(x = cluster5.markers, n = 5))
 #########
+
+StartTimeFindAllMarkers<-Sys.time()
 seurat.object.markers <- FindAllMarkers(object = seurat.object, only.pos = T, min.pct = FindAllMarkers.MinPct, thresh.use = FindAllMarkers.ThreshUse, pseudocount.use=FindMarkers.Pseudocount)
+EndTimeFindAllMarkers<-Sys.time()
+
 write.table(data.frame("GENE"=rownames(seurat.object.markers),seurat.object.markers),paste(Tempdir,"/",PrefixOutfiles,".SEURAT_MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
 ### Get top-2 genes sorted by cluster, then by p-value
 top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% top_n(NumberOfGenesPerClusterToPlotTsne, avg_logFC))
@@ -356,17 +360,18 @@ for (optionInput in opt) {
 ####################################
 EndTimeOverall<-Sys.time()
 
-TookTimeClustering<-round((EndTimeClustering - StartTimeClustering), digits = 1)
-TookTimeOverall   <-(EndTimeOverall - StartTimeOverall)
+TookTimeClustering     <-format(difftime(EndTimeClustering,     StartTimeClustering,     units = "min"))
+TookTimeFindAllMarkers <-format(difftime(EndTimeFindAllMarkers, StartTimeFindAllMarkers, units = "min"))
+TookTimeOverall        <-format(difftime(EndTimeOverall,        StartTimeOverall,        units = "min"))
 
 OutfileCPUusage<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_CPUusage.tsv", sep="")
 ReportTime<-c(
-  paste("clustering",TookTimeClustering,"minutes",collapse = "\t"),
-  paste("overall",TookTimeOverall,"minutes",collapse = "\t")
+  paste("clustering",TookTimeClustering,collapse = "\t"),
+  paste("FindAllMarkers",TookTimeFindAllMarkers,collapse = "\t"),
+  paste("overall",TookTimeOverall,collapse = "\t")
 )
 
 write(file = OutfileCPUusage, x=c(ReportTime))
-
 
 ####################################
 ### Moving outfiles into ourdir
@@ -385,7 +390,7 @@ options(warn = oldw)
 ### Finish
 ####################################
 
-print("END - All done!!! Took time in minutes:")
+print("END - All done!!! Took time:")
 print(ReportTime)
 
 quit()
