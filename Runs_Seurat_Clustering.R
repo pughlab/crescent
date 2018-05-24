@@ -3,7 +3,7 @@
 ### Script made based on http://satijalab.org/seurat/pbmc3k_tutorial.html
 ### Things missing from this tutorial:
 ### 1) Further subdivisions within cell types (i.e. granularity of clusters)
-### 2) Assigning cell type identity to clusters (needs supervised annotations, maybe GSEA enrichment)
+### 2) Assigning cell type identity to clusters (needs supervised annotations, maybe based on Gene Set Enrichment analysis)
 ### 3) Using saveRDS
 ### 4) Use knitr() to produce better html plot layout (https://yihui.name/knitr/demo/stitch/)
 ####################################
@@ -11,10 +11,10 @@
 ####################################
 ### Required libraries
 ####################################
-### 'Seurat'     to run QC, differential gene expression and clustering analyses
-### 'dplyr'      needed by Seurat for data manupulation
 ### 'optparse'   to handle one-line-commands
 ### 'data.table' to read tables quicker than read.table - only needed is using '-t Dropseq'
+### 'Seurat'     to run QC, differential gene expression and clustering analyses
+### 'dplyr'      needed by Seurat for data manupulation
 ####################################
 
 suppressPackageStartupMessages(library(Seurat))
@@ -33,25 +33,33 @@ options( warn = -1 )
 ####################################
 
 option_list <- list(
+  make_option(c("-i", "--input"), default="NA",
+              help="Either the path/name to a 10X *directory* with barcodes.tsv, genes.tsv and matrix.mtx files;
+                or path/name of a  <tab> delimited Dropseq *file* with cell barcodes in columns and genes in rows"),
+
   make_option(c("-t", "--input_type"), default="NA",
               help="Indicates if input is either a '10X' directory or a 'Dropseq' matrix file"),
   
-  make_option(c("-i", "--input"), default="NA",
-  help="Either the path/name to a 10X *directory* with barcodes.tsv, genes.tsv and matrix.mtx files;
-  or path/name of a  <tab> delimited Dropseq *file* with cell barcodes in columns and genes in rows"),
+  make_option(c("-r", "--resolution"), default="0.8",
+              help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain
+                a larger (smaller) number of communities"),
+  
+  make_option(c("-e", "--return_threshold"), default="0.01",
+              help="For each cluster only return markers that have a p-value < return_thresh,  e.g. '0.01'"),
 
   make_option(c("-o", "--outdir"), default="NA",
-    help="A path/name for the results directory"),
+              help="A path/name for the results directory"),
 
   make_option(c("-p", "--prefix_outfiles"), default="NA",
-    help="A prefix for outfile names, e.g. your project ID")
+              help="A prefix for outfile names, e.g. your project ID")
 )
 opt <- parse_args(OptionParser(option_list=option_list))
 
 Input          <- opt$input
 InputType      <- opt$input_type
 Outdir         <- opt$outdir
-PrefixOutfiles <- opt$prefix_outfiles
+ThreshReturn   <- opt$return_threshold
+PrefixOutfiles <- c(paste(opt$prefix_outfiles,"_res",opt$resolution,sep=""))
 Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
 
 ####################################
@@ -81,7 +89,6 @@ JackStrawNumReplicate<-100
 JackStrawPlotPcs<-1:18 ### These are the number of PCs to plot to see their influence data, but won't influence the plots themselves
 ### Parameters for Clustering
 FindClusters.DimsUse<-1:10 ### These should be tailored based on the number of PCs found to influence data (e.g. from JackStrawPlotPcs and/or PCElbowPlot plots)
-FindClusters.Resolution<-0.6
 ### Parameters for Cluster Biomarkers
 FindAllMarkers.MinPct    <- 0.25
 FindAllMarkers.ThreshUse <- 0.25
@@ -261,7 +268,7 @@ PCElbowPlot(object = seurat.object)
 ### Cluster the cells
 ####################################
 StartTimeClustering<-Sys.time()
-seurat.object <- FindClusters(object = seurat.object, reduction.type = "pca", dims.use = FindClusters.DimsUse, resolution = FindClusters.Resolution, print.output = 0, save.SNN = T)
+seurat.object <- FindClusters(object = seurat.object, reduction.type = "pca", dims.use = FindClusters.DimsUse, resolution = opt$resolution, print.output = 0, save.SNN = T)
 EndTimeClustering<-Sys.time()
 
 CellNames<-seurat.object@cell.names
@@ -289,21 +296,24 @@ TSNEPlot(object = seurat.object, do.label = T,label.size=10)
 ####################################
 ### Finding markers for every cluster compared to all remaining cells
 ### only.pos allows to report only the positive ones
-### Using min.pct and thresh.use to speed comparisons up. Other options to further speed are logfc.threshold, min.diff.pct, and  max.cells.per.ident
+### Using min.pct and thresh.use (renamed logfc.threshold in latest Seurat versions) to speed comparisons up. Other options to further speed are min.diff.pct, and  max.cells.per.ident
 ### See http://satijalab.org/seurat/de_vignette.html
 #########
-# ### Other options
-# ### find all markers of cluster 1
-# cluster1.markers <- FindMarkers(object = seurat.object, ident.1 = 1, min.pct = FindAllMarkers.MinPct)
-# print(x = head(x = cluster1.markers, n = 5))
-# ###
-# ### find all markers distinguishing cluster 5 from clusters 0 and 3
-# cluster5.markers <- FindMarkers(object = seurat.object, ident.1 = 5, ident.2 = c(0, 3), min.pct = FindAllMarkers.MinPct)
-# print(x = head(x = cluster5.markers, n = 5))
+### Other options
+### find all markers of cluster 1
+### cluster1.markers <- FindMarkers(object = seurat.object, ident.1 = 1, min.pct = FindAllMarkers.MinPct)
+### print(x = head(x = cluster1.markers, n = 5))
+###
+### find all markers distinguishing cluster 5 from clusters 0 and 3
+### cluster5.markers <- FindMarkers(object = seurat.object, ident.1 = 5, ident.2 = c(0, 3), min.pct = FindAllMarkers.MinPct)
+### print(x = head(x = cluster5.markers, n = 5))
+########
+### NOTE: FindAllMarkers() uses return.thresh = 0.01 as defaults, but FindMarkers() displays all genes passing previous filters.
+###       Thus to make the outputs between these two commands identical to each other use return.thresh = 1
 #########
 
 StartTimeFindAllMarkers<-Sys.time()
-seurat.object.markers <- FindAllMarkers(object = seurat.object, only.pos = T, min.pct = FindAllMarkers.MinPct, thresh.use = FindAllMarkers.ThreshUse, pseudocount.use=FindMarkers.Pseudocount)
+seurat.object.markers <- FindAllMarkers(object = seurat.object, only.pos = T, min.pct = FindAllMarkers.MinPct, return.thresh = ThreshReturn, thresh.use = FindAllMarkers.ThreshUse, pseudocount.use=FindMarkers.Pseudocount)
 EndTimeFindAllMarkers<-Sys.time()
 
 write.table(data.frame("GENE"=rownames(seurat.object.markers),seurat.object.markers),paste(Tempdir,"/",PrefixOutfiles,".SEURAT_MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
