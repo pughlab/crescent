@@ -40,7 +40,7 @@ option_list <- list(
   make_option(c("-t", "--input_type"), default="NA",
               help="Indicates if input is either a '10X' directory or a 'Dropseq' matrix file"),
   
-  make_option(c("-r", "--resolution"), default="0.8",
+  make_option(c("-r", "--resolution"), default="1",
               help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain
                 a larger (smaller) number of communities"),
   
