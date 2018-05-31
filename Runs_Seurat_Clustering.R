@@ -388,7 +388,7 @@ write(file = OutfileCPUusage, x=c(ReportTime))
 ####################################
 outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".SEURAT_", sep=""), full.names = F)
 sapply(outfiles_to_move,FUN=function(eachFile){ 
-  file.rename(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/SEURAT/",eachFile,sep=""))
+  file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/SEURAT/",eachFile,sep=""))
 })
 
 ####################################
