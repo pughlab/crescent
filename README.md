@@ -98,7 +98,7 @@ Authors
 Dependencies
 ================
 
-**3) R and the following R packages** <br />
+**R and the following R packages** <br />
 **Seurat** <br />
 Can be installed in R console with `install.packages('Seurat')`<br /><br />
 **dplyr** <br />
@@ -108,8 +108,8 @@ Can be installed in R console with `install.packages('optparse')`<br />
 It's used to handle one-line commands<br /><br />
 **data.table**<br />
 Can be installed in R console with `install.packages('data.table')`<br />
-It's used to read Gene Expression matrices faster than read.table()
+It's used to read Gene Expression matrices faster than read.table()<br /><br />
 **staplr**<br />
 Can be installed in R console with `install.packages('staplr')`<br />
 It's used to manipulate *pdf files. It requires pdftk, which can be obtained from<br />
-https://www.pdflabs.com/tools/pdftk-the-pdf-toolkit/
+https://www.pdflabs.com/tools/pdftk-the-pdf-toolkit/<br /><br />
