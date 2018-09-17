@@ -58,7 +58,7 @@ Inputs Description
 
 Either:<br />
 a) a 10X *directory* cointaining outfiles from cellranger (barcodes.tsv, genes.tsv and matrix.mtx), or<br />
-b) a Dropseq *file* with cell barcodes in columns and genes in rows
+b) a matrix *file* with cell barcodes in columns and genes in rows
 
 Example infiles are provided in folder 'examples'
 
