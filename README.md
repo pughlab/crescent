@@ -33,10 +33,12 @@ This code is a wrapper library written in R and the general workflow of this scr
   9. Run Non-linear dimensional reduction (tSNE)
   10. Find differentially expressed genes (each cluster markers)
   11. Create 'violin' plots for top differentially expressed genes for each cluster
-  12. Create heatmaps of differentially expressed genes
+  12. Create heatmaps for top differentially expressed genes for each cluster
+  13. Create t-SNE plots for top differentially expressed genes for each cluster
+  13. Create t-SNE plots for selected genes
   13. Create a file with summary plots
-  13 . Report output
-  14. End
+  14. Report used options
+  15. End
 
 Example commands
 ================
