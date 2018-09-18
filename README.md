@@ -7,22 +7,17 @@ Script name
 
 Description
 ================
-Runs Seurat's clustering on either 10X files from cellranger (barcodes.tsv, genes.tsv and matrix.mtx)
-or a *file* with the Gene Expression Matrix with cell-barcodes in columns and genes in rows.
+Runs Seurat's scRNA-seq data normalization and clustering on either 10X files from cellranger (barcodes.tsv, genes.tsv and matrix.mtx) or a *file* with the Gene Expression Matrix with cell-barcodes in columns and genes in rows (e.g. from DropSeq).
 The clustering procedure is based on this Seurat tutorial http://satijalab.org/seurat/pbmc3k_tutorial.html
 
-It allows to provide one-line commands.
+It allows the user provide one-line commands.
 
-Parameters for Seurat are defined based on the Seurat tutorial or from empirical observations.<br />
-For example, *pseudocount.use* for FindAllMarkers() is set to 1e-99, instead of the default is 1 (see https://goo.gl/3VzQ3L)
+Default parameters for Seurat are defined based on the Seurat tutorial or from empirical observations.<br />
+For example, *pseudocount.use* for FindAllMarkers() is set to 1e-99, instead of the default is 1 (see https://goo.gl/3VzQ3L). Default parameters can be changed in section "Tailored parameters".
 
-Parameters can be changed in section "Tailored parameters".
- 
 Outfiles
 ================
-A table with the cell-clusters, a table with differentially expressed genes on each cell-cluster.<br />
-Plots provided as \*pdf files from the t-SNE, violin plots, clustering etc., as shown in the Seurat tutorial.<br />
-See 'Outputs Description' below for details
+A table with the cell-clusters, a table with differentially expressed genes on each cell-cluster, plots provided as \*pdf files from the t-SNE, violin plots, clustering etc. See 'Outputs Description' below for details.
 
 General workflow
 ================
