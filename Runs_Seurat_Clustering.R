@@ -24,6 +24,7 @@
 ### 'Seurat'     to run QC, differential gene expression and clustering analyses
 ### 'dplyr'      needed by Seurat for data manupulation
 ### 'staplr'     only if using option '-s y', note it needs pdftk
+### 'fmsb'       to calculate the percentages of extra properties to be t-SNE plotted
 ####################################
 
 ####################################
@@ -38,6 +39,7 @@
 suppressPackageStartupMessages(library(Seurat))
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(optparse))
+suppressPackageStartupMessages(library(fmsb))
 
 ####################################
 ### Turning warnings off for the sake of a cleaner aoutput
@@ -59,17 +61,7 @@ option_list <- list(
 #
   make_option(c("-r", "--resolution"), default="1",
               help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain
-                  a larger (smaller) number of communities"),
-#
-  make_option(c("-d", "--pca_dimensions"), default="10",
-              help="Max value of PCA dimensions to use for clustering and t-SNE functions
-              FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
-              Typically '10' is enough, if unsure use '10' and afterwards check these two files:
-              *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
-              *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers"),
-#
-  make_option(c("-e", "--return_threshold"), default="0.01",
-              help="For each cluster only return markers that have a p-value < return_thresh,  e.g. '0.01'"),
+                a larger (smaller) number of communities"),
 #
   make_option(c("-o", "--outdir"), default="SEURAT_OUTPUTS",
               help="A path/name for the results directory"),
@@ -79,11 +71,28 @@ option_list <- list(
 #
   make_option(c("-s", "--summary_plots"), default="y",
               help="Indicates if a *summary_plots.pdf file should be generated [use 'y'] or not [use 'n']
-              Note this needs 'pdftk' and R library(staplr)"),
+                Note this needs 'pdftk' and R library(staplr)"),
 #
-make_option(c("-g", "--list_genes"), default="NA",
-            help="A <comma> delimited list of gene identifiers whose expression will be mapped into the t-SNE plots")
-
+  make_option(c("-c", "--infile_colour_tsne_discrete"), default="NA",
+              help="A <tab> delimited table of barcodes and discrete properties to colour the t-SNE, like:
+                Barcode              CellClass    InOtherDatasets
+                AAACCTGAGCGGCTTC-1   1            yes
+                AAACCTGAGTCGAGTG-1   1            no
+                AAACCTGCAAAGGAAG-1   2            yes
+                AAACCTGGTCTCATCC-1   2            no"),
+#
+  make_option(c("-g", "--list_genes"), default="NA",
+              help="A <comma> delimited list of gene identifiers whose expression will be mapped into the t-SNE plots"),
+#
+  make_option(c("-d", "--pca_dimensions"), default="10",
+              help="Max value of PCA dimensions to use for clustering and t-SNE functions
+                FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
+                Typically '10' is enough, if unsure use '10' and afterwards check these two files:
+                *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
+                *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers"),
+#
+  make_option(c("-e", "--return_threshold"), default="0.01",
+              help="For each cluster only return markers that have a p-value < return_thresh,  e.g. '0.01'")
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -91,26 +100,16 @@ opt <- parse_args(OptionParser(option_list=option_list))
 Input          <- opt$input
 InputType      <- opt$input_type
 Resolution     <- as.numeric(opt$resolution) ## using as.numeric avoids FindClusters() to crash by inputting it as.character [default from parse_args()]
-ThreshReturn   <- as.numeric(opt$return_threshold)
-PcaDimsUse     <- c(1:as.numeric(opt$pca_dimensions))
 Outdir         <- opt$outdir
 PrefixOutfiles <- opt$prefix_outfiles
 SummaryPlots   <- opt$summary_plots
 ListGenes      <- opt$list_genes
-
-# # ### Manually inputted to create html
-# Input            <- "~/SINGLE_CELL/DROP_SEQ/KETELA_DATA/180907_NB500964_0238_AHGTCKBGX7_Bear_Troy_Javier/DROPSEQ_1.2.12_PICARD_2.18.1/DS64/MERGED_LANES/DS64_3704_DGE.mat"
-# InputType        <- "DGE"
-# Resolution       <- 1.2
-# ThreshReturn     <- 0.01
-# PcaDimsUse       <- c(1:10)
-# Outdir           <- "~/temp/"
-# PrefixOutfiles   <- "DS64"
-# SummaryPlots     <- "y"
+ColourTsne     <- opt$infile_colour_tsne
+PcaDimsUse     <- c(1:as.numeric(opt$pca_dimensions))
+ThreshReturn   <- as.numeric(opt$return_threshold)
 
 PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
 Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
-
 
 ####################################
 ### Define tailored parameters
@@ -141,7 +140,6 @@ JackStrawPlotPcs<-1:18 ### These are the number of PCs to plot to see their infl
 FindAllMarkers.MinPct    <- 0.25
 FindAllMarkers.ThreshUse <- 0.25
 FindAllMarkers.PrintTopN <- 10
-FindMarkers.Pseudocount  <- 1e-99 ### Default is 1, which sounds high for a Log level correction. Also see https://goo.gl/3VzQ3L
 NumberOfGenesToPlotFeatures <- 16
 NumberOfGenesPerClusterToPlotTsne <- 2
 NumberOfGenesPerClusterToPlotHeatmap <- 10
@@ -149,7 +147,9 @@ NumberOfGenesPerClusterToPlotHeatmap <- 10
 VlnPlotSizeTitle <- 10 # 10 is good for ENSEMBL ID's in a 4 column matrix-style plot
 ### Parameters for t-SNE plots
 BasePlotSizeTsneSelectedGenes<-14
+BasePlotSizeTsneExtraProperties<-14
 MaxNumberOfPlotsPerRowInOutfileTsneSelectedGenes<-4
+MaxNumberOfPlotsPerRowInOutfileTsneExtraProperties<-2
 
 StartTimeOverall<-Sys.time()
 
@@ -167,7 +167,7 @@ dir.create(file.path(Outdir, "SEURAT"), recursive = T)
 dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
 
 ####################################
-### Load data
+### Load scRNA-seq data
 ####################################
 if(regexpr("^10X$", InputType, ignore.case = T)[1] == 1) {
   print("Loading 10X infiles")
@@ -177,7 +177,7 @@ if(regexpr("^10X$", InputType, ignore.case = T)[1] == 1) {
   library(data.table)
   input.matrix <- data.frame(fread(Input),row.names=1)
 }else{
-  stop(paste("Unexpected type of infile: ", InputType, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n", sep=""))
+  stop(paste("Unexpected type of input: ", InputType, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n", sep=""))
 }
 dim(input.matrix)
 
@@ -216,7 +216,7 @@ percent_mito_median<-(median(seurat.object@meta.data[,"percent.mito"]))
 ### Make a file with mean and median
 VlnPlotPdfB<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VlnPlot.B.pdf", sep="")
 pdf(file=VlnPlotPdfB, width = 7, height = 7)
-plot(x=NA,y=NA,xlim=c(0,1),ylim=c(0,1),axes=FALSE,bty="n",xlab="",ylab="")
+plot(x=NA,y=NA,xlim=c(0,1),ylim=c(0,1),axes=F,bty="n",xlab="",ylab="")
 nGeneStats<-paste(c("mean=",round(nGene_mean,0),"\n",
                     "median=",round(nGene_median,0)),
                   sep = "", collapse="")
@@ -271,7 +271,7 @@ percent_mito_median<-(median(seurat.object@meta.data[,"percent.mito"]))
 ### Make a file with mean and median
 VlnPlotPdfB<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VlnPlot.seurat_filtered.B.pdf", sep="")
 pdf(file=VlnPlotPdfB, width = 7, height = 7)
-plot(x=NA,y=NA,xlim=c(0,1),ylim=c(0,1),axes=FALSE,bty="n",xlab="",ylab="")
+plot(x=NA,y=NA,xlim=c(0,1),ylim=c(0,1),axes=F,bty="n",xlab="",ylab="")
 nGeneStats<-paste(c("mean=",round(nGene_mean,0),"\n",
                     "median=",round(nGene_median,0)),
                   sep = "", collapse="")
@@ -356,21 +356,22 @@ dev.off()
 ### NOTE: This process can take a long time for big datasets, comment out for
 ### expediency.  More approximate techniques such as those implemented in
 ### PCElbowPlot() can be used to reduce computation time
-seurat.object <- JackStraw(object = seurat.object, num.replicate = JackStrawNumReplicate, display.progress = F)
+
+# seurat.object <- JackStraw(object = seurat.object, num.replicate = JackStrawNumReplicate, display.progress = F)
 
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_JackStraw.C1toC12.pdf", sep=""))
-JackStrawPlot(object = seurat.object, PCs = JackStrawPlotPcs)
+# JackStrawPlot(object = seurat.object, PCs = JackStrawPlotPcs)
 dev.off()
 
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCElbowPlot.pdf", sep=""))
-PCElbowPlot(object = seurat.object)
+# PCElbowPlot(object = seurat.object)
 dev.off()
 
 ####################################
 ### Cluster the cells
 ####################################
 StartTimeClustering<-Sys.time()
-options(scipen=10) ## Needed to fix an issue with 'Error in file(file, "rt") : cannot open the connection
+options(scipen=10) ## Needed to avoid an 'Error in file(file, "rt") : cannot open the connection'
 seurat.object <- FindClusters(object = seurat.object, reduction.type = "pca", dims.use = PcaDimsUse, resolution = Resolution, print.output = 0, save.SNN = T)
 EndTimeClustering<-Sys.time()
 
@@ -388,6 +389,15 @@ OutfileNumbClusters<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_NumbCellClusters"
 write(x=NumberOfClusters,file = OutfileNumbClusters)
 
 ####################################
+### Get average expression for each cluster for each gene
+####################################
+cluster.averages<-AverageExpression(object = seurat.object, use.raw = T)
+OutfileClusterAverages<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_AverageGeneExpressionPerCluster.tsv", sep="")
+Headers<-paste("AVERAGE_GENE_EXPRESSION",paste(names(cluster.averages),sep="",collapse="\t"),sep="\t",collapse = "\t")
+write.table(Headers,file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(data.frame(cluster.averages),file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+
+####################################
 ### Run Non-linear dimensional reduction (tSNE)
 ####################################
 seurat.object <- RunTSNE(object = seurat.object, dims.use = PcaDimsUse, do.fast = T)
@@ -396,6 +406,41 @@ seurat.object <- RunTSNE(object = seurat.object, dims.use = PcaDimsUse, do.fast 
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot.pdf", sep=""))
 TSNEPlot(object = seurat.object, do.label = T,label.size=10)
 dev.off()
+
+####################################
+### Colour t-SNE by nGene, nUMI, and percent.mito
+####################################
+
+CellPropertiesToTsne<-c("nGene", "nUMI", "percent.mito")
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_QC.pdf", sep=""), width = 15, height = 5)
+FeaturePlot(object = seurat.object, features.plot = CellPropertiesToTsne, cols.use = c("grey", "blue"), reduction.use = "tsne", nCol = 3, pt.size = 1.5)
+dev.off()
+
+####################################
+### Colour t-SNE by -infile_colour_tsne_discrete
+####################################
+
+if (ColourTsne == "NA") {
+  print("No extra barcode-attributes will be used for t-SNE plots")
+}else{
+  seurat.object.meta.data<-seurat.object@meta.data
+  ExtraCellProperties <- data.frame(read.table(ColourTsne, header = T, row.names = 1))
+  
+  # This is because Seurat removes the last dash-digit from barcode ID's
+  # and we need to match those ID's against the inputted -infile_colour_tsne_discrete
+  rownames(ExtraCellProperties)<-gsub(x =rownames(ExtraCellProperties), pattern = "-[0-9]+$", perl = T, replacement = "")
+  seurat.object <- AddMetaData(object = seurat.object, metadata = ExtraCellProperties)
+
+  # Generating outfile
+  # Note TSNEPlot() takes the entire current device (pdf)
+  # even if using layout(matrix(...))
+  # Thus each property t-SNE is written to a separate page of a single *pdf outfile
+  pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_ExtraProperties.pdf", sep=""))
+  for (property in colnames(ExtraCellProperties)) {
+    TSNEPlot(object = seurat.object, group.by = property, plot.title = property)
+  }
+  dev.off()
+}
 
 ####################################
 ### t-SNE plots showing each requested gene
@@ -436,11 +481,20 @@ if (ListGenes == "NA") {
 ### cluster5.markers <- FindMarkers(object = seurat.object, ident.1 = 5, ident.2 = c(0, 3), min.pct = FindAllMarkers.MinPct)
 ### print(x = head(x = cluster5.markers, n = 5))
 ########
-### NOTE: FindAllMarkers() uses return.thresh = 0.01 as defaults, but FindMarkers() displays all genes passing previous filters.
-###       Thus to make the outputs between these two commands identical to each other use return.thresh = 1
+### NOTES:
+### 1) FindAllMarkers() uses return.thresh = 0.01 as defaults, but FindMarkers() displays all genes passing previous filters.
+###    Thus to make the outputs between these two commands identical to each other use return.thresh = 1
+###
+### 2) Default pseudocount.use=1, which sounds high for a Log level correction
+###    An earlier version of this script was using 1e-99, but it was probably too small
+###    Now using the inverse of the number of cells in the data.
+###    This is sufficiently small as to not compress logGER magnitudes,
+###    while keeping comparisons with zero reasonably close to the range of potential logGER values (Innes and Bader, 2018, F1000 Research)
 #########
 
 StartTimeFindAllMarkers<-Sys.time()
+
+FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object@meta.data))
 seurat.object.markers <- FindAllMarkers(object = seurat.object, only.pos = T, min.pct = FindAllMarkers.MinPct, return.thresh = ThreshReturn, thresh.use = FindAllMarkers.ThreshUse, pseudocount.use=FindMarkers.Pseudocount)
 EndTimeFindAllMarkers<-Sys.time()
 
@@ -535,7 +589,7 @@ staple_pdf(input_directory = NULL, input_files = ListOfPdfFilesToMerge, output_f
 ####################################
 outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".SEURAT_", sep=""), full.names = F)
 sapply(outfiles_to_move,FUN=function(eachFile){
-  file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/SEURAT/",eachFile,sep=""))
+  file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/SEURAT/",eachFile,sep=""),overwrite=T)
   file.remove(paste(Tempdir,"/",eachFile,sep=""))
 })
 
