@@ -12,8 +12,7 @@ The clustering procedure is based on this Seurat tutorial http://satijalab.org/s
 
 It allows the user provide one-line commands.
 
-Default parameters for Seurat are defined based on the Seurat tutorial or from empirical observations.<br />
-For example, *pseudocount.use* for FindAllMarkers() is set to 1e-99, instead of the default is 1 (see https://goo.gl/3VzQ3L). Default parameters can be changed in section "Tailored parameters".
+Default parameters for Seurat are defined based on the Seurat tutorial or from empirical observations. Default parameters can be changed in section "Tailored parameters".<br />
 
 Outfiles
 ================
@@ -30,15 +29,16 @@ This code is a wrapper library written in R and the general workflow of this scr
   6. Perform linear dimensional reduction by PCA
   7. Determine statistically significant principal components
   8. Cluster the cells
-  9. Run Non-linear dimensional reduction (tSNE)
-  10. Find differentially expressed genes (each cluster markers)
-  11. Create 'violin' plots for top differentially expressed genes for each cluster
-  12. Create heatmaps for top differentially expressed genes for each cluster
-  13. Create t-SNE plots for top differentially expressed genes for each cluster
-  13. Create t-SNE plots for selected genes
-  13. Create a file with summary plots
-  14. Report used options
-  15. End
+  9. Gets average gene expression per cluster
+  10. Run Non-linear dimensional reduction (tSNE)
+  11. Find differentially expressed genes (each cluster markers)
+  12. Create 'violin' plots for top differentially expressed genes for each cluster
+  13. Create heatmaps for top differentially expressed genes for each cluster
+  14. Create t-SNE plots for top differentially expressed genes for each cluster
+  15. Create t-SNE plots for selected genes
+  16. Create a file with summary plots
+  17. Report used options
+  18. End
 
 Example commands
 ================
@@ -62,29 +62,30 @@ Example infiles are provided in folder 'examples'
 Outputs Description
 ================
 | Extension |  Contents |
-| ------------------------------ |  -----------------------------------------------------   |
-| *CellClusters.tsv              |  Cell clusters                                           |
-| *MarkersPerCluster.tsv         |  Markers per cluster                                     |
-| *CPUusage.tsv                  |  CPU time usage                                          |
-| *UsedOptions.txt               |  Options used in run                                     |
-| *GenePlot.pdf                  |  Gene plot                                               |
-| *GenePlot.seurat_filtered.pdf  |  Gene plot after filters                                 |
-| *Heatmap.pdf                   |  Heatmap top genes, all clusters                         |
-| *JackStraw.C1toC12.pdf         |  JackStraw plot                                          |
-| *PCAPlot.pdf                   |  PCA plot                                                |
-| *PCElbowPlot.pdf               |  PCElbow plot                                            |
-| *PCHeatmap.C1.pdf              |  PCHeatmap cluster 1                                     |
-| *PCHeatmap.C1toN.pdf           |  PCHeatmap all clusters                                  |
-| *TSNEPlot.pdf                  |  t-SNE plot                                              |
-| *TSNEPlot_EachTopGene.pdf      |  t-SNE plot mapping top-2 genes for each cluster         |
-| *VariableGenes.pdf             |  Variable genes plot                                     |
-| *VariableGenes.txt             |  Variable genes list                                     |
-| *VizPCA.pdf                    |  Vizualize genes assciated with PCA                      |
-| *VlnPlot.pdf                   |  QC violin plot                                          |
-| *VlnPlot.seurat_filtered.pdf   |  QC violin plot after applying FilterCells()             |
-| *VlnPlot_AfterClusters.pdf     |  Violing plot of top-2 genes for each cluster            |
-| *TSNEPlot_SelectedGenes.pdf    |  t-SNE plot mapping genes selected by option -g          |
-| *summary_plots.pdf             |  Summary plots                                           |
+| -------------------------------------- |  ----------------------------------------------------- |
+| *CellClusters.tsv                      |  Cell clusters                                         |
+| *AverageGeneExpressionPerCluster.tsv   |  Cell clusters                                         |
+| *MarkersPerCluster.tsv                 |  Markers per cluster                                   |
+| *CPUusage.tsv                          |  CPU time usage                                        |
+| *UsedOptions.txt                       |  Options used in run                                   |
+| *GenePlot.pdf                          |  Gene plot                                             |
+| *GenePlot.seurat_filtered.pdf          |  Gene plot after filters                               |
+| *Heatmap.pdf                           |  Heatmap top genes, all clusters                       |
+| *JackStraw.C1toC12.pdf                 |  JackStraw plot                                        |
+| *PCAPlot.pdf                           |  PCA plot                                              |
+| *PCElbowPlot.pdf                       |  PCElbow plot                                          |
+| *PCHeatmap.C1.pdf                      |  PCHeatmap cluster 1                                   |
+| *PCHeatmap.C1toN.pdf                   |  PCHeatmap all clusters                                |
+| *TSNEPlot.pdf                          |  t-SNE plot                                            |
+| *TSNEPlot_EachTopGene.pdf              |  t-SNE plot mapping top-2 genes for each cluster       |
+| *VariableGenes.pdf                     |  Variable genes plot                                   |
+| *VariableGenes.txt                     |  Variable genes list                                   |
+| *VizPCA.pdf                            |  Vizualize genes assciated with PCA                    |
+| *VlnPlot.pdf                           |  QC violin plot                                        |
+| *VlnPlot.seurat_filtered.pdf           |  QC violin plot after applying FilterCells()           |
+| *VlnPlot_AfterClusters.pdf             |  Violing plot of top-2 genes for each cluster          |
+| *TSNEPlot_SelectedGenes.pdf            |  t-SNE plot mapping genes selected by option -g        |
+| *summary_plots.pdf                     |  Summary plots                                         |
 
 
 Authors
@@ -110,3 +111,6 @@ It's used to read Gene Expression matrices faster than read.table()<br /><br />
 Can be installed in R console with `install.packages('staplr')`<br />
 It's used to manipulate *pdf files. It requires pdftk, which can be obtained from<br />
 https://www.pdflabs.com/tools/pdftk-the-pdf-toolkit/<br /><br />
+**fmsb**<br />
+Can be installed in R console with `install.packages('fmsb')`<br />
+It's used to calculate the percentages of extra properties to be t-SNE plotted<br /><br />
