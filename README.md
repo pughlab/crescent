@@ -48,7 +48,7 @@ To display help commands type: <br />
 `Rscript Runs_Seurat_Clustering.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/bin/Runs_Seurat_Clustering.R -i ~/path_to_/filtered_gene_bc_matrices -t 10X -o ~/example/outfiles -p example_10X -r 1 -e 0.01 -d 10 -s y -g MALAT1`
+`Rscript ~/bin/Runs_Seurat_Clustering.R -i ~/path_to_/filtered_gene_bc_matrices -t 10X -o ~/example/outfiles -p example_10X -r 1 -e 0.01 -d 10 -s y -g MALAT1,GAPDH -a 0.1 -c NA`
 
 Inputs Description
 ================
