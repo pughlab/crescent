@@ -9,9 +9,7 @@
 ###
 ### Other things missing
 ### 5) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt-
-### 6) To get full path to the User's home to replace '~/' in input paths (if provided in such way) to make the *summary_plots.pdf outfile
-###    See 'Create summary plots outfile' part
-### 7) Tried to make an option to make optional to -generate_plots but it was conflicting with creating some of the plots. Tried with both:
+### 6) Tried to make an option to make optional to -generate_plots but it was conflicting with creating some of the plots. Tried with both:
 ###    if (regexpr("^y$", GeneratePlots, ignore.case = T)[1] == 1) {
 ###    if (GeneratePlots == "y") {
 ####################################
@@ -63,10 +61,10 @@ option_list <- list(
               help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain
                 a larger (smaller) number of communities"),
 #
-  make_option(c("-o", "--outdir"), default="SEURAT_OUTPUTS",
+  make_option(c("-o", "--outdir"), default="NA",
               help="A path/name for the results directory"),
 #
-  make_option(c("-p", "--prefix_outfiles"), default="your_sample",
+  make_option(c("-p", "--prefix_outfiles"), default="NA",
               help="A prefix for outfile names, e.g. your project ID"),
 #
   make_option(c("-s", "--summary_plots"), default="y",
@@ -94,6 +92,13 @@ option_list <- list(
                 *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
                 *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers"),
 #
+ make_option(c("-m", "--percent_mito"), default="Inf,0.05",
+             help="<comma> delimited min,max number of percentage of mitochondrial gene counts in a cell to be included in normalization and clustering analyses
+                Use 'Inf' as min if no minumum limit should be used, e.g. 'Inf,0.05'"),
+#
+ make_option(c("-n", "--n_genes"), default="200,2500",
+             help="<comma> delimited min,max number of unique gene counts in a cell to be included in normalization and clustering analyses"),
+#
   make_option(c("-e", "--return_threshold"), default="0.01",
               help="For each cluster only return markers that have a p-value < return_thresh,  e.g. '0.01'")
 )
@@ -110,6 +115,8 @@ ListGenes      <- opt$list_genes
 Opacity        <- as.numeric(opt$opacity)
 ColourTsne     <- opt$infile_colour_tsne
 PcaDimsUse     <- c(1:as.numeric(opt$pca_dimensions))
+StrNGenes      <- opt$n_genes
+StrPmito       <- opt$percent_mito
 ThreshReturn   <- as.numeric(opt$return_threshold)
 
 # ### Example files
@@ -123,6 +130,8 @@ ThreshReturn   <- as.numeric(opt$return_threshold)
 # Opacity          <- 0.1
 # ColourTsne       <- "NA"
 # PcaDimsUse       <- c(1:10)
+# StrNGenes        <- "200,2500"
+# StrPmito         <- "Inf,0.05"
 # ThreshReturn     <- 0.01
 
 PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
@@ -134,11 +143,17 @@ Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles becau
 ### Some of these parameters are the defaults provided by Seurat developers, others are tailored according to clusters/t-SNE granularity
 ###
 ### Parameters for Seurat filters
-
+ListNGenes<-unlist(strsplit(StrNGenes, ","))
 MinCells<-3
-MinGenes<-200
-LowThresholds<-c(200,-Inf)
-HighThresholds<-c(2500,0.05)
+MinGenes<-as.numeric(ListNGenes[1])
+MaxGenes<-as.numeric(ListNGenes[2])
+ListPmito<-unlist(strsplit(StrPmito, ","))
+MinPercentMito<-"Inf"
+MinPercentMito<-gsub(pattern = "Inf",replacement = "-Inf", x=MinPercentMito)
+MinPercentMito<-as.numeric(MinPercentMito)
+MaxPercentMito<-as.numeric(ListPmito[2])
+LowThresholds<-c(MinGenes,MinPercentMito)
+HighThresholds<-c(MaxGenes,MaxPercentMito)
 ### Parameters for Seurat normalization
 ScaleFactor<-10000
 ### Parameters for Seurat variable gene detection
@@ -156,7 +171,6 @@ JackStrawPlotPcs<-1:18 ### These are the number of PCs to plot to see their infl
 ### Parameters for Cluster Biomarkers
 FindAllMarkers.MinPct    <- 0.25
 FindAllMarkers.ThreshUse <- 0.25
-FindAllMarkers.PrintTopN <- 10
 NumberOfGenesToPlotFeatures <- 16
 NumberOfGenesPerClusterToPlotTsne <- 2
 NumberOfGenesPerClusterToPlotHeatmap <- 10
@@ -168,7 +182,18 @@ BasePlotSizeTsneExtraProperties<-14
 MaxNumberOfPlotsPerRowInOutfileTsneSelectedGenes<-4
 MaxNumberOfPlotsPerRowInOutfileTsneExtraProperties<-2
 
-StartTimeOverall<-Sys.time()
+StartTimeOverall <-Sys.time()
+
+####################################
+### Check that mandatory parameters are not 'NA' (default)
+####################################
+
+ListMandatory<-list("input", "input_type", "outdir", "prefix_outfiles")
+for (param in ListMandatory) {
+  if (length(grep('^NA$',opt[[param]], perl = T))) {
+    stop(paste("Parameter -", param, " can't be 'NA' (default). Use option -h for help.", sep = "", collapse = ""))
+  }
+}
 
 ####################################
 ### Create outdirs
@@ -179,6 +204,8 @@ UserHomeDirectory<-system(command = CommandsToGetUserHomeDirectory, input = NULL
 #
 Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Outdir)
 Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Tempdir)
+Outdir<-gsub("/$", "", Outdir)
+Tempdir<-gsub("/$", "", Outdir)
 #
 dir.create(file.path(Outdir, "SEURAT"), recursive = T)
 dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
@@ -205,6 +232,7 @@ dim(input.matrix)
 writeLines("\n*** Create a Seurat object ***\n")
 seurat.object  <- CreateSeuratObject(raw.data = input.matrix, min.cells = MinCells, min.genes = MinGenes, project = PrefixOutfiles)
 seurat.object
+nCellsInOriginalMatrix<-length(colnames(seurat.object@raw.data))
 
 ####################################
 ### Get  mitochondrial genes
@@ -216,12 +244,15 @@ percent.mito <- Matrix::colSums(seurat.object@raw.data[mito.genes, ])/Matrix::co
 seurat.object <- AddMetaData(object = seurat.object, metadata = percent.mito, col.name = "percent.mito")
 
 ####################################
-### Voilin plots for data UNfiltered by Seurat
+### Violin plots for data UNfiltered by Seurat
 ####################################
-writeLines("\n*** Voilin plots for data UNfiltered by Seurat ***\n")
+### Note: files  VlnPlotPdfA (violin plots) and VlnPlotPdfB (details on means/medians and nCells)
+### are generated independently because I haven't found a way to make VlnPlot() to include extra data
+
+writeLines("\n*** Violin plots for data UNfiltered by Seurat ***\n")
 VlnPlotPdfA<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VlnPlot.A.pdf", sep="")
 pdf(file=VlnPlotPdfA, width = 7, height = 7)
-VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3, size.x.use = 0)
 dev.off()
 
 ### Get mean and median
@@ -234,8 +265,14 @@ percent_mito_median<-(median(seurat.object@meta.data[,"percent.mito"]))
 
 ### Make a file with mean and median
 VlnPlotPdfB<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VlnPlot.B.pdf", sep="")
-pdf(file=VlnPlotPdfB, width = 7, height = 7)
+#
+par()$oma
+op<-par(no.readonly=TRUE)
+par(oma=c(2,2,2,2))
+pdf(file=VlnPlotPdfB, width = 7, height = 7) ## keep this after redefining par(oma=...)
 plot(x=NA,y=NA,xlim=c(0,1),ylim=c(0,1),axes=F,bty="n",xlab="",ylab="")
+#
+FigureTitle<-paste(c("nCells_before_filters=",nCellsInOriginalMatrix), sep = "", collapse="")
 nGeneStats<-paste(c("mean=",round(nGene_mean,0),"\n",
                     "median=",round(nGene_median,0)),
                   sep = "", collapse="")
@@ -245,9 +282,11 @@ nUMIStats<-paste(c("mean=",round(nUMI_mean,0),"\n",
 mitoStats<-paste(c("mean=",round(percent_mito_mean,4),"\n",
                    "median=",round(percent_mito_median,4)),
                  sep = "", collapse="")
-mtext(nGeneStats,at = 0.15, cex = 1, col = "blue")
-mtext(nUMIStats,at = 0.6, cex = 1, col = "blue")
-mtext(mitoStats,at = 1,    cex = 1, col = "blue")
+#
+mtext(text=FigureTitle,  side=1, line=4, outer=F, at = 0.5,  cex = 1, col = "blue")
+mtext(text=nGeneStats,   side=3, line=0.6, outer=F, at = 0.15, cex = 1, col = "blue")
+mtext(text=nUMIStats,    side=3, line=0.6, outer=F, at = 0.6,  cex = 1, col = "blue")
+mtext(text=mitoStats,    side=3, line=0.6, outer=F, at = 1,    cex = 1, col = "blue")
 dev.off()
 
 ### Merge VlnPlot, and mean and median, pdf files
@@ -272,14 +311,18 @@ dev.off()
 writeLines("\n*** Filter cells based gene counts and mitochondrial representation ***\n")
 seurat.object<-FilterCells(object = seurat.object, subset.names = c("nGene", "percent.mito"), low.thresholds = LowThresholds, high.thresholds = HighThresholds)
 seurat.object
+nCellsInFilteredMatrix<-length(seurat.object@meta.data$percent.mito)
 
 ####################################
-### Voilin plots for data filtered by Seurat
+### Violin plots for data filtered by Seurat
 ####################################
-writeLines("\n*** Voilin plots for data filtered by Seurat ***\n")
+### Note: files  VlnPlotPdfA (violin plots) and VlnPlotPdfB (details on means/medians, nCells and filters)
+### are generated independently because I haven't found a way to make VlnPlot() to include extra data
+
+writeLines("\n*** Violin plots for data filtered by Seurat ***\n")
 VlnPlotPdfA<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VlnPlot.seurat_filtered.A.pdf", sep="")
 pdf(file=VlnPlotPdfA, width = 7, height = 7)
-VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+VlnPlot(object = seurat.object, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3, size.x.use = 0, size.title.use = 16)
 dev.off()
 
 ### Get mean and median
@@ -290,10 +333,20 @@ nUMI_median<-(median(seurat.object@meta.data[,"nUMI"]))
 percent_mito_mean<-(mean(seurat.object@meta.data[,"percent.mito"]))
 percent_mito_median<-(median(seurat.object@meta.data[,"percent.mito"]))
 
-### Make a file with mean and median
+### Here making a pdf file that has details on means/medians, nCells and filters
 VlnPlotPdfB<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VlnPlot.seurat_filtered.B.pdf", sep="")
-pdf(file=VlnPlotPdfB, width = 7, height = 7)
+#
+par()$oma
+op<-par(no.readonly=TRUE)
+par(oma=c(2,2,2,2))
+pdf(file=VlnPlotPdfB, width = 7, height = 7) ## keep this after redefining par(oma=...)
 plot(x=NA,y=NA,xlim=c(0,1),ylim=c(0,1),axes=F,bty="n",xlab="",ylab="")
+#
+FigureTitle<-paste(c("nCells_after_filters=",nCellsInFilteredMatrix, " ",
+                     "nGene(min=", LowThresholds[1], ",max=" ,HighThresholds[1], ")
+                     %mito(min=", LowThresholds[2], ",max=" ,HighThresholds[2], ")"
+                     ), sep = "", collapse="")
+FigureTitle<-gsub("\n| +", "  ", FigureTitle, perl=T)
 nGeneStats<-paste(c("mean=",round(nGene_mean,0),"\n",
                     "median=",round(nGene_median,0)),
                   sep = "", collapse="")
@@ -303,9 +356,11 @@ nUMIStats<-paste(c("mean=",round(nUMI_mean,0),"\n",
 mitoStats<-paste(c("mean=",round(percent_mito_mean,4),"\n",
                    "median=",round(percent_mito_median,4)),
                  sep = "", collapse="")
-mtext(nGeneStats,at = 0.15, cex = 1, col = "blue")
-mtext(nUMIStats,at = 0.6, cex = 1, col = "blue")
-mtext(mitoStats,at = 1,    cex = 1, col = "blue")
+#
+mtext(text=FigureTitle,  side=1, line=4, outer=F,   at = 0.5,  cex = 1, col = "blue")
+mtext(text=nGeneStats,   side=3, line=0.6, outer=F, at = 0.15, cex = 1, col = "blue")
+mtext(text=nUMIStats,    side=3, line=0.6, outer=F, at = 0.6,  cex = 1, col = "blue")
+mtext(text=mitoStats,    side=3, line=0.6, outer=F, at = 1,    cex = 1, col = "blue")
 dev.off()
 
 ### Merge VlnPlot, and mean and median, pdf files
@@ -579,10 +634,8 @@ OutfileOptionsUsed<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_UsedOptions.txt", 
 TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
 write(file = OutfileOptionsUsed, x=c(TimeOfRun,"\n","Options used:"))
 
-countOptions<-0
-for (optionInput in opt) {
-  countOptions = countOptions + 1
-  write(file = OutfileOptionsUsed, x=paste(names(opt[countOptions]), optionInput, sep="\t"), append = T)
+for (optionInput in option_list) {
+  write(file = OutfileOptionsUsed, x=(paste(optionInput@short_flag, optionInput@dest, opt[optionInput@dest], sep="\t", collapse="\t")),append = T)
 }
 
 ####################################
@@ -630,9 +683,9 @@ staple_pdf(input_directory = NULL, input_files = ListOfPdfFilesToMerge, output_f
 }
 
 ####################################
-### Moving outfiles into ourdir
+### Moving outfiles into outdir
 ####################################
-writeLines("\n*** Moving outfiles into ourdir ***\n")
+writeLines("\n*** Moving outfiles into outdir ***\n")
 writeLines(paste(Outdir,"/SEURAT/",sep="",collapse = ""))
 
 outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".SEURAT_", sep=""), full.names = F)
