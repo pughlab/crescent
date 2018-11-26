@@ -12,6 +12,23 @@
 ### 6) Tried to make an option to make optional to -generate_plots but it was conflicting with creating some of the plots. Tried with both:
 ###    if (regexpr("^y$", GeneratePlots, ignore.case = T)[1] == 1) {
 ###    if (GeneratePlots == "y") {
+### 7) In "Load data" we use Seurat library(Read10X). In this command, when all barcodes come from the same sample (i.e. finish with the same digit), like:
+###    CTCTACGCAAGAGGCT-1
+###    CTGAAACCAAGAGGCT-1
+###    CTGAAACCAAGAGGCT-1
+###    ... etc
+###    Read10X will remove the '-digit'
+###
+###    Hence we need to implement code to remove the '-digit' from --input_clusters barcode ID's as well WHEN all barcodes come from the same sample
+###    For now, this script is removing the digit always. And user must provide the inputs like:
+###    1-CTCTACGCAAGAGGCT
+###    2-CTCGAAAAGCTAACAA
+###    3-CTGCCTAGTGCAGGTA
+###    Instead of:
+###    CTCTACGCAAGAGGCT-1
+###    CTCGAAAAGCTAACAA-2
+###    CTGCCTAGTGCAGGTA-3
+
 ####################################
 
 ####################################
@@ -96,8 +113,8 @@ option_list <- list(
              help="<comma> delimited min,max number of percentage of mitochondrial gene counts in a cell to be included in normalization and clustering analyses
                 Use 'Inf' as min if no minumum limit should be used, e.g. 'Inf,0.05'"),
 #
- make_option(c("-n", "--n_genes"), default="200,2500",
-             help="<comma> delimited min,max number of unique gene counts in a cell to be included in normalization and clustering analyses"),
+ make_option(c("-n", "--n_genes"), default="200,8000",
+             help="<comma> delimited min,max number of unique gene counts in a cell to be included in normalization and clustering analyses. E.g '200,8000'"),
 #
   make_option(c("-e", "--return_threshold"), default="0.01",
               help="For each cluster only return markers that have a p-value < return_thresh,  e.g. '0.01'")
@@ -205,7 +222,7 @@ UserHomeDirectory<-system(command = CommandsToGetUserHomeDirectory, input = NULL
 Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Outdir)
 Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Tempdir)
 Outdir<-gsub("/$", "", Outdir)
-Tempdir<-gsub("/$", "", Outdir)
+Tempdir<-gsub("/$", "", Tempdir)
 #
 dir.create(file.path(Outdir, "SEURAT"), recursive = T)
 dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
@@ -516,8 +533,8 @@ if (regexpr("^NA$", ColourTsne, ignore.case = T)[1] == 1) {
   seurat.object.meta.data<-seurat.object@meta.data
   ExtraCellProperties <- data.frame(read.table(ColourTsne, header = T, row.names = 1))
   
-  # This is because Seurat removes the last dash-digit from barcode ID's
-  # and we need to match those ID's against the inputted -infile_colour_tsne_discrete
+  # This is because Seurat removes the last '-digit' from barcode ID's when all barcodes finish with the same digit (i.e. come from the same sample)
+  # so that barcodes from --infile_colour_tsne_discrete and --input can match each other
   rownames(ExtraCellProperties)<-gsub(x =rownames(ExtraCellProperties), pattern = "-[0-9]+$", perl = T, replacement = "")
   seurat.object <- AddMetaData(object = seurat.object, metadata = ExtraCellProperties)
 
@@ -627,6 +644,30 @@ DoHeatmap(object = seurat.object, genes.use = top_genes_by_cluster_for_heatmap$g
 dev.off()
 
 ####################################
+### Create summary plots outfile
+####################################
+writeLines("\n*** Create summary plots outfile ***\n")
+
+if (regexpr("^y$", SummaryPlots, ignore.case = T)[1] == 1) {
+  suppressPackageStartupMessages(library(staplr))
+  SummaryPlotsPdf<-paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_summary_plots.pdf", sep = "", collapse = "")
+  ListOfPdfFilesToMerge<-c(paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_VlnPlot.pdf", sep = "", collapse = ""),
+                           paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_VlnPlot.seurat_filtered.pdf", sep = "", collapse = ""),
+                           paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_Heatmap.pdf", sep = "", collapse = ""),
+                           paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_TSNEPlot.pdf", sep = "", collapse = ""),
+                           paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_VlnPlot_AfterClusters.pdf", sep = "", collapse = ""),
+                           paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_TSNEPlot_EachTopGene.pdf", sep = "", collapse = "")
+                           )
+  if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
+    print("Create summary file")
+  }else{
+    ListOfPdfFilesToMerge<-c(ListOfPdfFilesToMerge, paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_SelectedGenes.pdf", sep="", collapse = ""))
+    print("Create summary file including t-SNE's for selected genes")
+  }
+staple_pdf(input_directory = NULL, input_files = ListOfPdfFilesToMerge, output_filepath = SummaryPlotsPdf)
+}
+
+####################################
 ### Report used options
 ####################################
 writeLines("\n*** Report used options ***\n")
@@ -657,30 +698,6 @@ ReportTime<-c(
 )
 
 write(file = OutfileCPUusage, x=c(ReportTime))
-
-####################################
-### Create summary plots outfile
-####################################
-writeLines("\n*** Create summary plots outfile ***\n")
-
-if (regexpr("^y$", SummaryPlots, ignore.case = T)[1] == 1) {
-  suppressPackageStartupMessages(library(staplr))
-  SummaryPlotsPdf<-paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_summary_plots.pdf", sep = "", collapse = "")
-  ListOfPdfFilesToMerge<-c(paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_VlnPlot.pdf", sep = "", collapse = ""),
-                           paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_VlnPlot.seurat_filtered.pdf", sep = "", collapse = ""),
-                           paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_Heatmap.pdf", sep = "", collapse = ""),
-                           paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_TSNEPlot.pdf", sep = "", collapse = ""),
-                           paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_VlnPlot_AfterClusters.pdf", sep = "", collapse = ""),
-                           paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_TSNEPlot_EachTopGene.pdf", sep = "", collapse = "")
-                           )
-  if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
-    print("Create summary file")
-  }else{
-    ListOfPdfFilesToMerge<-c(ListOfPdfFilesToMerge, paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_SelectedGenes.pdf", sep="", collapse = ""))
-    print("Create summary file including t-SNE's for selected genes")
-  }
-staple_pdf(input_directory = NULL, input_files = ListOfPdfFilesToMerge, output_filepath = SummaryPlotsPdf)
-}
 
 ####################################
 ### Moving outfiles into outdir
