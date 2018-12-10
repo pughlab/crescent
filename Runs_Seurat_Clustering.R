@@ -1,18 +1,25 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Script made based on http://satijalab.org/seurat/pbmc3k_tutorial.html
-### Things missing from this tutorial:
-### 1) Further subdivisions within cell types (i.e. granularity of clusters)
-### 2) Assigning cell type identity to clusters (needs supervised annotations, maybe based on Gene Set Enrichment analysis)
-### 3) Using saveRDS
-### 4) Use knitr() to produce better html plot layout (https://yihui.name/knitr/demo/stitch/)
+### 
+### Things TO DO:
+### 1) Pick the right number of PCA components
+###    E.g. try to automatically get the inflection point from the PCElbowPlot() function output
+### 2) Pick the right resolution from FindClusters()
+###    E.g. implement Iness and Bader paper https://f1000research.com/articles/7-1522/v1 approach
+###    By picking the number of clusters based on differentially expressed genes
+### 3) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
+###    Need to do it for both Human and Mouse
 ###
-### Other things missing
-### 5) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt-
-### 6) Tried to make an option to make optional to -generate_plots but it was conflicting with creating some of the plots. Tried with both:
+### Things NICE TO HAVE:
+### 4) Assigning cell type identity to clusters (needs supervised annotations, maybe based on Gene Set Enrichment analysis)
+### 4) Using saveRDS (to start from pre-existing runs)
+### 5) Use knitr() to produce html plot layouts (https://yihui.name/knitr/demo/stitch/)
+### 
+### 7) Tried to make an option to make optional to -generate_plots but it was conflicting with creating some of the plots. Tried with both:
 ###    if (regexpr("^y$", GeneratePlots, ignore.case = T)[1] == 1) {
 ###    if (GeneratePlots == "y") {
-### 7) In "Load data" we use Seurat library(Read10X). In this command, when all barcodes come from the same sample (i.e. finish with the same digit), like:
+### 8) In "Load data" we use Seurat library(Read10X). In this command, when all barcodes come from the same sample (i.e. finish with the same digit), like:
 ###    CTCTACGCAAGAGGCT-1
 ###    CTGAAACCAAGAGGCT-1
 ###    CTGAAACCAAGAGGCT-1
@@ -28,7 +35,6 @@
 ###    CTCTACGCAAGAGGCT-1
 ###    CTCGAAAAGCTAACAA-2
 ###    CTGCCTAGTGCAGGTA-3
-
 ####################################
 
 ####################################
@@ -457,11 +463,11 @@ writeLines("\n*** Determine statistically significant principal components ***\n
 ### expediency.  More approximate techniques such as those implemented in
 ### PCElbowPlot() can be used to reduce computation time
 
-seurat.object <- JackStraw(object = seurat.object, num.replicate = JackStrawNumReplicate, display.progress = F)
+# seurat.object <- JackStraw(object = seurat.object, num.replicate = JackStrawNumReplicate, display.progress = F)
 
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_JackStraw.C1toC12.pdf", sep=""))
-JackStrawPlot(object = seurat.object, PCs = JackStrawPlotPcs)
-dev.off()
+# pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_JackStraw.C1toC12.pdf", sep=""))
+# JackStrawPlot(object = seurat.object, PCs = JackStrawPlotPcs)
+# dev.off()
 
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCElbowPlot.pdf", sep=""))
 PCElbowPlot(object = seurat.object)
@@ -478,8 +484,8 @@ EndTimeClustering<-Sys.time()
 
 CellNames<-seurat.object@cell.names
 ClusterIdent<-seurat.object@ident
-Headers<-paste("CLUSTERS","seurat_clusters",sep="\t")
-clusters_data<-paste(CellNames,ClusterIdent,sep="\t")
+Headers<-paste("CELL_BARCODE", paste("seurat_cluster_r", Resolution, sep = "", collapse = "") ,sep="\t")
+clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
 #
 OutfileClusters<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_CellClusters.tsv", sep="")
 write.table(Headers,file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F)
@@ -495,7 +501,7 @@ write(x=NumberOfClusters,file = OutfileNumbClusters)
 writeLines("\n*** Get average expression for each cluster for each gene ***\n")
 cluster.averages<-AverageExpression(object = seurat.object, use.raw = T)
 OutfileClusterAverages<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_AverageGeneExpressionPerCluster.tsv", sep="")
-Headers<-paste("AVERAGE_GENE_EXPRESSION",paste(names(cluster.averages),sep="",collapse="\t"),sep="\t",collapse = "\t")
+Headers<-paste("AVERAGE_GENE_EXPRESSION",paste("r", Resolution, "_C", names(cluster.averages), sep="", collapse="\t"), sep="\t", collapse = "\t")
 write.table(Headers,file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(cluster.averages),file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
@@ -513,6 +519,15 @@ seurat.object <- RunTSNE(object = seurat.object, dims.use = PcaDimsUse, do.fast 
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot.pdf", sep=""))
 TSNEPlot(object = seurat.object, do.label = T,label.size=10)
 dev.off()
+
+####################################
+### Write out t-SNE coordinates
+####################################
+writeLines("\n*** Write out t-SNE coordinates ***\n")
+OutfileTsneCoordinates<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNECoordinates.tsv", sep="")
+Headers<-paste("Barcode",paste(colnames(seurat.object@dr$tsne@cell.embeddings),sep="",collapse="\t"),sep="\t",collapse = "\t")
+write.table(Headers,file = OutfileTsneCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(seurat.object@dr$tsne@cell.embeddings, file = OutfileTsneCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
 ### Colour t-SNE by nGene, nUMI, and percent.mito
@@ -542,7 +557,7 @@ if (regexpr("^NA$", ColourTsne, ignore.case = T)[1] == 1) {
   # Note TSNEPlot() takes the entire current device (pdf)
   # even if using layout(matrix(...))
   # Thus each property t-SNE is written to a separate page of a single *pdf outfile
-  pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_ExtraProperties.pdf", sep=""))
+  pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_ExtraProperties.pdf", sep=""), height = 7, width = 10)
   for (property in colnames(ExtraCellProperties)) {
     TSNEPlot(object = seurat.object, group.by = property, plot.title = property)
   }
