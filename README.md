@@ -64,7 +64,7 @@ Outputs Description
 | Extension |  Contents |
 | -------------------------------------- |  ----------------------------------------------------- |
 | *CellClusters.tsv                      |  Cell clusters                                         |
-| *AverageGeneExpressionPerCluster.tsv   |  Cell clusters                                         |
+| *AverageGeneExpressionPerCluster.tsv   |  Average gene expression per cell cluster              |
 | *MarkersPerCluster.tsv                 |  Markers per cluster                                   |
 | *CPUusage.tsv                          |  CPU time usage                                        |
 | *UsedOptions.txt                       |  Options used in run                                   |
@@ -78,6 +78,7 @@ Outputs Description
 | *PCHeatmap.C1toN.pdf                   |  PCHeatmap all clusters                                |
 | *TSNEPlot.pdf                          |  t-SNE plot                                            |
 | *TSNEPlot_EachTopGene.pdf              |  t-SNE plot mapping top-2 genes for each cluster       |
+| *TSNECoordinates.tsv                   |  t-SNE plot coordinates                                |
 | *VariableGenes.pdf                     |  Variable genes plot                                   |
 | *VariableGenes.txt                     |  Variable genes list                                   |
 | *VizPCA.pdf                            |  Vizualize genes assciated with PCA                    |
