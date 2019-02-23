@@ -10,16 +10,18 @@
 ###    By picking the number of clusters based on differentially expressed genes
 ### 3) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
 ###    Need to do it for both Human and Mouse
+### 4) In 'Colour t-SNE plots showing each requested gene' need to automate to get the right size of the pdf()
+### 5) Suluxan reported that the -c example Javier provided called a duplicated row names error
 ###
 ### Things NICE TO HAVE:
-### 4) Assigning cell type identity to clusters (needs supervised annotations, maybe based on Gene Set Enrichment analysis)
-### 4) Using saveRDS (to start from pre-existing runs)
-### 5) Use knitr() to produce html plot layouts (https://yihui.name/knitr/demo/stitch/)
+### 1) Assigning cell type identity to clusters (needs supervised annotations, maybe based on GSVA)
+### 2) Using saveRDS (to start from pre-existing runs)
+### 3) Use knitr() to produce html plot layouts (https://yihui.name/knitr/demo/stitch/)
 ### 
-### 7) Tried to make an option to make optional to -generate_plots but it was conflicting with creating some of the plots. Tried with both:
+### 4) Tried to make an option to make optional to -generate_plots but it was conflicting with creating some of the plots. Tried with both:
 ###    if (regexpr("^y$", GeneratePlots, ignore.case = T)[1] == 1) {
 ###    if (GeneratePlots == "y") {
-### 8) In "Load data" we use Seurat library(Read10X). In this command, when all barcodes come from the same sample (i.e. finish with the same digit), like:
+### 5) In "Load data" we use Seurat library(Read10X). In this command, when all barcodes come from the same sample (i.e. finish with the same digit), like:
 ###    CTCTACGCAAGAGGCT-1
 ###    CTGAAACCAAGAGGCT-1
 ###    CTGAAACCAAGAGGCT-1
@@ -142,21 +144,6 @@ StrNGenes      <- opt$n_genes
 StrPmito       <- opt$percent_mito
 ThreshReturn   <- as.numeric(opt$return_threshold)
 
-# ### Example files
-# Input            <- "~/FULL_CELLRANGER_OUTPUT/output_from_cellranger_2.1.1/outs/filtered_gene_bc_matrices/GRCh38-1.2.0_premrna/"
-# InputType        <- "10X"
-# Resolution       <- 1
-# Outdir           <- "~/FULL_CELLRANGER_OUTPUT/output_from_cellranger_2.1.1/outs/filtered_gene_bc_matrices/"
-# PrefixOutfiles   <- "example_nucseq_10x"
-# SummaryPlots     <- "y"
-# ListGenes        <- "NA"
-# Opacity          <- 0.1
-# ColourTsne       <- "NA"
-# PcaDimsUse       <- c(1:10)
-# StrNGenes        <- "200,2500"
-# StrPmito         <- "Inf,0.05"
-# ThreshReturn     <- 0.01
-
 PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
 Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
 
@@ -200,6 +187,8 @@ NumberOfGenesPerClusterToPlotHeatmap <- 10
 ### Parameters for Violin plots of top biomarkers
 VlnPlotSizeTitle <- 10 # 10 is good for ENSEMBL ID's in a 4 column matrix-style plot
 ### Parameters for t-SNE plots
+BaseSizeSingleTnePlot<-7
+BaseSizeMultiple<-5
 BasePlotSizeTsneSelectedGenes<-14
 BasePlotSizeTsneExtraProperties<-14
 MaxNumberOfPlotsPerRowInOutfileTsneSelectedGenes<-4
@@ -459,15 +448,8 @@ dev.off()
 ### Determine statistically significant principal components
 ####################################
 writeLines("\n*** Determine statistically significant principal components ***\n")
-### NOTE: This process can take a long time for big datasets, comment out for
-### expediency.  More approximate techniques such as those implemented in
-### PCElbowPlot() can be used to reduce computation time
-
-# seurat.object <- JackStraw(object = seurat.object, num.replicate = JackStrawNumReplicate, display.progress = F)
-
-# pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_JackStraw.C1toC12.pdf", sep=""))
-# JackStrawPlot(object = seurat.object, PCs = JackStrawPlotPcs)
-# dev.off()
+### NOTE: JackStraw() process can take a long time for big datasets
+### More approximate techniques such PCElbowPlot() can be used to reduce computation time
 
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCElbowPlot.pdf", sep=""))
 PCElbowPlot(object = seurat.object)
@@ -484,7 +466,7 @@ EndTimeClustering<-Sys.time()
 
 CellNames<-seurat.object@cell.names
 ClusterIdent<-seurat.object@ident
-Headers<-paste("CELL_BARCODE", paste("seurat_cluster_r", Resolution, sep = "", collapse = "") ,sep="\t")
+Headers<-paste("Cell_barcode", paste("seurat_cluster_r", Resolution, sep = "", collapse = "") ,sep="\t")
 clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
 #
 OutfileClusters<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_CellClusters.tsv", sep="")
@@ -516,7 +498,7 @@ writeLines("\n*** Run Non-linear dimensional reduction (tSNE) ***\n")
 seurat.object <- RunTSNE(object = seurat.object, dims.use = PcaDimsUse, do.fast = T)
 
 ### Note that you can set do.label=T to help label individual clusters
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot.pdf", sep=""), width = 7, height = 7)
 TSNEPlot(object = seurat.object, do.label = T,label.size=10)
 dev.off()
 
@@ -557,7 +539,7 @@ if (regexpr("^NA$", ColourTsne, ignore.case = T)[1] == 1) {
   # Note TSNEPlot() takes the entire current device (pdf)
   # even if using layout(matrix(...))
   # Thus each property t-SNE is written to a separate page of a single *pdf outfile
-  pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_ExtraProperties.pdf", sep=""), height = 7, width = 10)
+  pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_ExtraProperties.pdf", sep=""), height = BaseSizeSingleTnePlot, width = BaseSizeSingleTnePlot)
   for (property in colnames(ExtraCellProperties)) {
     TSNEPlot(object = seurat.object, group.by = property, plot.title = property)
   }
@@ -573,15 +555,9 @@ if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
 }else{
   ListOfGenesForTsnes<-unlist(strsplit(ListGenes, ","))
   ListOfGenesForTsnes
-  if (length(ListOfGenesForTsnes) < MaxNumberOfPlotsPerRowInOutfileTsneSelectedGenes) {
-    pdfWidth<-(BasePlotSizeTsneSelectedGenes / MaxNumberOfPlotsPerRowInOutfileTsneSelectedGenes) * length(ListOfGenesForTsnes)
-    pdfHeight<-BasePlotSizeTsneSelectedGenes / MaxNumberOfPlotsPerRowInOutfileTsneSelectedGenes
-  }else{
-    NumberOfRowsInPlot<-as.integer(length(ListOfGenesForTsnes) / MaxNumberOfPlotsPerRowInOutfileTsneSelectedGenes)
-    pdfWidth<-BasePlotSizeTsneSelectedGenes
-    pdfHeight<-NumberOfRowsInPlot * BasePlotSizeTsneSelectedGenes
-  }
-  pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_SelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
+  pdfWidth<-length(ListOfGenesForTsnes) * BaseSizeMultiple
+  pdfHeight<-BaseSizeMultiple
+  pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_SelectedGenes.pdf", sep=""), width=9, height=9)
   FeaturePlot(object = seurat.object, features.plot = c(ListOfGenesForTsnes), cols.use = c(rgb(red = 0.9, green = 0.9, blue = 0.9, alpha = 0.1), rgb(red = 0, green = 0, blue = 1, alpha = Opacity)), reduction.use = "tsne")
   dev.off()
 }
@@ -679,7 +655,9 @@ if (regexpr("^y$", SummaryPlots, ignore.case = T)[1] == 1) {
     ListOfPdfFilesToMerge<-c(ListOfPdfFilesToMerge, paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_SelectedGenes.pdf", sep="", collapse = ""))
     print("Create summary file including t-SNE's for selected genes")
   }
-staple_pdf(input_directory = NULL, input_files = ListOfPdfFilesToMerge, output_filepath = SummaryPlotsPdf)
+  
+  ### Stappling *pdf's
+  staple_pdf(input_directory = NULL, input_files = ListOfPdfFilesToMerge, output_filepath = SummaryPlotsPdf)
 }
 
 ####################################
@@ -720,7 +698,7 @@ write(file = OutfileCPUusage, x=c(ReportTime))
 writeLines("\n*** Moving outfiles into outdir ***\n")
 writeLines(paste(Outdir,"/SEURAT/",sep="",collapse = ""))
 
-outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".SEURAT_", sep=""), full.names = F)
+outfiles_to_move <- list.files(Tempdir, pattern = paste(PrefixOutfiles, ".SEURAT_", sep=""), full.names = F)
 sapply(outfiles_to_move,FUN=function(eachFile){
   file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/SEURAT/",eachFile,sep=""),overwrite=T)
   file.remove(paste(Tempdir,"/",eachFile,sep=""))
