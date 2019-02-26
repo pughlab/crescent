@@ -1,6 +1,7 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
-### Script to transform the three files from 10X barcodes.tsv, genes.tsv and matrix.mtx into a text file with genes in rows and barcodes in columns
+### Script that takes a mtx set of files (barcodes.tsv, genes.tsv and matrix.mtx)
+### and transforms it into a genes (rows) vs. barcodes (columns) sparse matrix
 ####################################
 
 ####################################
@@ -37,13 +38,11 @@ option_list <- list(
 )
 opt <- parse_args(OptionParser(option_list=option_list))
 
-# Input          <- opt$input
-# Outdir         <- opt$outdir
-# PrefixOutfiles <- opt$prefix_outfiles
-# Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
-# Input          <- "~/FULL_CELLRANGER_OUTPUT/output_from_cellranger_2.1.1/outs/filtered_gene_bc_matrices/GRCh38-1.2.0_premrna/"
-# Outdir         <- "~/temp/"
-# PrefixOutfiles <- "check"
+Input          <- opt$input
+Outdir         <- opt$outdir
+
+PrefixOutfiles <- opt$prefix_outfiles
+Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
 
 StartTimeOverall<-Sys.time()
 
