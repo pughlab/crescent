@@ -40,8 +40,8 @@ opt <- parse_args(OptionParser(option_list=option_list))
 
 Input          <- opt$input
 Outdir         <- opt$outdir
-
 PrefixOutfiles <- opt$prefix_outfiles
+
 Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
 
 StartTimeOverall<-Sys.time()
@@ -68,7 +68,7 @@ Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Te
 Outdir<-gsub("/$", "", Outdir)
 Tempdir<-gsub("/$", "", Outdir)
 #
-dir.create(file.path(Outdir, "DGE"), recursive = T)
+dir.create(file.path(Outdir, "GENE_VS_BARCODE_MATRIX"), recursive = T)
 dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
 
 ####################################
@@ -88,7 +88,7 @@ seurat.object
 ####################################
 ### Write DGE out
 ####################################
-OutfileDGE<-paste(Tempdir,"/",PrefixOutfiles,".DGE.tsv", sep="")
+OutfileDGE<-paste(Tempdir,"/",PrefixOutfiles,".gene_vs_barcode.tsv", sep="")
 
 Headers<-paste("GENES",paste(colnames(seurat.object@data),sep="",collapse = "\t"),sep="\t",collapse = "\t")
 write.table(Headers,file = OutfileDGE, row.names = F, col.names = F, sep="\t", quote = F)
@@ -97,7 +97,7 @@ write.table(x=seurat.object@data, file = OutfileDGE, row.names = T, col.names = 
 ####################################
 ### Report used options
 ####################################
-OutfileOptionsUsed<-paste(Tempdir,"/",PrefixOutfiles,".DGE_UsedOptions.txt", sep="")
+OutfileOptionsUsed<-paste(Tempdir,"/",PrefixOutfiles,".gene_vs_barcode_UsedOptions.txt", sep="")
 TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
 write(file = OutfileOptionsUsed, x=c(TimeOfRun,"\n","Options used:"))
 
@@ -110,9 +110,9 @@ for (optionInput in option_list) {
 ####################################
 EndTimeOverall<-Sys.time()
 
-TookTimeOverall        <-format(difftime(EndTimeOverall,        StartTimeOverall,        units = "min"))
+TookTimeOverall <-format(difftime(EndTimeOverall, StartTimeOverall, units = "min"))
 
-OutfileCPUusage<-paste(Tempdir,"/",PrefixOutfiles,".DGE_CPUusage.tsv", sep="")
+OutfileCPUusage<-paste(Tempdir,"/",PrefixOutfiles,".gene_vs_barcode_CPUusage.tsv", sep="")
 ReportTime<-c(
   paste("overall",TookTimeOverall,collapse = "\t")
 )
@@ -122,9 +122,9 @@ write(file = OutfileCPUusage, x=c(ReportTime))
 ####################################
 ### Moving outfiles into outdir
 ####################################
-outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".DGE_", sep=""), full.names = F)
+outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".gene_vs_barcode_", sep=""), full.names = F)
 sapply(outfiles_to_move,FUN=function(eachFile){ 
-  file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/DGE/",eachFile,sep=""),overwrite=T)
+  file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/GENE_VS_BARCODE_MATRIX/",eachFile,sep=""),overwrite=T)
   file.remove(paste(Tempdir,"/",eachFile,sep=""))
 })
 
