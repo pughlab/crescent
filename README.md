@@ -13,3 +13,6 @@ examples
 ================
 Contains documentation associated with `bin/codes`, such as links to example infiles and outfiles
 
+Authors
+================
+Javier Diaz (https://github.com/jdime)
