@@ -2,12 +2,12 @@
   
 Script name
 ================
-`Runs_Seurat_Clustering.R`
+`Runs_Seurat_v2.R`
 
 
 Description
 ================
-Runs Seurat's scRNA-seq data normalization and clustering on either 10X files from cellranger (barcodes.tsv, genes.tsv and matrix.mtx) or a *file* with the Gene Expression Matrix with cell-barcodes in columns and genes in rows (e.g. from DropSeq).
+Runs Seurat version 2 scRNA-seq data normalization and clustering on either 10X files from cellranger (barcodes.tsv, genes.tsv and matrix.mtx) or a *file* with the Gene Expression Matrix with cell-barcodes in columns and genes in rows (e.g. from DropSeq).
 The clustering procedure is based on this Seurat tutorial http://satijalab.org/seurat/pbmc3k_tutorial.html
 
 It allows the user provide one-line commands.
@@ -98,7 +98,7 @@ Dependencies
 ================
 
 **R and the following R packages** <br />
-**Seurat** <br />
+**Seurat version 2** <br />
 Can be installed in R console with `install.packages('Seurat')`<br /><br />
 **dplyr** <br />
 Can be installed in R console with `install.packages('dplyr')`<br /><br />
