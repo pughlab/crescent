@@ -2,7 +2,6 @@ Script name
 ================
 `Runs_Seurat_v3.R`
 
-
 Description
 ================
 Runs Seurat version 3 scRNA-seq data normalization, dimension reduction and cell clustering of
@@ -51,47 +50,49 @@ To display help commands type: <br />
 `Rscript Runs_Seurat_Clustering.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t 10X -r 1 -o ~/example/outfiles 
--l 10X_PBMC -s y -c ~/path_to_/example_cell_type.tsv -g MALAT1,GAPDH -a 0.3 -d 10 -n 50,8000 -e 0.01 -p sample_ID`
+`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t 10X -r 1 -o ~/example/outfiles -s y -c ~/path_to_/example_cell_type.tsv -g GENE1,GENE2 -a 0.3 -d 10 -n 50,8000 -e 0.01 -p sample_ID`
 
 Inputs Description
 ================
 
-Either:<br />
+One of the following input types:<br />
 a) a *directory* with 10X files from Cell Ranger v2 (barcodes.tsv, genes.tsv and matrix.mtx) <br />
 b) a *directory* with 10X files from Cell Ranger v3 (barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz) <br />
 c) a *file* with the Digital Gene Expression (DGE) matrix with cell-barcodes in columns and genes in rows (e.g. from DropSeq)
 
 Example infiles are provided in folder 'examples'
 
+
+
 Outputs Description
 ================
-| Extension |  Contents |
-| -------------------------------------- |  ----------------------------------------------------- |
-| *CellClusters.tsv                      |  Cell clusters                                         |
-| *AverageGeneExpressionPerCluster.tsv   |  Average gene expression per cell cluster              |
-| *MarkersPerCluster.tsv                 |  Markers per cluster                                   |
-| *CPUusage.tsv                          |  CPU time usage                                        |
-| *UsedOptions.txt                       |  Options used in run                                   |
-| *GenePlot.pdf                          |  Gene plot                                             |
-| *GenePlot.seurat_filtered.pdf          |  Gene plot after filters                               |
-| *Heatmap.pdf                           |  Heatmap top genes, all clusters                       |
-| *JackStraw.C1toC12.pdf                 |  JackStraw plot                                        |
-| *PCAPlot.pdf                           |  PCA plot                                              |
-| *PCElbowPlot.pdf                       |  PCElbow plot                                          |
-| *PCHeatmap.C1.pdf                      |  PCHeatmap cluster 1                                   |
-| *PCHeatmap.C1toN.pdf                   |  PCHeatmap all clusters                                |
-| *TSNEPlot.pdf                          |  t-SNE plot                                            |
-| *TSNEPlot_EachTopGene.pdf              |  t-SNE plot mapping top-2 genes for each cluster       |
-| *TSNECoordinates.tsv                   |  t-SNE plot coordinates                                |
-| *VariableGenes.pdf                     |  Variable genes plot                                   |
-| *VariableGenes.txt                     |  Variable genes list                                   |
-| *VizPCA.pdf                            |  Vizualize genes assciated with PCA                    |
-| *VlnPlot.pdf                           |  QC violin plot                                        |
-| *VlnPlot.seurat_filtered.pdf           |  QC violin plot after applying FilterCells()           |
-| *VlnPlot_AfterClusters.pdf             |  Violing plot of top-2 genes for each cluster          |
-| *TSNEPlot_SelectedGenes.pdf            |  t-SNE plot mapping genes selected by option -g        |
-| *summary_plots.pdf                     |  Summary plots                                         |
+|               Extension                  |                        Contents                        |
+| --------------------------------------   |  ----------------------------------------------------- |
+| *QC_VlnPlot.pdf                          |  QC violin plots before and after filtering cells      |
+| *TSNEPlot_QC.tsv                         |  t-SNE plots of No. of reads vs. No.Genes and mito %   |
+| *NumbReadsVsNumbGenesAndMito_VlnPlot.pdf |  Scatter plots of No. of reads vs. No.Genes and mito % |
+| *CellClusters.tsv                        |  Cell cluster identities                               |
+| *NumbCellClusters.tsv                    |  Number of cell clusters                               |
+| *AverageGeneExpressionPerCluster.tsv     |  Average gene expression per cell cluster              |
+| *MarkersPerCluster.tsv                   |  Markers per cluster                                   |
+| *VizPCA.pdf                              |  Vizualize genes associated with PCA                   |
+| *PCAPlot.pdf                             |  PCA plot                                              |
+| *PCElbowPlot.pdf                         |  PCElbow plot                                          |
+| *PCHeatmap.C1toN.pdf                     |  PCHeatmap all clusters                                |
+| *VariableGenes.pdf                       |  Variable genes plot                                   |
+| *VariableGenes.txt                       |  Variable genes list                                   |
+| *TSNEPlot.pdf                            |  t-SNE plot                                            |
+| *TSNECoordinates.tsv                     |  t-SNE plot coordinates                                |
+| *TSNEPlot_ExtraProperties.pdf            |  t-SNE plot of extra barcode properties                |
+| *TSNEPlot_EachTopGene.pdf                |  t-SNE plot mapping top-2 genes for each cluster       |
+| *TSNEPlot_SelectedGenes.pdf              |  t-SNE plot of selected genes                          |
+| *TSNEPlot_SelectedGenes.pdf              |  t-SNE plot mapping genes selected by option -g        |
+| *Heatmap.pdf                             |  Heatmap top genes, all clusters                       |
+| *VlnPlot_AfterClusters.pdf               |  Violing plot of top-2 genes for each cluster          |
+| *summary_plots.pdf                       |  Summary plots                                         |
+| *object.rds                              |  R object including analysis up to cell clustering     |
+| *CPUusage.tsv                            |  CPU time usage                                        |
+| *UsedOptions.txt                         |  Options used in run                                   |
 
 
 Authors
@@ -102,7 +103,7 @@ Authors
 Dependencies
 ================
 
-**R and the following R packages** <br />
+**R and the following R packages** <br /><br />
 **Seurat version 3** <br />
 Can be installed in R console with: <br />
 `install.packages('devtools')`<br />
