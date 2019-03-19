@@ -7,7 +7,7 @@
 ###    Main differences vs. Seurat v2 include:
 ###    a) new function names
 ###    b) a new function DimPlot() is used for 'uma', 'tsne' and 'pca' plots, instead of PCAPlot() and TSNEPlot()
-###       Hence, now we define 'dimensionss' instead of principal components
+###       Hence, now we define 'dimensions' instead of principal components
 ###    c) since Cell Ranger v3 allows now to have multiple features (not only genes),
 ###       in general all references to 'genes' in v2 are now called 'features'
 ### 2) Default parameters are indexed using list(DefaultParameters) instead of variable names. This allows list(DefaultParameters)
@@ -88,11 +88,14 @@ options( warn = -1 )
 #
 option_list <- list(
   make_option(c("-i", "--input"), default="NA",
-              help="Either the path/name to a 10X *directory* with barcodes.tsv, genes.tsv and matrix.mtx files;
-                or path/name of a <tab> delimited digital gene expression (DGE) *file* with genes in rows vs. barcodes in columns"),
+              help="Either the path/name to a MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files;
+                or path/name of a <tab> delimited digital gene expression (DGE) *file* with genes in rows vs. barcodes in columns
+                Notes:
+                       The 'MTX' files can be for example the output from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
+                       Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz"),
 #
   make_option(c("-t", "--input_type"), default="NA",
-              help="Indicates if input is either a '10X' directory or a 'DGE' file"),
+              help="Indicates if input is either a 'MTX' directory or a 'DGE' file"),
 #
   make_option(c("-r", "--resolution"), default="1",
               help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain
@@ -263,8 +266,8 @@ dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
 ### Load scRNA-seq data
 ####################################
 writeLines("\n*** Load scRNA-seq data ***\n")
-if (regexpr("^10X$", InputType, ignore.case = T)[1] == 1) {
-  print("Loading 10X infiles")
+if (regexpr("^MTX$", InputType, ignore.case = T)[1] == 1) {
+  print("Loading MTX infiles")
   input.matrix <- Read10X(data.dir = Input)
 }else if (regexpr("^DGE$", InputType, ignore.case = T)[1] == 1) {
   print("Loading Digital Gene Expression matrix")
