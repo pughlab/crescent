@@ -7,14 +7,13 @@
 ####################################
 ### Required libraries
 ####################################
-### 'optparse'   to handle one-line-commands
-### 'Seurat'     to run QC, differential gene expression and clustering analyses
-### 'dplyr'      needed by Seurat for data manupulation
+# suppressPackageStartupMessages(library(DropletUtils)) # to habdle reading and writing mtx files
+# suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
+# suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table
+suppressPackageStartupMessages(library(Seurat))       # to run QC, differential gene expression and clustering analyses
+suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
+suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 ####################################
-
-suppressPackageStartupMessages(library(Seurat))
-suppressPackageStartupMessages(library(dplyr))
-suppressPackageStartupMessages(library(optparse))
 
 ####################################
 ### Turning warnings off for the sake of a cleaner aoutput
@@ -66,7 +65,7 @@ UserHomeDirectory<-system(command = CommandsToGetUserHomeDirectory, input = NULL
 Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Outdir)
 Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Tempdir)
 Outdir<-gsub("/$", "", Outdir)
-Tempdir<-gsub("/$", "", Outdir)
+Tempdir<-gsub("/$", "", Tempdir)
 #
 dir.create(file.path(Outdir, "GENE_VS_BARCODE_MATRIX"), recursive = T)
 dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
@@ -82,17 +81,15 @@ dim(input.matrix)
 ### Create a Seurat object
 ####################################
 
-seurat.object  <- CreateSeuratObject(raw.data = input.matrix)
-seurat.object
+seurat.object <- CreateSeuratObject(raw.data = input.matrix)
 
 ####################################
-### Write DGE out
+### Write gene vs. barcode outfile
 ####################################
 OutfileDGE<-paste(Tempdir,"/",PrefixOutfiles,".gene_vs_barcode.tsv", sep="")
-
 Headers<-paste("GENES",paste(colnames(seurat.object@data),sep="",collapse = "\t"),sep="\t",collapse = "\t")
 write.table(Headers,file = OutfileDGE, row.names = F, col.names = F, sep="\t", quote = F)
-write.table(x=seurat.object@data, file = OutfileDGE, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+write.table(x=as.matrix(seurat.object@data), file = OutfileDGE, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
 ### Report used options
@@ -122,8 +119,9 @@ write(file = OutfileCPUusage, x=c(ReportTime))
 ####################################
 ### Moving outfiles into outdir
 ####################################
-outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".gene_vs_barcode_", sep=""), full.names = F)
-sapply(outfiles_to_move,FUN=function(eachFile){ 
+outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".gene_vs_barcode", sep=""), full.names = F)
+sapply(outfiles_to_move,FUN=function(eachFile){
+  ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
   file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/GENE_VS_BARCODE_MATRIX/",eachFile,sep=""),overwrite=T)
   file.remove(paste(Tempdir,"/",eachFile,sep=""))
 })
