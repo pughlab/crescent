@@ -12,7 +12,7 @@
 ###       in general all references to 'genes' in v2 are now called 'features'
 ### 2) Default parameters are indexed using list(DefaultParameters) instead of variable names. This allows list(DefaultParameters)
 ###    to be reported in a *log file
-### 3) Implemented QC violin plots directly in ggplots instead of Seurat's VlnPlot() to have more control of layourt, legends, titles, etc.
+### 3) Implemented QC violin plots directly in ggplots instead of Seurat's VlnPlot() to have more control of layout, legends, titles, etc.
 ### 4) Using R base plot() to create feature-vs-feature scatter plots instead of FeatureScatter()
 ### 5) Implemented all ggplots and Seurat plotting functions (which are based on ggplots) with print() function, like:
 ###    `print(FeaturePlot(...))` instead of `FeaturePlot(...)` alone
@@ -104,9 +104,6 @@ option_list <- list(
   make_option(c("-p", "--prefix_outfiles"), default="NA",
             help="A prefix for outfile names, e.g. your project ID"),
 #
-  make_option(c("-l", "--short_label_for_plots"), default="sample",
-            help="A short label the plots to distinguish multiple samples, e.g. '10X_PBMC' or 'GBM_001"),
-#
   make_option(c("-s", "--summary_plots"), default="y",
               help="Indicates if a *summary_plots.pdf file should be generated [use 'y'] or not [use 'n']
                 Note this needs 'pdftk' and R library(staplr)"),
@@ -150,7 +147,6 @@ InputType        <- opt$input_type
 Resolution       <- as.numeric(opt$resolution) ## using as.numeric avoids FindClusters() to crash by inputting it as.character [default from parse_args()]
 Outdir           <- opt$outdir
 PrefixOutfiles   <- opt$prefix_outfiles
-ShortLabel       <- opt$short_label_for_plots
 SummaryPlots     <- opt$summary_plots
 InfileColourTsne <- opt$infile_colour_tsne
 ListGenes        <- opt$list_genes
@@ -282,7 +278,7 @@ dim(input.matrix)
 ### Create a Seurat object
 ####################################
 writeLines("\n*** Create a Seurat object ***\n")
-seurat.object.u  <- CreateSeuratObject(counts = input.matrix, min.cells = DefaultParameters$MinCells, min.features = DefaultParameters$MinGenes, project = ShortLabel)
+seurat.object.u  <- CreateSeuratObject(counts = input.matrix, min.cells = DefaultParameters$MinCells, min.features = DefaultParameters$MinGenes, project = PrefixOutfiles)
 nCellsInOriginalMatrix<-length(seurat.object.u@meta.data$orig.ident)
 
 ####################################
@@ -453,7 +449,7 @@ pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VizPCA.pdf", sep=""), width=7
 print(VizDimLoadings(object = seurat.object.f, reduction = "pca", dims = DefaultParameters$VizPCA.PcsUse, nfeatures = DefaultParameters$VizPCA.nGenesToPlot))
 dev.off()
 
-pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_DIMPlot.pdf", sep=""))
+pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCAPlot.pdf", sep=""))
 print(DimPlot(object = seurat.object.f, dims = c(1,2), reduction = "pca") + theme(legend.position="none"))
 dev.off()
 
