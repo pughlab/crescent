@@ -10,10 +10,8 @@
 ####################################
 ### Required libraries
 ####################################
-### 'optparse'   to handle one-line-commands
-### 'dropbead'   to generate the knee-plot and get inflection. Install with:
-###              library(devtools)
-###              install_github("rajewsky-lab/dropbead")
+suppressPackageStartupMessages(library(optparse)) # (CRAN) to handle one-line-commands
+suppressPackageStartupMessages(library(dropbead)) # to generate the knee-plot and get inflection. Install with: library(devtools), then install_github("rajewsky-lab/dropbead")
 ####################################
 
 ####################################
@@ -21,9 +19,6 @@
 ####################################
 ### Dropseq-tools 'BAMTagHistogram' if using '-t BAM'
 ####################################
-
-suppressPackageStartupMessages(library(optparse))
-suppressPackageStartupMessages(library(dropbead))
 
 ### Change this path as needed, if using '-t BAM'
 BAMTagHistogram <- "~/PROGRAMS/DROPSEQ/Drop-seq_tools-1.13/BAMTagHistogram"
@@ -102,7 +97,7 @@ UserHomeDirectory<-system(command = CommandsToGetUserHomeDirectory, input = NULL
 Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Outdir)
 Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Tempdir)
 Outdir<-gsub("/$", "", Outdir)
-Tempdir<-gsub("/$", "", Outdir)
+Tempdir<-gsub("/$", "", Tempdir)
 #
 Infile<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Infile)
 BAMTagHistogram<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), BAMTagHistogram)
@@ -212,6 +207,7 @@ write(file = OutfileCPUusage, x=c(ReportTime))
 
 outfiles_to_move <- list.files(Tempdir,pattern = c(paste(PrefixOutfiles, ".kneeplot", sep=""), paste(PrefixOutfiles, ".reads_per_barcode.tsv", sep="")), full.names = F)
 sapply(outfiles_to_move,FUN=function(eachFile){
+  ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
   file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/",eachFile,sep=""),overwrite=T)
   file.remove(paste(Tempdir,"/",eachFile,sep=""))
 })
