@@ -221,7 +221,7 @@ system "$queue_params $hashParameters{path_outfiles}/$hashParameters{sample_id}.
 
 
 ############################
-#### Step 5 -- Get number of reads per barcode and knee plot from cellranger's possorted_genome_bam.bam
+#### Step 6 -- Get the list of barcode ID's based on the knee plot inflection point
 ############################
 
 if ($hash_step_numbers_to_run{3}) {
@@ -243,26 +243,8 @@ mv ~/$hashParameters{sample_id}_kneeplot.pdf $hashParameters{path_outfiles}\n";
 close INSFOR_KNEEPLOT;
 
 
-Obtain submatrices in h5 and DGE formats from raw_gene_bc_matrices_h5.h5
 
-Create a commands_to_get_submatrix_h5.insFor.R  file with commands like:
-
-library(cellrangerRkit)
-#
-barcodes_to_get<-read.table("~/.../barcodes.list",header=F)
-gbm_raw<- get_matrix_from_h5("~/.../raw_gene_bc_matrices_h5.h5",genome = "GRCh38-1.2.0_premrna")
-gbm_filtered<-gbm_raw[,paste(barcodes_to_get[,1])]
-#
-save_cellranger_matrix_h5(gbm_filtered, â~/.../filtered_gene_bc_matrices_FromRaw.h5",genome=
-"GRCh38-1.2.0_premrna")
-q()
-
-Create a commands_to_get_submatrix_h5_and_dge.insFor.sh file with commands like:
-
-R --no-save < commands_to_get_submatrix_h5.insFor.R
-cellranger mat2csv filtered_gene_bc_matrices_FromRaw.h5 filtered_gene_bc_matrices_FromRaw.csv
-#
-replace_string_X_by_Y_Globally_or_FirstTimeItAppears.pl -global_or_first global -infile filtered_gene_bc_matrices_FromRaw.csv -path_outfiles . -string_replacing \<tab\> -string_to_replace ,
+CONTINUE HERE
 
 
 
