@@ -27,8 +27,8 @@
 ###    By picking the number of clusters based on differentially expressed genes
 ### 3) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
 ###    Need to do it for both Human and Mouse
-### 6) In 'Colour t-SNE plots showing each requested gene' need to automate to get a layout() for more than 3 genes in multiple rows
-### 7) In Seurat v2, Suluxan reported that the -c example Javier provided called a duplicated row names error
+### 4) In Seurat v2, Suluxan reported that the -c example Javier provided called a duplicated row names error
+###    Need to see if it's still happening
 ###
 ### THINGS NICE TO HAVE:
 ### 1) Assigning cell type identity to clusters (needs supervised annotations, maybe based on GSVA)
@@ -156,7 +156,7 @@ ListGenes        <- opt$list_genes
 Opacity          <- as.numeric(opt$opacity)
 PcaDimsUse       <- c(1:as.numeric(opt$pca_dimensions))
 ListPMito        <- opt$percent_mito
-ListNGenes        <- opt$n_genes
+ListNGenes       <- opt$n_genes
 ThreshReturn     <- as.numeric(opt$return_threshold)
 
 PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
