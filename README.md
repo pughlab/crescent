@@ -11,7 +11,7 @@ Contains documentation associated with `bin/codes`, such as parameters and depen
 
 examples
 ================
-Contains documentation associated with `bin/codes`, such as links to example infiles and outfiles
+Contains examples associated with `bin/codes`, such as links to example infiles and outfiles
 
 Authors
 ================
