@@ -50,7 +50,7 @@ To display help commands type: <br />
 `Rscript Runs_Seurat_v3.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t 10X -r 1 -o ~/example/outfiles -s y -c ~/path_to_/example_cell_type.tsv -g GENE1,GENE2 -a 0.3 -d 10 -n 50,8000 -e 0.01 -p sample_ID`
+`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t MTX -r 1 -o ~/example/outfiles -p sample_ID -s y -c ~/path_to_/example_cell_type.tsv -g GENE1,GENE2 -a 0.3 -d 10 -m 0,0.5 -n 50,8000 -e 0.01 `
 
 Inputs Description
 ================
