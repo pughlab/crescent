@@ -83,9 +83,8 @@ Outputs Description
 | *VariableGenes.txt                       |  Variable genes list                                   |
 | *TSNEPlot.pdf                            |  t-SNE plot                                            |
 | *TSNECoordinates.tsv                     |  t-SNE plot coordinates                                |
-| *TSNEPlot_ExtraProperties.pdf            |  t-SNE plot of extra barcode properties                |
+| *TSNEPlot_ExtraProperties.pdf            |  t-SNE plot of extra barcode properties by option -c   |
 | *TSNEPlot_EachTopGene.pdf                |  t-SNE plot mapping top-2 genes for each cluster       |
-| *TSNEPlot_SelectedGenes.pdf              |  t-SNE plot of selected genes                          |
 | *TSNEPlot_SelectedGenes.pdf              |  t-SNE plot mapping genes selected by option -g        |
 | *Heatmap.pdf                             |  Heatmap top genes, all clusters                       |
 | *VlnPlot_AfterClusters.pdf               |  Violing plot of top-2 genes for each cluster          |
