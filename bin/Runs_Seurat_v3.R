@@ -1,9 +1,9 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Script made based on https://satijalab.org/seurat/pbmc3k_tutorial_v3.html
-###
+### 
 ### NEW IMPLEMENTATIONS SINCE Seurat v2:
-### 1) Rewritten with Seurat v3 commands (including ability to read output from Cell Ranger v3)
+### 1) Rewrote with Seurat v3 commands (including ability to read output from Cell Ranger v3)
 ###    Main differences vs. Seurat v2 include:
 ###    a) new function names
 ###    b) a new function DimPlot() is used for 'uma', 'tsne' and 'pca' plots, instead of PCAPlot() and TSNEPlot()
@@ -19,16 +19,20 @@
 ###    Otherwise using ggplots and Seurat plots inside if/else loops cause errors
 ###    https://cran.r-project.org/doc/FAQ/R-FAQ.html#Why-do-lattice_002ftrellis-graphics-not-work_003f
 ### 6) Violin plots and t-SNE QC plots show now percentage of ribosomal protein genes in cells
+### 7) Implemented library(future) for parallelization
+### 8) Added a stopwatch to every step
 ### 
 ### THINGS TO DO:
-### 1) Pick the right number of dimension components
+### 1) Parallelize FindAllMarkers() to send each cluster to a separate core
+### 2) To fix a bug with printing an 's' at the end of the times in *CPUusage.txt
+### 3) Pick the right number of dimension components
 ###    E.g. try to automatically get the inflection point from the PCElbowPlot() function output
-### 2) Pick the right resolution from FindClusters()
+### 4) Pick the right resolution from FindClusters()
 ###    E.g. implement Iness and Bader paper https://f1000research.com/articles/7-1522/v1 approach
 ###    By picking the number of clusters based on differentially expressed genes
-### 3) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
+### 5) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
 ###    Need to do it for both Human and Mouse
-### 4) In Seurat v2, Suluxan reported that the -c example Javier provided called a duplicated row names error
+### 6) In Seurat v2, Suluxan reported that the -c example Javier provided called a duplicated row names error
 ###    Need to see if it's still happening
 ###
 ### THINGS NICE TO HAVE:
@@ -65,6 +69,7 @@ suppressPackageStartupMessages(library(fmsb))         # to calculate the percent
 suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table - only needed is using '-t DGE'
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
+suppressPackageStartupMessages(library(future))       # To run parallel processes
 ### library(staplr)     only if using option '-s y', note it needs pdftk
 ####################################
 
@@ -92,32 +97,31 @@ option_list <- list(
               help="Either the path/name to a MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files;
                 or path/name of a <tab> delimited digital gene expression (DGE) *file* with genes in rows vs. barcodes in columns
                 Notes:
-                       The 'MTX' files can be for example the output from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
-                       Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
+                The 'MTX' files can be for example the output from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
+                Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
                 Default = 'No default. It's mandatory to specify this parameter'"),
-#
+  #
   make_option(c("-t", "--input_type"), default="NA",
               help="Indicates if input is either a 'MTX' directory or a 'DGE' file
                 Default = 'No default. It's mandatory to specify this parameter'"),
-#
+  #
   make_option(c("-r", "--resolution"), default="1",
-              help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain
-                a larger (smaller) number of communities
+              help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain a larger (smaller) number of cell clusters
                 Default = '1'"),
-#
+  #
   make_option(c("-o", "--outdir"), default="NA",
               help="A path/name for the results directory
                 Default = 'No default. It's mandatory to specify this parameter'"),
-#
+  #
   make_option(c("-p", "--prefix_outfiles"), default="NA",
               help="A prefix for outfile names, e.g. your project ID
                 Default = 'No default. It's mandatory to specify this parameter'"),
-#
+  #
   make_option(c("-s", "--summary_plots"), default="y",
               help="Indicates if a *summary_plots.pdf file should be generated [use 'y'] or not [use 'n']
                 Note this needs 'pdftk' and R library(staplr)
                 Default = 'y'"),
-#
+  #
   make_option(c("-c", "--infile_colour_tsne"), default="NA",
               help="A <tab> delimited table of barcodes and discrete properties to colour the t-SNE, like:
                 Barcode              CellClass    InOtherDatasets
@@ -126,15 +130,15 @@ option_list <- list(
                 AAACCTGCAAAGGAAG-1   2            yes
                 AAACCTGGTCTCATCC-1   2            no
                 Default = 'NA' (no --infile_colour_tsne provided)"),
-#
+  #
   make_option(c("-g", "--list_genes"), default="NA",
               help="A <comma> delimited list of gene identifiers whose expression will be mapped into the t-SNE plots
                 Default = 'NA' (no --list_genes provided)"),
-#
+  #
   make_option(c("-a", "--opacity"), default="0.1",
               help="If using a --list_genes, this parameter provides a value for the minimal opacity of gene expression. Use a value between 0 and 1
                 Default = 'y'"),
-#
+  #
   make_option(c("-d", "--pca_dimensions"), default="10",
               help="Max value of PCA dimensions to use for clustering and t-SNE functions
                 FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
@@ -142,19 +146,23 @@ option_list <- list(
                 *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
                 *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
                 Default = '10'"),
-#
- make_option(c("-m", "--percent_mito"), default="0,0.05",
-             help="<comma> delimited min,max number of percentage of mitochondrial gene counts in a cell to be included in normalization and clustering analyses
+  #
+  make_option(c("-m", "--percent_mito"), default="0,0.05",
+              help="<comma> delimited min,max number of percentage of mitochondrial gene counts in a cell to be included in normalization and clustering analyses
                 For example, for regular scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
                 Default = '0,0.05'"),
-#
- make_option(c("-n", "--n_genes"), default="50,8000",
-             help="<comma> delimited min,max number of unique gene counts in a cell to be included in normalization and clustering analyses
+  #
+  make_option(c("-n", "--n_genes"), default="50,8000",
+              help="<comma> delimited min,max number of unique gene counts in a cell to be included in normalization and clustering analyses
                 Default = '50,8000'"),
-#
+  #
   make_option(c("-e", "--return_threshold"), default="0.01",
               help="For each cluster only return markers that have a p-value < return_thresh
-                Default = '0.01'")
+                Default = '0.01'"),
+  
+  make_option(c("-u", "--number_cores"), default="MAX",
+              help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
+                Default = 'MAX'")
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -172,9 +180,27 @@ PcaDimsUse       <- c(1:as.numeric(opt$pca_dimensions))
 ListPMito        <- opt$percent_mito
 ListNGenes       <- opt$n_genes
 ThreshReturn     <- as.numeric(opt$return_threshold)
+NumbCores        <- opt$number_cores
 
 PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
 Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+
+
+####################################
+### Define the number of cores for parallelization
+####################################
+
+if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
+  NumbCoresToUse <- availableCores()[[1]]
+}else if (is.numeric(NumbCores) == T) {
+  NumbCoresToUse <- as.numeric(NumbCores)
+}else{
+  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n", sep=""))
+}
+
+cat("Using ", NumbCoresToUse, "cores")
+
+plan(strategy = "multicore", workers = NumbCoresToUse)
 
 ####################################
 ### Define default parameters
@@ -191,22 +217,22 @@ MinPMito   = as.numeric(ListPMito[1])
 MaxPMito   = as.numeric(ListPMito[2])
 
 DefaultParameters <- list(
-
+  
   ### Parameters for Seurat filters
   MinCells = 3,
   MinGenes = MinGenes,
   MaxGenes = MaxGenes,
   MinPMito = MinPMito,
   MaxPMito = MaxPMito,
-
+  
   ### Parameters for Seurat normalization
   ScaleFactor = 10000,
-
+  
   ### Parameters for Seurat variable gene detection
   XLowCutoff = 0.0125,
   XHighCutoff = 3,
   YCutoff = 0.5,
-
+  
   ### Parameters for PCA
   PrintPCA.PcsPrint = 1:5,
   PrintPCA.GenesPrint = 5,
@@ -214,13 +240,13 @@ DefaultParameters <- list(
   VizPCA.nGenesToPlot = 20,
   PCHeatmapCellsUse = 300,
   PCHeatmapComponentsToPlot = 18,
-
+  
   ### Parameters for Cluster Biomarkers
   FindAllMarkers.MinPct     =  0.25,
   FindAllMarkers.ThreshUse  =  0.25,
   NumberOfGenesPerClusterToPlotTsne  =  2,
   NumberOfGenesPerClusterToPlotHeatmap  =  10,
-
+  
   ### Parameters for t-SNE plots
   BaseSizeSingleTnePlot  = 7,
   BaseSizeMultipleWidth  = 3.7,
@@ -245,10 +271,13 @@ ColourDefinitions<-list("orange"        = "#E69F00",
 ColoursQCViolinPlots <- c(ColourDefinitions[["skyblue"]][[1]], ColourDefinitions[["orange"]][[1]])
 
 ####################################
-### Start stopwatch
+### Start stopwatches
 ####################################
 
-StartTimeOverall <-Sys.time()
+StopWatchStart <- list()
+StopWatchEnd   <- list()
+
+StopWatchStart$Overall  <- Sys.time()
 
 ####################################
 ### Check that mandatory parameters are not 'NA' (default)
@@ -283,6 +312,8 @@ dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
 ####################################
 writeLines("\n*** Load scRNA-seq data ***\n")
 
+StopWatchStart$LoadScRNAseqData  <- Sys.time()
+
 if (regexpr("^MTX$", InputType, ignore.case = T)[1] == 1) {
   print("Loading MTX infiles")
   input.matrix <- Read10X(data.dir = Input)
@@ -294,21 +325,29 @@ if (regexpr("^MTX$", InputType, ignore.case = T)[1] == 1) {
 }
 dim(input.matrix)
 
+StopWatchEnd$LoadScRNAseqData  <- Sys.time()
+
 ####################################
 ### Create a Seurat object
 ####################################
 writeLines("\n*** Create a Seurat object ***\n")
 
+StopWatchStart$CreateSeuratObject  <- Sys.time()
+
 seurat.object.u  <- CreateSeuratObject(counts = input.matrix, min.cells = DefaultParameters$MinCells, min.features = DefaultParameters$MinGenes, project = PrefixOutfiles)
 nCellsInOriginalMatrix<-length(seurat.object.u@meta.data$orig.ident)
+
+StopWatchEnd$CreateSeuratObject  <- Sys.time()
 
 ####################################
 ### Get mitochondrial genes
 ####################################
 writeLines("\n*** Get  mitochondrial genes ***\n")
 
-mitoRegExpressions<- paste(c("^MT-", "^mt-"),collapse = "|")
-mito.features <- grep(pattern = mitoRegExpressions, x = rownames(x = seurat.object.u), value = T)
+StopWatchStart$GetMitoGenes  <- Sys.time()
+
+mitoRegExpressions<- paste(c("^MT-"),collapse = "|")
+mito.features <- grep(pattern = mitoRegExpressions, ignore.case = T, x = rownames(x = seurat.object.u), value = T)
 
 if (length(mito.features)[[1]] > 0) {
   percent.mito <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[mito.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
@@ -318,13 +357,18 @@ if (length(mito.features)[[1]] > 0) {
   seurat.object.u[['percent.mito']] <- percent.mito
 }
 
+StopWatchEnd$GetMitoGenes  <- Sys.time()
+
+
 ####################################
 ### Get ribosomal protein genes
 ####################################
 writeLines("\n*** Get ribosomal protein genes ***\n")
 
+StopWatchStart$GetRiboGenes  <- Sys.time()
+
 riboRegExpressions<- paste(c("^MRPL", "^MRPS", "^RPL", "^RPS"),collapse = "|")
-ribo.features <- grep(pattern = riboRegExpressions, x = rownames(x = seurat.object.u), value = T)
+ribo.features <- grep(pattern = riboRegExpressions, ignore.case = T, x = rownames(x = seurat.object.u), value = T)
 
 if (length(ribo.features)[[1]] > 0) {
   percent.ribo <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[ribo.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
@@ -334,16 +378,24 @@ if (length(ribo.features)[[1]] > 0) {
   seurat.object.u[['percent.ribo']] <- percent.ribo
 }
 
+StopWatchEnd$GetRiboGenes  <- Sys.time()
+
 ####################################
 ### Filter cells based gene counts and mitochondrial representation
 ####################################
 writeLines("\n*** Filter cells based gene counts and mitochondrial representation ***\n")
+
+StopWatchStart$FilterCells  <- Sys.time()
 
 if (length(mito.features)[[1]] > 0) {
   seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA > DefaultParameters$MinGenes & nFeature_RNA < DefaultParameters$MaxGenes & percent.mito > DefaultParameters$MinPMito & percent.mito < DefaultParameters$MaxPMito)
 }else{
   seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA > DefaultParameters$MinGenes & nFeature_RNA < DefaultParameters$MaxGenes)
 }
+
+StopWatchEnd$FilterCells  <- Sys.time()
+
+### Just reporting the summary of the UNfiltered and filtered objects
 seurat.object.u
 seurat.object.f
 
@@ -351,6 +403,8 @@ seurat.object.f
 ### QC EDA violin plots
 ####################################
 writeLines("\n*** QC EDA violin plots ***\n")
+
+StopWatchStart$QCviolinplots  <- Sys.time()
 
 ### Get unfiltered data QC statistics
 nFeature_RNA.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$nFeature_RNA, nGenes = 1)
@@ -381,6 +435,7 @@ percent.mito.m.df  <-data.frame(rbind(percent.mito.u.df,percent.mito.f.df))
 percent.ribo.m.df  <-data.frame(rbind(percent.ribo.u.df,percent.ribo.f.df))
 LabelUnfiltered    <-paste("Before filters: No. of cells = ", nrow(seurat.object.u@meta.data), sep ="", collapse = "")
 LabelFiltered      <-paste("After filters:  No. of cells = ", nrow(seurat.object.f@meta.data), sep ="", collapse = "")
+#LabelFilters       <-paste("Filters: No. of genes per cell = ", ListNGenes, "Fraction mitochondrial protein genes per cell = ", ListPMito), sep ="", collapse = "")
 
 ### Commands for violin ggplot's
 DataForHeader.df<-data.frame(forx = c(0.4,0.4), fory = c(0.09,0.03), label = c(LabelFiltered,LabelUnfiltered))
@@ -411,7 +466,7 @@ percent.mito.plot<-ggplot(data=percent.mito.m.df, aes(x = factor(percent.mito), 
   theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
         axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
   scale_fill_manual(values = ColoursQCViolinPlots) +
-  labs(x="Mitochondrial genes %") +
+  labs(x="Mitochondrial genes (fraction)") +
   annotate("text", x = 1 , y = max(percent.mito.m.df$Expression_level)*1.1, label = percent.mito.u, col = ColoursQCViolinPlots[[1]]) +
   annotate("text", x = 2 , y = max(percent.mito.m.df$Expression_level)*1.1, label = percent.mito.f, col = ColoursQCViolinPlots[[2]])
 
@@ -420,7 +475,7 @@ percent.ribo.plot<-ggplot(data=percent.ribo.m.df, aes(x = factor(percent.ribo), 
   theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
         axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
   scale_fill_manual(values = ColoursQCViolinPlots) +
-  labs(x="Ribosomal protein genes %") +
+  labs(x="Ribosomal protein genes (fraction)") +
   annotate("text", x = 1 , y = max(percent.ribo.m.df$Expression_level)*1.1, label = percent.ribo.u, col = ColoursQCViolinPlots[[1]]) +
   annotate("text", x = 2 , y = max(percent.ribo.m.df$Expression_level)*1.1, label = percent.ribo.f, col = ColoursQCViolinPlots[[2]])
 
@@ -433,10 +488,14 @@ pdf(file=VlnPlotPdf, width = 12, height = 7)
 print(plot_grid(Headers.plot, bottom_row, ncol = 1, rel_heights = c(0.2,1)))
 dev.off()
 
+StopWatchEnd$QCviolinplots  <- Sys.time()
+
 ####################################
-### Feature-vs-feature scatter plots
+### Feature-vs-feature scatter plot
 ####################################
-writeLines("\n*** Feature-vs-feature scatter plots ***\n")
+writeLines("\n*** Feature-vs-feature scatter plot ***\n")
+
+StopWatchStart$FeatureVsFeatureplot  <- Sys.time()
 
 UnfilteredData.df<-data.frame(nCount_RNA = seurat.object.u@meta.data$nCount_RNA,
                               nGene = seurat.object.u@meta.data$nFeature_RNA,
@@ -461,6 +520,8 @@ plot(x = UnfilteredData.df$nCount_RNA, UnfilteredData.df$nGene, col = Unfiltered
 legend("topleft", legend = c("No", "Yes"), title = "Filtered cells", col = ColoursQCViolinPlots, pch = c(4,16))
 dev.off()
 
+StopWatchEnd$FeatureVsFeatureplot  <- Sys.time()
+
 ####################################
 ### Remove the Unfiltered seurat object
 ####################################
@@ -474,12 +535,18 @@ rm(UnfilteredData.df)
 ####################################
 writeLines("\n*** Normalize data ***\n")
 
+StopWatchStart$NormalizeData  <- Sys.time()
+
 seurat.object.f <- NormalizeData(object = seurat.object.f, normalization.method = "LogNormalize", scale.factor = DefaultParameters$ScaleFactor)
+
+StopWatchEnd$NormalizeData  <- Sys.time()
 
 ####################################
 ### Detect, save list and plot variable genes
 ####################################
 writeLines("\n*** Detect, save list and plot variable genes ***\n")
+
+StopWatchStart$FindVariableGenes  <- Sys.time()
 
 ### Note: Seurat developers recommend to set default parameters to mark visual outliers on the dispersion plot
 ### x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5
@@ -494,13 +561,19 @@ pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VariableGenes.pdf", sep=""))
 print(VariableFeaturePlot(object = seurat.object.f, cols = c("blue", "red")))
 dev.off()
 
+StopWatchEnd$FindVariableGenes  <- Sys.time()
+
 ####################################
 ### Scale data and remove unwanted sources of variation such as:
 ### cell cycle stage,  batch (if applicable), cell alignment rate (as provided by Drop-seq tools for Drop-seq data)
 ####################################
 writeLines("\n*** Scale data and remove unwanted sources of variation ***\n")
 
+StopWatchStart$ScaleData  <- Sys.time()
+
 seurat.object.f <- ScaleData(object = seurat.object.f, vars.to.regress = c("nCount_RNA", "percent.mito"), features = rownames(x = seurat.object.f), display.progress=F)
+
+StopWatchEnd$ScaleData  <- Sys.time()
 
 ####################################
 ### Perform linear dimensional reduction by PCA
@@ -511,7 +584,13 @@ seurat.object.f <- ScaleData(object = seurat.object.f, vars.to.regress = c("nCou
 ####################################
 writeLines("\n*** Perform linear dimensional reduction by PCA ***\n")
 
+StopWatchStart$RunPCA  <- Sys.time()
+
 seurat.object.f <- RunPCA(object = seurat.object.f, features = VariableGenes, verbose = T, do.print = T, ndims.print = DefaultParameters$PrintPCA.PcsPrint, nfeatures.print = DefaultParameters$PrintPCA.GenesPrint)
+
+StopWatchEnd$RunPCA  <- Sys.time()
+
+StopWatchStart$PCAPlots  <- Sys.time()
 
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VizPCA.pdf", sep=""), width=7, height=10)
 print(VizDimLoadings(object = seurat.object.f, reduction = "pca", dims = DefaultParameters$VizPCA.PcsUse, nfeatures = DefaultParameters$VizPCA.nGenesToPlot))
@@ -527,10 +606,14 @@ pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCHeatmap.C1to",DefaultParame
 print(DimHeatmap(object = seurat.object.f, dims = 1:DefaultParameters$PCHeatmapComponentsToPlot, cells = DefaultParameters$PCHeatmapCellsUse, balanced = T))
 dev.off()
 
+StopWatchEnd$PCAPlots  <- Sys.time()
+
 ####################################
 ### Determine statistically significant principal components
 ####################################
 writeLines("\n*** Determine statistically significant principal components ***\n")
+
+StopWatchStart$GetSignificantPCs  <- Sys.time()
 
 ### NOTE: JackStraw() process can take a long time for big datasets
 ### More approximate techniques such PCElbowPlot() can be used to reduce computation time
@@ -539,16 +622,23 @@ pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCElbowPlot.pdf", sep=""))
 print(ElbowPlot(object = seurat.object.f))
 dev.off()
 
+StopWatchEnd$GetSignificantPCs  <- Sys.time()
+
 ####################################
 ### Cluster the cells
 ####################################
 writeLines("\n*** Cluster the cells ***\n")
 
-StartTimeClustering<-Sys.time()
+StopWatchStart$ClusterCells  <- Sys.time()
+
 options(scipen=10) ## Needed to avoid an 'Error in file(file, "rt") : cannot open the connection'
 seurat.object.f <- FindNeighbors(object = seurat.object.f, dims = PcaDimsUse) ## This step was part of FindClusters() in Seurat v2
 seurat.object.f <- FindClusters(object = seurat.object.f, reduction.type = "pca", resolution = Resolution, print.output = 0, save.SNN = T)
 EndTimeClustering<-Sys.time()
+
+StopWatchEnd$ClusterCells  <- Sys.time()
+
+StopWatchStart$CellClusterTables  <- Sys.time()
 
 CellNames<-rownames(seurat.object.f@meta.data)
 ClusterIdent<-seurat.object.f@meta.data$RNA_snn_res.1
@@ -563,10 +653,14 @@ NumberOfClusters<-length(unique(ClusterIdent))
 OutfileNumbClusters<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_NumbCellClusters", ".tsv", sep="")
 write(x=NumberOfClusters,file = OutfileNumbClusters)
 
+StopWatchEnd$CellClusterTables  <- Sys.time()
+
 ####################################
 ### Get average expression for each cluster for each gene
 ####################################
 writeLines("\n*** Get average expression for each cluster for each gene ***\n")
+
+StopWatchStart$AverageGeneExpression  <- Sys.time()
 
 cluster.averages<-AverageExpression(object = seurat.object.f, use.scale = F, use.counts = F)
 OutfileClusterAverages<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_AverageGeneExpressionPerCluster.tsv", sep="")
@@ -574,10 +668,14 @@ Headers<-paste("AVERAGE_GENE_EXPRESSION",paste("r", Resolution, "_C", names(clus
 write.table(Headers,file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(cluster.averages$RNA),file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
+StopWatchEnd$AverageGeneExpression  <- Sys.time()
+
 ####################################
 ### Run Non-linear dimensional reduction (tSNE)
 ####################################
 writeLines("\n*** Run Non-linear dimensional reduction (tSNE) ***\n")
+
+StopWatchStart$RunTSNE  <- Sys.time()
 
 ### NOTE: if the datasets is small you may get
 ### "Error in Rtsne.default(X = as.matrix(x = data.use), dims = dim.embed,  : Perplexity is too large."
@@ -589,18 +687,26 @@ pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot.pdf", sep=""), width
 print(DimPlot(object = seurat.object.f, reduction = 'tsne', group.by = 'ident', label = T, label.size=10))
 dev.off()
 
+StopWatchEnd$RunTSNE  <- Sys.time()
+
 ####################################
 ### Saving the R object
 ####################################
 writeLines("\n*** Saving the R object ***\n")
 
+StopWatchStart$SaveRDS  <- Sys.time()
+
 OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_object.rds", sep="")
 saveRDS(seurat.object.f, file = OutfileRDS)
+
+StopWatchEnd$SaveRDS  <- Sys.time()
 
 ####################################
 ### Write out t-SNE coordinates
 ####################################
 writeLines("\n*** Write out t-SNE coordinates ***\n")
+
+StopWatchStart$WriteTsneCoords  <- Sys.time()
 
 OutfileTsneCoordinates<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNECoordinates.tsv", sep="")
 
@@ -608,21 +714,28 @@ Headers<-paste("Barcode",paste(colnames(seurat.object.f@reductions$tsne@cell.emb
 write.table(Headers,file = OutfileTsneCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(seurat.object.f@reductions$tsne@cell.embeddings, file = OutfileTsneCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
+StopWatchEnd$WriteTsneCoords  <- Sys.time()
+
 ####################################
 ### Colour t-SNE by nFeature_RNA, nCount_RNA, percent.mito and percent.ribo
 ####################################
 writeLines("\n*** Colour t-SNE by nFeature_RNA, nCount_RNA, percent.mito and percent.ribo ***\n")
+
+StopWatchStart$FeatureTsnePlots  <- Sys.time()
 
 CellPropertiesToTsne<-c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo")
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_QC.pdf", sep=""), width = 21, height = 5)
 print(FeaturePlot(object = seurat.object.f, features = CellPropertiesToTsne, cols = c("lightgrey", "blue"), reduction = "tsne", ncol = 3, pt.size = 1.5))
 dev.off()
 
+StopWatchEnd$FeatureTsnePlots  <- Sys.time()
 
 ####################################
 ### Colour t-SNE by -infile_colour_tsne
 ####################################
 writeLines("\n*** Colour t-SNE by -infile_colour_tsne ***\n")
+
+StopWatchStart$ExtraFeatureTsnePlots  <- Sys.time()
 
 if (regexpr("^NA$", InfileColourTsne, ignore.case = T)[1] == 1) {
   print("No extra barcode-attributes will be used for t-SNE plots")
@@ -630,12 +743,12 @@ if (regexpr("^NA$", InfileColourTsne, ignore.case = T)[1] == 1) {
   seurat.object.meta.data<-seurat.object.f@meta.data
   ExtraCellProperties <- data.frame(read.table(InfileColourTsne, header = T, row.names = 1))
   head(ExtraCellProperties)
-
+  
   # This is because Seurat removes the last '-digit' from barcode ID's when all barcodes finish with the same digit (i.e. come from the same sample)
   # so that barcodes from --infile_colour_tsne and --input can match each other
   rownames(ExtraCellProperties)<-gsub(x =rownames(ExtraCellProperties), pattern = "-[0-9]+$", perl = T, replacement = "")
   seurat.object.f <- AddMetaData(object = seurat.object.f, metadata = ExtraCellProperties)
-
+  
   # Generating outfile
   # Note DimPlot() takes the entire current device (pdf)
   # even if using layout(matrix(...)) or  par(mfrow=())
@@ -643,14 +756,18 @@ if (regexpr("^NA$", InfileColourTsne, ignore.case = T)[1] == 1) {
   pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_ExtraProperties.pdf", sep=""), height = DefaultParameters$BaseSizeSingleTnePlot, width = DefaultParameters$BaseSizeSingleTnePlot)
   for (property in colnames(ExtraCellProperties)) {
     print(DimPlot(object = seurat.object.f, reduction = 'tsne', group.by = property, combine = T, legend = "none") + ggtitle(property))
-    }
+  }
   dev.off()
 }
+
+StopWatchEnd$ExtraFeatureTsnePlots  <- Sys.time()
 
 ####################################
 ### Colour t-SNE plots showing each requested gene
 ####################################
 writeLines("\n*** Colour t-SNE plots showing each requested gene ***\n")
+
+StopWatchStart$GeneTsnePlots  <- Sys.time()
 
 ### To program layout() for more than 3 genes in multiple rows
 if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
@@ -666,16 +783,20 @@ if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
     pdfHeight <- (as.integer(length(ListOfGenesForTsnes) / 4) + 1) * DefaultParameters$BaseSizeMultipleHeight
     nColFeaturePlot <- 4
   }
-
+  
   pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_SelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
   print(FeaturePlot(object = seurat.object.f, ncol = nColFeaturePlot, features = c(ListOfGenesForTsnes), cols = c("lightgrey", "blue"), reduction = "tsne"))
   dev.off()
 }
 
+StopWatchEnd$GeneTsnePlots  <- Sys.time()
+
 ####################################
-### Finding differentially expressed genes (cluster biomarkers)
+### Finding differentially expressed genes for each cell cluster
 ####################################
-writeLines("\n*** Finding differentially expressed genes (cluster biomarkers) ***\n")
+writeLines("\n*** Finding differentially expressed genes for each cell cluster ***\n")
+
+StopWatchStart$FindDiffMarkers  <- Sys.time()
 
 ### Finding markers for every cluster compared to all remaining cells
 ### only.pos allows to report only the positive ones
@@ -713,10 +834,14 @@ write.table(data.frame("GENE"=rownames(seurat.object.markers),seurat.object.mark
 top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% top_n(DefaultParameters$NumberOfGenesPerClusterToPlotTsne, avg_logFC))
 NumberOfClusters<-length(unique(seurat.object.markers[["cluster"]]))
 
+StopWatchEnd$FindDiffMarkers  <- Sys.time()
+
 ####################################
 ### Violin plots for top genes
 ####################################
 writeLines("\n*** Violin plots for top genes ***\n")
+
+StopWatchStart$DiffMarkerViolinPlots  <- Sys.time()
 
 NumberOfPanesForFeaturesPlot<-(NumberOfClusters*DefaultParameters$NumberOfGenesPerClusterToPlotTsne)
 top_genes_by_cluster_for_tsne.list<-top_genes_by_cluster_for_tsne[c(1:NumberOfPanesForFeaturesPlot),"gene"][[1]]
@@ -728,10 +853,14 @@ pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_VlnPlot_AfterClusters.pdf", s
 print(VlnPlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), slot = 'counts', log = T, adjust = 1, pt.size = 0.5))
 dev.off()
 
+StopWatchEnd$DiffMarkerViolinPlots  <- Sys.time()
+
 ####################################
 ### t-SNE plots showing each cluster top genes
 ####################################
 writeLines("\n*** t-SNE plots showing each cluster top genes ***\n")
+
+StopWatchStart$DiffMarkerTsnePlots  <- Sys.time()
 
 pdfWidth  <- 4 * DefaultParameters$BaseSizeMultipleWidth
 pdfHeight <- NumberOfClusters * DefaultParameters$BaseSizeMultipleHeight / 2
@@ -739,10 +868,14 @@ pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_EachTopGene.pdf", se
 print(FeaturePlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), cols = c("lightgrey", "blue"), reduction = "tsne"))
 dev.off()
 
+StopWatchEnd$DiffMarkerTsnePlots  <- Sys.time()
+
 ####################################
 ### Cell clusters heatmap
 ####################################
 writeLines("\n*** Cell clusters heatmap ***\n")
+
+StopWatchStart$CellClustersHeatmap  <- Sys.time()
 
 top_genes_by_cluster_for_heatmap <- seurat.object.markers %>% group_by(cluster) %>% top_n(n = DefaultParameters$NumberOfGenesPerClusterToPlotHeatmap, wt = avg_logFC)
 pdfWidth<-7
@@ -751,10 +884,14 @@ pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_Heatmap.pdf", sep=""), width=
 print(DoHeatmap(object = seurat.object.f, features = top_genes_by_cluster_for_heatmap$gene, label = T, group.bar = T, raster = F, angle = 0) + NoLegend() + ggtitle("Cell clusters"))
 dev.off()
 
+StopWatchEnd$CellClustersHeatmap  <- Sys.time()
+
 ####################################
 ### Create summary plots outfile
 ####################################
 writeLines("\n*** Create summary plots outfile ***\n")
+
+StopWatchStart$SummaryPlots  <- Sys.time()
 
 if (regexpr("^y$", SummaryPlots, ignore.case = T)[1] == 1) {
   suppressPackageStartupMessages(library(staplr))
@@ -764,7 +901,7 @@ if (regexpr("^y$", SummaryPlots, ignore.case = T)[1] == 1) {
                            paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_TSNEPlot.pdf", sep = "", collapse = ""),
                            paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_VlnPlot_AfterClusters.pdf", sep = "", collapse = ""),
                            paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_TSNEPlot_EachTopGene.pdf", sep = "", collapse = "")
-                           )
+  )
   if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
     print("Create summary file")
   }else{
@@ -775,6 +912,8 @@ if (regexpr("^y$", SummaryPlots, ignore.case = T)[1] == 1) {
   ### Stappling *pdf's
   staple_pdf(input_directory = NULL, input_files = ListOfPdfFilesToMerge, output_filepath = SummaryPlotsPdf)
 }
+
+StopWatchEnd$SummaryPlots  <- Sys.time()
 
 ####################################
 ### Report used options
@@ -790,31 +929,31 @@ for (optionInput in option_list) {
 }
 
 ####################################
-### Report time used
+### Obtain computing time used
 ####################################
-writeLines("\n*** Report time used ***\n")
+writeLines("\n*** Obtain computing time used***\n")
 
-EndTimeOverall<-Sys.time()
-
-TookTimeClustering     <-format(difftime(EndTimeClustering,     StartTimeClustering,     units = "min"))
-TookTimeFindAllMarkers <-format(difftime(EndTimeFindAllMarkers, StartTimeFindAllMarkers, units = "min"))
-TookTimeOverall        <-format(difftime(EndTimeOverall,        StartTimeOverall,        units = "min"))
+StopWatchEnd$Overall  <- Sys.time()
 
 OutfileCPUusage<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_CPUusage.txt", sep="")
-ReportTime<-c(
-  paste("clustering",TookTimeClustering,collapse = "\t"),
-  paste("FindAllMarkers",TookTimeFindAllMarkers,collapse = "\t"),
-  paste("overall",TookTimeOverall,collapse = "\t")
-)
+write(paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
+Headers<-paste("Step", "Time(minutes)", sep="\t")
+write.table(Headers,file = OutfileCPUusage, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 
-write(file = OutfileCPUusage, x=c(ReportTime))
+for (stepToClock in names(StopWatchStart)) {
+  TimeStart <- StopWatchStart[[stepToClock]]
+  TimeEnd   <- StopWatchEnd[[stepToClock]]
+  TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
+  ReportTime<-c(paste(stepToClock, TimeDiff, sep = "\t", collapse = ""))
+  write(file = OutfileCPUusage, x=gsub(pattern = " min", replacement = "",x = ReportTime), append = T)
+}
 
 ####################################
 ### Moving outfiles into outdir
 ####################################
 writeLines("\n*** Moving outfiles into outdir ***\n")
 
-writeLines(paste(Outdir,"/SEURAT/",sep="",collapse = ""))
+writeLines(paste(Outdir,"/SEURAT/", sep="", collapse = ""))
 
 outfiles_to_move <- list.files(Tempdir, pattern = paste(PrefixOutfiles, ".SEURAT_", sep=""), full.names = F)
 sapply(outfiles_to_move,FUN=function(eachFile){
@@ -831,9 +970,7 @@ options(warn = oldw)
 ####################################
 ### Finish
 ####################################
-print("END - All done!!! Took time:")
-
-print(ReportTime)
+writeLines("END - All done!!! See:\n", OutfileCPUusage, "\nfor computing times report")
 
 quit()
 
