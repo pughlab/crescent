@@ -135,3 +135,7 @@ It's used to generate QC violin plots<br /><br />
 Can be installed in R console with: <br />
 `install.packages('cowplot')`<br />
 It's used arrange QC violin plots and top legend<br /><br />
+**future**<br />
+Can be installed in R console with: <br />
+`install.packages('future')`<br />
+It's used parallelize time consuming functions like: RunPCA<br /><br />
