@@ -95,75 +95,75 @@ options( warn = -1 )
 option_list <- list(
   make_option(c("-i", "--input"), default="NA",
               help="Either the path/name to a MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files;
-                or path/name of a <tab> delimited digital gene expression (DGE) *file* with genes in rows vs. barcodes in columns
-                Notes:
-                The 'MTX' files can be for example the output from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
-                Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
-                Default = 'No default. It's mandatory to specify this parameter'"),
+              or path/name of a <tab> delimited digital gene expression (DGE) *file* with genes in rows vs. barcodes in columns
+              Notes:
+              The 'MTX' files can be for example the output from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
+              Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
+              Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-t", "--input_type"), default="NA",
               help="Indicates if input is either a 'MTX' directory or a 'DGE' file
-                Default = 'No default. It's mandatory to specify this parameter'"),
+              Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-r", "--resolution"), default="1",
               help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain a larger (smaller) number of cell clusters
-                Default = '1'"),
+              Default = '1'"),
   #
   make_option(c("-o", "--outdir"), default="NA",
               help="A path/name for the results directory
-                Default = 'No default. It's mandatory to specify this parameter'"),
+              Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-p", "--prefix_outfiles"), default="NA",
               help="A prefix for outfile names, e.g. your project ID
-                Default = 'No default. It's mandatory to specify this parameter'"),
+              Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-s", "--summary_plots"), default="y",
               help="Indicates if a *summary_plots.pdf file should be generated [use 'y'] or not [use 'n']
-                Note this needs 'pdftk' and R library(staplr)
-                Default = 'y'"),
+              Note this needs 'pdftk' and R library(staplr)
+              Default = 'y'"),
   #
   make_option(c("-c", "--infile_colour_tsne"), default="NA",
               help="A <tab> delimited table of barcodes and discrete properties to colour the t-SNE, like:
-                Barcode              CellClass    InOtherDatasets
-                AAACCTGAGCGGCTTC-1   1            yes
-                AAACCTGAGTCGAGTG-1   1            no
-                AAACCTGCAAAGGAAG-1   2            yes
-                AAACCTGGTCTCATCC-1   2            no
-                Default = 'NA' (no --infile_colour_tsne provided)"),
+              Barcode              CellClass    InOtherDatasets
+              AAACCTGAGCGGCTTC-1   1            yes
+              AAACCTGAGTCGAGTG-1   1            no
+              AAACCTGCAAAGGAAG-1   2            yes
+              AAACCTGGTCTCATCC-1   2            no
+              Default = 'NA' (no --infile_colour_tsne provided)"),
   #
   make_option(c("-g", "--list_genes"), default="NA",
               help="A <comma> delimited list of gene identifiers whose expression will be mapped into the t-SNE plots
-                Default = 'NA' (no --list_genes provided)"),
+              Default = 'NA' (no --list_genes provided)"),
   #
   make_option(c("-a", "--opacity"), default="0.1",
               help="If using a --list_genes, this parameter provides a value for the minimal opacity of gene expression. Use a value between 0 and 1
-                Default = 'y'"),
+              Default = 'y'"),
   #
   make_option(c("-d", "--pca_dimensions"), default="10",
               help="Max value of PCA dimensions to use for clustering and t-SNE functions
-                FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
-                Typically '10' is enough, if unsure use '10' and afterwards check these two files:
-                *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
-                *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
-                Default = '10'"),
+              FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
+              Typically '10' is enough, if unsure use '10' and afterwards check these two files:
+              *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
+              *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
+              Default = '10'"),
   #
   make_option(c("-m", "--percent_mito"), default="0,0.05",
               help="<comma> delimited min,max number of percentage of mitochondrial gene counts in a cell to be included in normalization and clustering analyses
-                For example, for regular scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
-                Default = '0,0.05'"),
+              For example, for regular scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
+              Default = '0,0.05'"),
   #
   make_option(c("-n", "--n_genes"), default="50,8000",
               help="<comma> delimited min,max number of unique gene counts in a cell to be included in normalization and clustering analyses
-                Default = '50,8000'"),
+              Default = '50,8000'"),
   #
   make_option(c("-e", "--return_threshold"), default="0.01",
               help="For each cluster only return markers that have a p-value < return_thresh
-                Default = '0.01'"),
+              Default = '0.01'"),
   
   make_option(c("-u", "--number_cores"), default="MAX",
               help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
-                Default = 'MAX'")
-)
+              Default = 'MAX'")
+  )
 
 opt <- parse_args(OptionParser(option_list=option_list))
 
@@ -201,6 +201,11 @@ if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
 cat("Using ", NumbCoresToUse, "cores")
 
 plan(strategy = "multicore", workers = NumbCoresToUse)
+
+### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
+### allocate 850mb of RAM (850*1024^2 = 891289600), use:
+### https://stackoverflow.com/questions/40536067/how-to-adjust-future-global-maxsize-in-r
+options(future.globals.maxSize= 891289600)
 
 ####################################
 ### Define default parameters
@@ -973,4 +978,3 @@ options(warn = oldw)
 writeLines("END - All done!!! See:\n", OutfileCPUusage, "\nfor computing times report")
 
 quit()
-
