@@ -70,7 +70,7 @@ suppressPackageStartupMessages(library(data.table))   # to read tables quicker t
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # To run parallel processes
-### library(staplr)     only if using option '-s y', note it needs pdftk
+suppressPackageStartupMessages(library(staplr))       # only if using option '-s y', note it needs pdftk
 ####################################
 
 ####################################
@@ -179,7 +179,7 @@ ThreshReturn     <- as.numeric(opt$return_threshold)
 NumbCores        <- opt$number_cores
 
 PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
-Tempdir        <- "/SEURAT"
+Tempdir        <- "SEURAT"
 
 
 ####################################
@@ -305,7 +305,7 @@ for (param in ListMandatory) {
 #Outdir<-gsub("/$", "", Outdir)
 #Tempdir<-gsub("/$", "", Tempdir)
 #
-#dir.create(file.path(Outdir, "SEURAT"), recursive = T)
+dir.create(file.path("SEURAT"), recursive = T)
 #dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
 
 ####################################
@@ -974,3 +974,4 @@ options(warn = oldw)
 writeLines("END - All done!!! See:\n", OutfileCPUusage, "\nfor computing times report")
 
 quit()
+

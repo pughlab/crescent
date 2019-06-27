@@ -26,6 +26,6 @@ summary_plots: Y
 list_genes: MALAT1,GAPDH
 opacity: 0.1 
 pca_dimensions: 10 
-percent_mito: Inf,0.05
+percent_mito: 0,0.2
 number_genes: 200,8000
 return_threshold: 0.01

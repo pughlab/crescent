@@ -28,9 +28,6 @@ inputs:
       position: 3
       prefix: -r
 
-  outsdir:
-    type: string
-
   project_id:
     type: string
     inputBinding:
@@ -91,11 +88,8 @@ inputs:
       position: 14
       prefix: -u
 
-arguments:
-    - {prefix: "-o", valueFrom: $(runtime.outdir)/$(inputs.outsdir), position: 15}
-
 outputs:
   seurat_output:
     type: Directory
     outputBinding:
-      glob: $(inputs.outsdir)
+      glob: SEURAT

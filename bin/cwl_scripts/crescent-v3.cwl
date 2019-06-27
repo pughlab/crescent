@@ -31,9 +31,6 @@ inputs:
   resolution:
     type: int?
 
-  outsdir:
-    type: string
-
   project_id:
     type: string
 
@@ -84,7 +81,6 @@ steps:
             sc_input: cellranger/cellranger_output
             sc_input_type: sc_input_type
             resolution: resolution
-            outsdir: outsdir
             project_id: project_id
             summary_plots: summary_plots
             colour_tsne_discrete: colour_tsne_discrete
