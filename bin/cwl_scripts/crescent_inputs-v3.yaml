@@ -1,0 +1,31 @@
+# CELLRANGER
+run_name: test1_v3_cwl_local
+sample: pbmc_1k_v3
+fastqs:
+  class: Directory
+  path: /Users/smohanra/Documents/crescent/crescent-v3/fastqs/pbmc_1k_v3_fastqs
+transcriptome:
+  class: Directory
+  path: /Users/smohanra/Documents/crescent/crescent-v3/ref/refdata-cellranger-GRCh38-3.0.0
+
+# SEURAT
+R_script: 
+  class: File
+  path: /Users/smohanra/Documents/crescent/crescent-v3/crescent/bin/Runs_Seurat_v3.R
+#sc_input:
+#  class: Directory
+#  path: /cluster/home/smohanra/pughlab/projects/crescent/toil-example/cwl/cr/javier/example_files/examples/inputs/from_cellranger/outs/filtered_gene_bc_matrices
+sc_input_type: MTX
+resolution: 1
+outsdir: pbmc_v3_out 
+project_id: test1_v3_cwl_local
+summary_plots: Y
+#colour_tsne_discrete:
+#  class: File
+#  path:
+list_genes: MALAT1,GAPDH
+opacity: 0.1 
+pca_dimensions: 10 
+percent_mito: Inf,0.05
+number_genes: 200,8000
+return_threshold: 0.01
