@@ -1,12 +1,3 @@
-# BiocManager::install("SIMLR")
-# install.packages("RSpectra")
-# library("Rspectra")
-# library(SIMLR)
-# library("RcppEigen")
-# library(SingleCellExperiment)
-
-.libPaths(c("/hpf/largeprojects/ccmbio/amahalanabis/tools/R/library"))
-.libPaths()
 
 suppressPackageStartupMessages(library(SIMLR))
 suppressPackageStartupMessages(library(SingleCellExperiment))
