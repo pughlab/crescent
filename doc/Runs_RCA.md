@@ -1,6 +1,6 @@
 Script name
 ================
-`Runs_Scran.R`
+`Runs_RCA.R`
 
 Description
 ================
