@@ -3,7 +3,7 @@ suppressPackageStartupMessages(library(SingleCellExperiment))
 suppressPackageStartupMessages(library(optparse))
 
 main <- function() {
-  
+
   option_list <- list(
     make_option(c("-i", "--input"), default="NA",
                 help="A RData file containing a SingleCellExperiment object"),
@@ -11,13 +11,13 @@ main <- function() {
                 help="A path/name for the results directory"),
     make_option(c("-c", "--num_clusters"), default=8,
                 help="Number of clusters")
-    
+
   )
   opt <- parse_args(OptionParser(option_list=option_list))
   Input<- opt$input
   Outdir<- opt$outdir
   ClusterNum<-opt$num_clusters
-  
+
   load(Input)
 
   input <- as.matrix(counts(sce))
@@ -25,7 +25,8 @@ main <- function() {
 
   colData(sce)$countClust <- unlist(apply(outs$fit$omega, 1,  which.max))
   res <- res<-data.frame(row.names(colData(sce)), unlist(apply(outs$fit$omega, 1,which.max)))
-  
+  colnames(res) <- c("cell", "tscan_clusters")
+
   write.csv(res, file=Outdir, quote=FALSE, row.names = FALSE, col.names=TRUE)
 
 }

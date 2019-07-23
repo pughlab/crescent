@@ -11,14 +11,14 @@ main <- function() {
     make_option(c("-o", "--outdir"), default="NA",
                 help="A path/name for the results directory")
   )
-  
+
   opt <- parse_args(OptionParser(option_list=option_list))
   Input<- opt$input
   Outdir<- opt$outdir
-  
+
   load(Input)
 
-  procdata <- preprocess(as.matrix(counts(sce)), minexpr_percent = 0.01, 
+  procdata <- preprocess(as.matrix(counts(sce)), minexpr_percent = 0.01,
                          clusternum = NULL, takelog = TRUE, logbase = 2,
                          pseudocount = 1, minexpr_value = 1,
                          cvcutoff = 1)
@@ -26,6 +26,7 @@ main <- function() {
   lpsmclust <- exprmclust(procdata, clusternum = 2:20, modelNames = "VVV", reduce = T)
   colData(sce)$TSCAN <- lpsmclust$clusterid
   res <- data.frame(row.names(colData(sce)), lpsmclust$clusterid)
+  colnames(res) <- c("cell", "tscan_clusters")
 
   write.csv(res, file=Outdir, quote=FALSE, row.names = FALSE, col.names=TRUE)
 
