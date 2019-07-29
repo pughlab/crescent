@@ -34,6 +34,10 @@
 ###    Need to do it for both Human and Mouse
 ### 6) In Seurat v2, Suluxan reported that the -c example Javier provided called a duplicated row names error
 ###    Need to see if it's still happening
+### 7) To implement a flag to see if inputted dataset matches expected percent.mito
+###    In particular, if imputting a whole cell sample and using `-m 0,0.05` likely will filterout most cells
+###    and the script may crash at step 'Perform linear dimensional reduction by PCA'
+###    because the filtered matrix will be too sparse and small to get the gene PC's
 ###
 ### THINGS NICE TO HAVE:
 ### 1) Assigning cell type identity to clusters (needs supervised annotations, maybe based on GSVA)
@@ -62,7 +66,7 @@
 suppressPackageStartupMessages(library(Seurat))       # to run QC, differential gene expression and clustering analyses
 ### Seurat v3 can be installed like:
 ### install.packages('devtools')
-### devtools::install_github(repo = 'satijalab/seurat', ref = 'release/3.0')
+### devtools::install_version(package = 'Seurat', version = package_version('3.0.2'))
 suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # to calculate the percentages of extra properties to be t-SNE plotted
@@ -95,74 +99,74 @@ options( warn = -1 )
 option_list <- list(
   make_option(c("-i", "--input"), default="NA",
               help="Either the path/name to a MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files;
-              or path/name of a <tab> delimited digital gene expression (DGE) *file* with genes in rows vs. barcodes in columns
-              Notes:
-              The 'MTX' files can be for example the output from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
-              Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
-              Default = 'No default. It's mandatory to specify this parameter'"),
+                or path/name of a <tab> delimited digital gene expression (DGE) *file* with genes in rows vs. barcodes in columns
+                Notes:
+                The 'MTX' files can be for example the output from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
+                Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
+                Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-t", "--input_type"), default="NA",
               help="Indicates if input is either a 'MTX' directory or a 'DGE' file
-              Default = 'No default. It's mandatory to specify this parameter'"),
+                Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-r", "--resolution"), default="1",
               help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain a larger (smaller) number of cell clusters
-              Default = '1'"),
+                Default = '1'"),
   #
   make_option(c("-o", "--outdir"), default="NA",
               help="A path/name for the results directory
-              Default = 'No default. It's mandatory to specify this parameter'"),
+                Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-p", "--prefix_outfiles"), default="NA",
               help="A prefix for outfile names, e.g. your project ID
-              Default = 'No default. It's mandatory to specify this parameter'"),
+                Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-s", "--summary_plots"), default="y",
               help="Indicates if a *summary_plots.pdf file should be generated [use 'y'] or not [use 'n']
-              Note this needs 'pdftk' and R library(staplr)
-              Default = 'y'"),
+                Note this needs 'pdftk' and R library(staplr)
+                Default = 'y'"),
   #
   make_option(c("-c", "--infile_colour_tsne"), default="NA",
               help="A <tab> delimited table of barcodes and discrete properties to colour the t-SNE, like:
-              Barcode              CellClass    InOtherDatasets
-              AAACCTGAGCGGCTTC-1   1            yes
-              AAACCTGAGTCGAGTG-1   1            no
-              AAACCTGCAAAGGAAG-1   2            yes
-              AAACCTGGTCTCATCC-1   2            no
-              Default = 'NA' (no --infile_colour_tsne provided)"),
+                Barcode              CellClass    InOtherDatasets
+                AAACCTGAGCGGCTTC-1   1            yes
+                AAACCTGAGTCGAGTG-1   1            no
+                AAACCTGCAAAGGAAG-1   2            yes
+                AAACCTGGTCTCATCC-1   2            no
+                Default = 'NA' (no --infile_colour_tsne provided)"),
   #
   make_option(c("-g", "--list_genes"), default="NA",
               help="A <comma> delimited list of gene identifiers whose expression will be mapped into the t-SNE plots
-              Default = 'NA' (no --list_genes provided)"),
+                Default = 'NA' (no --list_genes provided)"),
   #
   make_option(c("-a", "--opacity"), default="0.1",
               help="If using a --list_genes, this parameter provides a value for the minimal opacity of gene expression. Use a value between 0 and 1
-              Default = 'y'"),
+                Default = 'y'"),
   #
   make_option(c("-d", "--pca_dimensions"), default="10",
               help="Max value of PCA dimensions to use for clustering and t-SNE functions
-              FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
-              Typically '10' is enough, if unsure use '10' and afterwards check these two files:
-              *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
-              *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
-              Default = '10'"),
+                FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
+                Typically '10' is enough, if unsure use '10' and afterwards check these two files:
+                *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
+                *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
+                Default = '10'"),
   #
   make_option(c("-m", "--percent_mito"), default="0,0.05",
               help="<comma> delimited min,max number of percentage of mitochondrial gene counts in a cell to be included in normalization and clustering analyses
-              For example, for regular scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
-              Default = '0,0.05'"),
+                For example, for whole cell scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
+                Default = '0,0.05'"),
   #
   make_option(c("-n", "--n_genes"), default="50,8000",
               help="<comma> delimited min,max number of unique gene counts in a cell to be included in normalization and clustering analyses
-              Default = '50,8000'"),
+                Default = '50,8000'"),
   #
   make_option(c("-e", "--return_threshold"), default="0.01",
               help="For each cluster only return markers that have a p-value < return_thresh
-              Default = '0.01'"),
+                Default = '0.01'"),
   
   make_option(c("-u", "--number_cores"), default="MAX",
               help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
-              Default = 'MAX'")
+                Default = 'MAX'")
   )
 
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -586,6 +590,16 @@ StopWatchEnd$ScaleData  <- Sys.time()
 ### Note: DimPlot can now handle 'umap' and 'tsne' in addition to 'pca', but for 'umap'
 ### you must first install the umap-learn python package (e.g. via pip install umap-learn)
 ### https://github.com/satijalab/seurat/blob/master/R/dimensional_reduction.R
+###
+### Note on Error:
+### `Error in irlba(A = t(x = object), nv = npcs, ...) :
+### max(nu, nv) must be strictly less than min(nrow(A), ncol(A))
+### Calls: RunPCA ... RunPCA -> RunPCA.Assay -> RunPCA -> RunPCA.default -> irlba
+### Execution halted`
+### This error has to do with `-m` parameter
+### For whole cell scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
+### If you use '0,0.05' for whole cell you will filter out most of the cells and won't have enough data to get the requested -d (PC's)
+### Also see here: https://github.com/satijalab/seurat/issues/127
 ####################################
 writeLines("\n*** Perform linear dimensional reduction by PCA ***\n")
 
