@@ -1,6 +1,6 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
-### Script made based on https://satijalab.org/seurat/pbmc3k_tutorial_v3.html
+### Script made based on https://satijalab.org/seurat/v3.0/pbmc3k_tutorial.html
 ### 
 ### NEW IMPLEMENTATIONS SINCE Seurat v2:
 ### 1) Rewrote with Seurat v3 commands (including ability to read output from Cell Ranger v3)
@@ -24,25 +24,36 @@
 ### 
 ### THINGS TO DO:
 ### 1) Parallelize FindAllMarkers() to send each cluster to a separate core
-### 2) To fix a bug with printing an 's' at the end of the times in *CPUusage.txt
-### 3) Pick the right number of dimension components
+###    Although it seems that FindMarkers() is already parallelized by Seurat:
+###    https://satijalab.org/seurat/v3.0/future_vignette.html
+### 2) A memmory error with getGlobalsAndPackages() while using ScaleData() was produced
+###    To allocate 850mb of RAM, use:
+###    `options(future.globals.maxSize= 850 * 1024^2)`
+###    https://stackoverflow.com/questions/40536067/how-to-adjust-future-global-maxsize-in-r
+###    but this was not enough for a 10,000 cells dataset. Thus, to use 4Gb of RAM, use:
+###    `options(future.globals.maxSize = 4000 * 1024^2)`
+###    https://satijalab.org/seurat/v3.0/integration.html
+### 3) To fix a bug with printing an 's' at the end of the times in *CPUusage.txt
+### 4) Pick the right number of dimension components
 ###    E.g. try to automatically get the inflection point from the PCElbowPlot() function output
-### 4) Pick the right resolution from FindClusters()
+### 5) Pick the right resolution from FindClusters()
 ###    E.g. implement Iness and Bader paper https://f1000research.com/articles/7-1522/v1 approach
 ###    By picking the number of clusters based on differentially expressed genes
-### 5) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
+### 6) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
 ###    Need to do it for both Human and Mouse
-### 6) In Seurat v2, Suluxan reported that the -c example Javier provided called a duplicated row names error
+### 7) In Seurat v2, Suluxan reported that the -c example Javier provided called a duplicated row names error
 ###    Need to see if it's still happening
-### 7) To implement a flag to see if inputted dataset matches expected percent.mito
+### 8) To implement a flag to see if inputted dataset matches expected percent.mito
 ###    In particular, if imputting a whole cell sample and using `-m 0,0.05` likely will filterout most cells
 ###    and the script may crash at step 'Perform linear dimensional reduction by PCA'
 ###    because the filtered matrix will be too sparse and small to get the gene PC's
+### 9) To compare SCTransform() vs. [NormalizeData(), ScaleData(), and FindVariableFeatures()]
+###    Do they produce similar results? Maybe use Circos plot to evaluate
 ###
 ### THINGS NICE TO HAVE:
 ### 1) Assigning cell type identity to clusters (needs supervised annotations, maybe based on GSVA)
 ### 2) Use knitr() to produce html plot layouts (https://yihui.name/knitr/demo/stitch/)
-### 3) In "Load data" we use Seurat(Read10X). In this command, when all barcodes come from the same sample (i.e. finish with the same digit), like:
+### 3) In "Load data" we use Seurat's Read10X() function. In this command, when all barcodes come from the same sample (i.e. finish with the same digit), like:
 ###    CTCTACGCAAGAGGCT-1
 ###    CTGAAACCAAGAGGCT-1
 ###    CTGAAACCAAGAGGCT-1
@@ -66,11 +77,11 @@
 suppressPackageStartupMessages(library(Seurat))       # to run QC, differential gene expression and clustering analyses
 ### Seurat v3 can be installed like:
 ### install.packages('devtools')
-### devtools::install_version(package = 'Seurat', version = package_version('3.0.2'))
+### devtools::install_github(repo = "satijalab/seurat", ref = "develop")
 suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # to calculate the percentages of extra properties to be t-SNE plotted
-suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table - only needed is using '-t DGE'
+suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table - only needed if using '-t DGE'
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # To run parallel processes
@@ -133,7 +144,7 @@ option_list <- list(
                 AAACCTGAGTCGAGTG-1   1            no
                 AAACCTGCAAAGGAAG-1   2            yes
                 AAACCTGGTCTCATCC-1   2            no
-                Default = 'NA' (no --infile_colour_tsne provided)"),
+                Default = 'NA' (i.e. no --infile_colour_tsne is provided)"),
   #
   make_option(c("-g", "--list_genes"), default="NA",
               help="A <comma> delimited list of gene identifiers whose expression will be mapped into the t-SNE plots
@@ -189,9 +200,8 @@ NumbCores        <- opt$number_cores
 PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
 Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
 
-
 ####################################
-### Define the number of cores for parallelization
+### Define number of cores and RAM for parallelization
 ####################################
 
 if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
@@ -207,9 +217,8 @@ cat("Using ", NumbCoresToUse, "cores")
 plan(strategy = "multicore", workers = NumbCoresToUse)
 
 ### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
-### allocate 850mb of RAM (850*1024^2 = 891289600), use:
-### https://stackoverflow.com/questions/40536067/how-to-adjust-future-global-maxsize-in-r
-options(future.globals.maxSize= 891289600)
+### allocate 4Gb of RAM (4000*1024^2), use:
+options(future.globals.maxSize = 4000 * 1024^2)
 
 ####################################
 ### Define default parameters
@@ -367,7 +376,6 @@ if (length(mito.features)[[1]] > 0) {
 }
 
 StopWatchEnd$GetMitoGenes  <- Sys.time()
-
 
 ####################################
 ### Get ribosomal protein genes
@@ -637,8 +645,16 @@ StopWatchStart$GetSignificantPCs  <- Sys.time()
 ### NOTE: JackStraw() process can take a long time for big datasets
 ### More approximate techniques such PCElbowPlot() can be used to reduce computation time
 
+ForElbowPlot<-ElbowPlot(object = seurat.object.f, ndims = 50, reduction = "pca")
+MaxYAxis<-as.integer(max(ForElbowPlot$data$stdev)+1)
+
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_PCElbowPlot.pdf", sep=""))
-print(ElbowPlot(object = seurat.object.f))
+print(ForElbowPlot
+      + scale_x_continuous(breaks =  seq(from = 0, to = 50, by=5))
+      + geom_vline(xintercept = seq(from = 0, to = 50, by=5), linetype='dotted', col="red")
+      + scale_y_continuous(breaks =  seq(from = 0, to = MaxYAxis, by=0.5))
+      + geom_hline(yintercept = seq(from = 0, to = MaxYAxis, by=0.5), linetype='dotted', col="red")
+)
 dev.off()
 
 StopWatchEnd$GetSignificantPCs  <- Sys.time()
@@ -660,7 +676,7 @@ StopWatchEnd$ClusterCells  <- Sys.time()
 StopWatchStart$CellClusterTables  <- Sys.time()
 
 CellNames<-rownames(seurat.object.f@meta.data)
-ClusterIdent<-seurat.object.f@meta.data$RNA_snn_res.1
+ClusterIdent<-seurat.object.f@meta.data$seurat_clusters
 Headers<-paste("Cell_barcode", paste("seurat_cluster_r", Resolution, sep = "", collapse = "") ,sep="\t")
 clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
 #
@@ -700,7 +716,7 @@ StopWatchStart$RunTSNE  <- Sys.time()
 ### "Error in Rtsne.default(X = as.matrix(x = data.use), dims = dim.embed,  : Perplexity is too large."
 ### One can try tunning down the default RunTSNE(..., perplexity=30) to say 5 or 10
 
-seurat.object.f <- RunTSNE(object = seurat.object.f, dims.use = PcaDimsUse, do.fast = T)
+seurat.object.f <- RunTSNE(object = seurat.object.f, dims = PcaDimsUse, do.fast = T)
 
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot.pdf", sep=""), width = 7, height = 7)
 print(DimPlot(object = seurat.object.f, reduction = 'tsne', group.by = 'ident', label = T, label.size=10))
@@ -744,7 +760,7 @@ StopWatchStart$FeatureTsnePlots  <- Sys.time()
 
 CellPropertiesToTsne<-c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo")
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNEPlot_QC.pdf", sep=""), width = 21, height = 5)
-print(FeaturePlot(object = seurat.object.f, features = CellPropertiesToTsne, cols = c("lightgrey", "blue"), reduction = "tsne", ncol = 3, pt.size = 1.5))
+print(FeaturePlot(object = seurat.object.f, label = T, order = T, features = CellPropertiesToTsne, cols = c("lightgrey", "blue"), reduction = "tsne", ncol = 3, pt.size = 1.5))
 dev.off()
 
 StopWatchEnd$FeatureTsnePlots  <- Sys.time()
@@ -855,7 +871,7 @@ NumberOfClusters<-length(unique(seurat.object.markers[["cluster"]]))
 
 StopWatchEnd$FindDiffMarkers  <- Sys.time()
 
-####################################
+###################################
 ### Violin plots for top genes
 ####################################
 writeLines("\n*** Violin plots for top genes ***\n")
@@ -955,7 +971,7 @@ writeLines("\n*** Obtain computing time used***\n")
 StopWatchEnd$Overall  <- Sys.time()
 
 OutfileCPUusage<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_CPUusage.txt", sep="")
-write(paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
+write(file = OutfileCPUusage, x = paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
 Headers<-paste("Step", "Time(minutes)", sep="\t")
 write.table(Headers,file = OutfileCPUusage, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 
@@ -964,7 +980,7 @@ for (stepToClock in names(StopWatchStart)) {
   TimeEnd   <- StopWatchEnd[[stepToClock]]
   TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
   ReportTime<-c(paste(stepToClock, TimeDiff, sep = "\t", collapse = ""))
-  write(file = OutfileCPUusage, x=gsub(pattern = " min", replacement = "",x = ReportTime), append = T)
+  write(file = OutfileCPUusage, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
 }
 
 ####################################
