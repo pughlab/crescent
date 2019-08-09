@@ -106,7 +106,8 @@ Dependencies
 **Seurat version 3** <br />
 Can be installed in R console with: <br />
 `install.packages('devtools')`<br />
-`devtools::install_github(repo = 'satijalab/seurat', ref = 'release/3.0')`<br /><br />
+`devtools::install_github(repo = "satijalab/seurat", ref = "develop")`<br />
+The latest version tested was v3.0.3.9023<br /><br />
 **dplyr** <br />
 Can be installed in R console with: <br />
 `install.packages('dplyr')`<br /><br />
