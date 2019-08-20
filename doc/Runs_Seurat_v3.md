@@ -16,7 +16,7 @@ Other parameters are set as defults based on the Seurat tutorial or from empiric
 Outfiles
 ================
 A table with the cell-clusters, a table with differentially expressed genes on each cell-cluster, plots provided as
-\*pdf files from the t-SNE, violin plots, clustering etc. See 'Outputs Description' below for details.
+\*pdf files from the t-SNE and UMAP, violin plots, clustering etc. See 'Outputs Description' below for details.
 
 General workflow
 ================
@@ -31,13 +31,13 @@ This code is a wrapper library written in R and the general workflow of this scr
   7. Determines statistically significant principal components
   8. Clusters the cells
   9. Gets average gene expression per cluster
-  10. Runs Non-linear dimensional reduction (tSNE)
+  10. Runs Non-linear dimensional reduction (tSNE and UMAP)
   11. Finds differentially expressed genes (gene markers for each cell cluster)
   12. Creates 'violin' plots for top differentially expressed genes for each cell cluster
   13. Creates heatmaps for top differentially expressed genes for each cell cluster
-  14. Creates t-SNE plots for top differentially expressed genes for each cell cluster
-  15. Creates t-SNE plots for requested barcode-attributes (optional)
-  16. Creates t-SNE plots for selected genes (optional)
+  14. Creates t-SNE and UMAP plots for top differentially expressed genes for each cell cluster
+  15. Creates t-SNE and UMAP plots for requested barcode-attributes (optional)
+  16. Creates t-SNE and UMAP plots for selected genes (optional)
   17. Creates a file with summary plots
   18. Reports used options
   19. Ends
@@ -50,7 +50,7 @@ To display help commands type: <br />
 `Rscript Runs_Seurat_v3.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t MTX -r 1 -o ~/example/outfiles -p sample_ID -s y -c ~/path_to_/example_cell_type.tsv -g GENE1,GENE2 -a 0.3 -d 10 -m 0,0.5 -n 50,8000 -e 0.01 -u MAX`
+`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t MTX -b Y -r 1 -o ~/example/outfiles -p sample_ID -s y -c ~/path_to_/example_cell_type.tsv -g GENE1,GENE2 -a 0.3 -d 10 -m 0,0.5 -n 50,8000 -e 0.01 -u MAX -w N`
 
 Inputs Description
 ================
@@ -86,6 +86,11 @@ Outputs Description
 | *TSNEPlot_ExtraProperties.pdf            |  t-SNE plot of extra barcode properties by option -c   |
 | *TSNEPlot_EachTopGene.pdf                |  t-SNE plot mapping top-2 genes for each cluster       |
 | *TSNEPlot_SelectedGenes.pdf              |  t-SNE plot mapping genes selected by option -g        |
+| *UMAPPlot.pdf                            |  UMAP plot                                             |
+| *UMAPCoordinates.tsv                     |  UMAP plot coordinates                                 |
+| *UMAPPlot_ExtraProperties.pdf            |  UMAP plot of extra barcode properties by option -c    |
+| *UMAPPlot_EachTopGene.pdf                |  UMAP plot mapping top-2 genes for each cluster        |
+| *UMAPPlot_SelectedGenes.pdf              |  UMAP plot mapping genes selected by option -g         |
 | *Heatmap.pdf                             |  Heatmap top genes, all clusters                       |
 | *VlnPlot_AfterClusters.pdf               |  Violing plot of top-2 genes for each cluster          |
 | *summary_plots.pdf                       |  Summary plots                                         |
