@@ -100,16 +100,26 @@ print("Writing MTX files")
 Write10X(obj = seurat.object, dir = OutdirFinal)
 
 ####################################
+### Reformat features.tsv.gz
+####################################
+features        <- read.table(file = paste(OutdirFinal, "/features.tsv.gz", sep = "", collapse = ""), row.names = 2)
+featuresOutMod  <- paste(OutdirFinal, "/features.dup.tsv.gz", sep = "", collapse = "")
+#
+write(file = featuresOutMod, x = paste(row.names(features), row.names(features), "Gene Expression", sep = "\t", collapse = "\n"))
+file.copy(from=featuresOutMod, to=paste(OutdirFinal, "/features.tsv.gz", sep = "", collapse = ""), overwrite=T)
+file.remove(featuresOutMod)
+
+####################################
 ### Reformat (if needed)
 ####################################
 if (grepl(pattern = "y", ignore.case = T, x = AddNumbers) == T) {
-  barcodes <- read.table(file = paste(OutdirFinal, "/barcodes.tsv.gz", sep = "", collapse = ""), row.names = 1)
-  genes    <- read.table(file = paste(OutdirFinal, "/features.tsv.gz", sep = "", collapse = ""), row.names = 2)
-  genesOutfile    <- paste(OutdirFinal, "/", PrefixOutfiles, ".expression_tpm.mtx_rows.gz", sep = "", collapse = "")
+  barcodes  <- read.table(file = paste(OutdirFinal, "/barcodes.tsv.gz", sep = "", collapse = ""), row.names = 1)
+  features  <- read.table(file = paste(OutdirFinal, "/features.tsv.gz", sep = "", collapse = ""), row.names = 2)
+  featuresOutfile <- paste(OutdirFinal, "/", PrefixOutfiles, ".expression_tpm.mtx_rows.gz", sep = "", collapse = "")
   barcodesOutfile <- paste(OutdirFinal, "/", PrefixOutfiles, ".expression_tpm.mtx_cols.gz", sep = "", collapse = "")
   #
   write(file = barcodesOutfile, x = paste(1:length(row.names(barcodes)), row.names(barcodes), sep = "\t", collapse = "\n"))
-  write(file = genesOutfile,    x = paste(1:length(row.names(genes)), row.names(genes), sep = "\t", collapse = "\n"))
+  write(file = featuresOutfile, x = paste(1:length(row.names(features)), row.names(features), sep = "\t", collapse = "\n"))
   #
   file.copy(from=paste(OutdirFinal, "/matrix.mtx.gz", sep = "", collapse = ""), to=paste(OutdirFinal, "/", PrefixOutfiles, ".expression_tpm.mtx.gz", sep = "", collapse = "") , overwrite=T)
   #
