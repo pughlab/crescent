@@ -67,12 +67,6 @@ Tempdir         <- "~/temp" ## Using this for temporary storage of outfiles beca
 
 MaxNumberOfCells <- 30000 ### Note this parameter may change the inflection point
 
-# Infile          <- "~/FULL_CELLRANGER_OUTPUT/output_from_cellranger_2.1.1/outs/possorted_genome_bam.bam"
-# InputType       <- "BAM"
-# Outdir          <- "~/temp/"
-# PrefixOutfiles  <- "test"
-# ClusterName     <- "h4h"
-
 StartTimeOverall<-Sys.time()
 
 ####################################
