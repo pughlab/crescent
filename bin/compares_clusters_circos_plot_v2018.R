@@ -2,10 +2,19 @@
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Script made based on https://xgaoo.github.io/ClusterMap/ClusterMap.html
 ###
-### NOTE: this is still running with Seurat v2 because library(ClusterMap) needs to be updated to use Seurat v3
+### IMPORTANT: this script needs library(Seurat) version 2
+###            because library(ClusterMap) needs to be updated to use Seurat v3
+###            If needed, one can install the two versions of Seurat (v2 and v3) in different paths,
+###            as shown in script '~/r_programs/installs_two_versions_of_seurat.R'
+###            and load the v2 like:
+###            PathForV2Libs<-paste(.libPaths(), "/Seurat_v2", sep = "", collapse = "")
+###            library("Seurat",lib.loc = PathForV2Libs)
+###
+### NOTE: If the MTX inputs come from Cell Ranger v2 (genes.tsv, matrix.tsv, barcodes.tsv) they will enter directly to this script
+###       If the MTX inputs come from Cell Ranger v3 (features.tsv.gv, matrix.tsv.gz, barcodes.tsv.gz) they will first be converted to v2 format
 ###
 ### THINGS MISSING / TO DO
-### 1) In "Load scRNA-seq data" we use Seurat library(Read10X). In this command, when all barcodes come from the same sample (i.e. finish with the same digit), like:
+### 1) In "Load scRNA-seq data" we use Seurat's Read10X() function. In this command, when all barcodes come from the same sample (i.e. finish with the same digit), like:
 ###    CTCTACGCAAGAGGCT-1
 ###    CTGAAACCAAGAGGCT-1
 ###    CTGAAACCAAGAGGCT-1
@@ -29,13 +38,14 @@
 ####################################
 ### Required libraries
 ####################################
-suppressPackageStartupMessages(library(Seurat))       # to run QC, differential gene expression and clustering analyses
+PathForV2Libs<-paste(.libPaths(), "/Seurat_v2", sep = "", collapse = "")
+suppressPackageStartupMessages(library("Seurat",lib.loc = PathForV2Libs))  # to run QC, differential gene expression and clustering analyses, change path as needed for Seurat v2
 suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # to calculate the percentages of extra properties to be t-SNE plotted
 suppressPackageStartupMessages(library(ClusterMap))   # to draw circos and other plots. Install as: library(devtools), then install_github('xgaoo/ClusterMap')
 suppressPackageStartupMessages(library(VennDiagram))  # to get gene and cell Venn diagrams
-suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table - only needed is using '-t DGE'
+suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table - only needed if using '-t DGE'
 ####################################
 
 ####################################
@@ -51,7 +61,7 @@ options( warn = -1 )
 option_list <- list(
   make_option(c("-i", "--input_1"), default="NA",
               help="Path/name to the first datset to compare
-              It can be wither a 10X *directory* with barcodes.tsv, genes.tsv and matrix.mtx files
+              It can be wither a MTX *directory* with barcodes.tsv, genes.tsv and matrix.mtx files
               or path/name of a <tab> delimited digital gene expression (DGE) *file* with genes in rows vs. barcodes in columns"),
   #
   make_option(c("-j", "--input_2"), default="NA",
@@ -59,7 +69,7 @@ option_list <- list(
               NOTE: the two datasets to compare can have different genes, but this program will work on their intersection"),
   #
   make_option(c("-t", "--input_type_1"), default="NA",
-              help="Indicates if --input_1 is either a '10X' *directory* or a 'DGE' file"),
+              help="Indicates if --input_1 is either a 'MTX' *directory* or a 'DGE' file"),
   #
   make_option(c("-u", "--input_type_2"), default="NA",
               help="Same as -t but for --input_2"),
@@ -88,13 +98,23 @@ option_list <- list(
               help="Indicates if a *summary_plots.pdf file should be generated [use 'y'] or not [use 'n']
               Note this needs 'pdftk' and R library(staplr)"),
   #
-  make_option(c("-c", "--infile_colour_tsne_discrete"), default="NA",
-              help="A <tab> delimited table of barcodes and discrete properties to colour the t-SNE, like:
-              Barcode              CellClass    InOtherDatasets
-              AAACCTGAGCGGCTTC-1   1            yes
-              AAACCTGAGTCGAGTG-1   1            no
-              AAACCTGCAAAGGAAG-1   2            yes
-              AAACCTGGTCTCATCC-1   2            no"),
+  make_option(c("-x", "--infile_colour_tsne_extra_1"), default="NA",
+              help="A <tab> delimited table of barcodes and extra properties to colour the t-SNE of input_1, like:
+              Barcode              Extra_property_1   Extra_property_2
+              AAACCTGAGCGGCTTC-1   1                  yes
+              AAACCTGAGTCGAGTG-1   1                  no
+              AAACCTGCAAAGGAAG-1   2                  yes
+              AAACCTGGTCTCATCC-1   2                  no"),
+  #
+  make_option(c("-y", "--infile_colour_tsne_extra_2"), default="NA",
+              help="A <tab> delimited table of barcodes and extra properties to colour the t-SNE of input_2,
+              similar format than --infile_colour_tsne_extra_1 but for barcodes from input_2"),
+  #
+  make_option(c("-z", "--infile_colour_tsne_extra_merged"), default="NA",
+              help="A <tab> delimited table of barcodes and extra properties to colour the t-SNE of the dataset merging (input_1 and input_2),
+              similar format than --infile_colour_tsne_extra_1 but for barcodes IDs should look like:
+              Dataset1-AAACCCAAGCTGAAGC
+              Dataset2-AAACCCAGTACTCCCC"),
   #
   make_option(c("-g", "--list_genes"), default="NA",
               help="A <comma> delimited list of gene identifiers whose expression will be mapped into the t-SNE plots"),
@@ -139,7 +159,9 @@ Outdir         <- opt$outdir
 PrefixOutfiles <- opt$prefix_outfiles
 SummaryPlots   <- opt$summary_plots
 ListGenes      <- opt$list_genes
-ColourTsne     <- opt$infile_colour_tsne
+ColourTsne1    <- opt$infile_colour_tsne_extra_1
+ColourTsne2    <- opt$infile_colour_tsne_extra_2
+ColourTsneM    <- opt$infile_colour_tsne_extra_merged
 Opacity        <- as.numeric(opt$opacity)
 PcaDimsUse     <- c(1:as.numeric(opt$pca_dimensions))
 StrNGenes      <- opt$n_genes
@@ -230,24 +252,84 @@ dir.create(file.path(Outdir, "SEURAT"), recursive = T)
 dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
 
 ####################################
+### Check if MTX files need to be downgraded to v2 format
+####################################
+writeLines("\n*** Check scRNA-seq data 1 format ***\n")
+if (regexpr("^MTX$", InputType1, ignore.case = T)[1] == 1) {
+
+  ### To look for *gz source files
+  OriginFeaturesFileGz <- paste(Input1, "/features.tsv.gz",   sep = "", collapse = "")
+  OriginBarcodesFileGz <- paste(Input1, "/barcodes.tsv.gz",   sep = "", collapse = "")
+  OriginMatrixFileGz   <- paste(Input1, "/matrix.mtx.gz",     sep = "", collapse = "")
+
+  if (file.exists(OriginFeaturesFileGz) == T) {
+    NewInput1 <- paste(Outdir, "/SEURAT/MTX_DATASET_1", sep = "", collapse = "")
+    dir.create(file.path(NewInput1), recursive = T)
+    
+    ### Destination files
+    DestBarcodesFileGz   <- paste(NewInput1, "/barcodes.tsv.gz",   sep = "", collapse = "")
+    DestMatrixFileGz     <- paste(NewInput1, "/matrix.mtx.gz",     sep = "", collapse = "")
+    DestGenesFileGz      <- paste(NewInput1, "/genes.tsv",         sep = "", collapse = "")
+    
+    file.copy(from=OriginBarcodesFileGz, to=DestBarcodesFileGz,  overwrite=T)
+    file.copy(from=OriginMatrixFileGz,   to=DestMatrixFileGz,    overwrite=T)
+    system(command = paste("gunzip -f ", DestBarcodesFileGz, sep = "", collapse = ""), wait = T)
+    system(command = paste("gunzip -f ", DestMatrixFileGz,   sep = "", collapse = ""), wait = T)
+    system(command = paste("zmore ", OriginFeaturesFileGz, " | cut -f 1,2 > ",  DestGenesFileGz, sep = "", collapse = ""))
+    
+    ### New infiles are downgraded v2 format
+    Input1<-NewInput1
+    ToRemoveDowngraded1<-1
+  }
+}
+
+writeLines("\n*** Check scRNA-seq data 2 format ***\n")
+if (regexpr("^MTX$", InputType2, ignore.case = T)[1] == 1) {
+  
+  ### To look for *gz source files
+  OriginFeaturesFileGz <- paste(Input2, "/features.tsv.gz",   sep = "", collapse = "")
+  OriginBarcodesFileGz <- paste(Input2, "/barcodes.tsv.gz",   sep = "", collapse = "")
+  OriginMatrixFileGz   <- paste(Input2, "/matrix.mtx.gz",     sep = "", collapse = "")
+  
+  if (file.exists(OriginFeaturesFileGz) == T) {
+    NewInput2 <- paste(Outdir, "/SEURAT/MTX_DATASET_2", sep = "", collapse = "")
+    dir.create(file.path(NewInput2), recursive = T)
+    
+    ### Destination files
+    DestBarcodesFileGz   <- paste(NewInput2, "/barcodes.tsv.gz",   sep = "", collapse = "")
+    DestMatrixFileGz     <- paste(NewInput2, "/matrix.mtx.gz",     sep = "", collapse = "")
+    DestGenesFileGz      <- paste(NewInput2, "/genes.tsv",         sep = "", collapse = "")
+    
+    file.copy(from=OriginBarcodesFileGz, to=DestBarcodesFileGz,  overwrite=T)
+    file.copy(from=OriginMatrixFileGz,   to=DestMatrixFileGz,    overwrite=T)
+    system(command = paste("gunzip -f ", DestBarcodesFileGz, sep = "", collapse = ""), wait = T)
+    system(command = paste("gunzip -f ", DestMatrixFileGz,   sep = "", collapse = ""), wait = T)
+    system(command = paste("zmore ", OriginFeaturesFileGz, " | cut -f 1,2 > ",  DestGenesFileGz, sep = "", collapse = ""))
+    
+    ### New infiles are downgraded v2 format
+    Input2<-NewInput2
+    ToRemoveDowngraded2<-1
+  }
+}
+
+####################################
 ### Load scRNA-seq data and Create Seurat objects
 ####################################
 writeLines("\n*** Load scRNA-seq data 1 ***\n")
-if (regexpr("^10X$", InputType1, ignore.case = T)[1] == 1) {
-  print("Loading 10X infiles")
+if (regexpr("^MTX$", InputType1, ignore.case = T)[1] == 1) {
+  print("Loading MTX infiles")
   input.matrix_1 <- Read10X(data.dir = Input1)
   seurat.object_1_full  <- CreateSeuratObject(raw.data = input.matrix_1, min.cells = MinCells, min.genes = MinGenes, project = PrefixOutfiles)
 }else if (regexpr("^DGE$", InputType1, ignore.case = T)[1] == 1) {
   print("Loading Digital Gene Expression matrix")
   input.matrix_1 <- data.frame(fread(Input1),row.names=1)
   seurat.object_1_full  <- CreateSeuratObject(raw.data = input.matrix_1, min.cells = MinCells, min.genes = MinGenes, project = PrefixOutfiles)
-}else{
   stop(paste("Unexpected type of input: ", InputType1, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n", sep=""))
 }
 
 writeLines("\n*** Load scRNA-seq data 2 ***\n")
-if (regexpr("^10X$", InputType2, ignore.case = T)[1] == 1) {
-  print("Loading 10X infiles")
+if (regexpr("^MTX$", InputType2, ignore.case = T)[1] == 1) {
+  print("Loading MTX infiles")
   input.matrix_2 <- Read10X(data.dir = Input2)
   seurat.object_2_full <- CreateSeuratObject(raw.data = input.matrix_2, min.cells = MinCells, min.genes = MinGenes, project = PrefixOutfiles)
 }else if (regexpr("^DGE$", InputType2, ignore.case = T)[1] == 1) {
@@ -681,19 +763,19 @@ FeaturePlot(object = seurat.object_1, features.plot = CellPropertiesToTsne, cols
 dev.off()
 
 ####################################
-### Colour t-SNE by -infile_colour_tsne_discrete
+### Colour t-SNE by -infile_colour_tsne_extra_1
 ####################################
-writeLines("\n*** Colour t-SNE by -infile_colour_tsne_discrete dataset 1 ***\n")
+writeLines("\n*** Colour t-SNE by -infile_colour_tsne_extra_1 ***\n")
 
-if (regexpr("^NA$", ColourTsne, ignore.case = T)[1] == 1) {
+if (regexpr("^NA$", ColourTsne1, ignore.case = T)[1] == 1) {
   print("No extra barcode-attributes will be used for t-SNE plots")
 }else{
   
   seurat.object_1.meta.data<-seurat.object_1@meta.data
-  ExtraCellProperties <- data.frame(read.table(ColourTsne, header = T, row.names = 1))
+  ExtraCellProperties <- data.frame(read.table(ColourTsne1, header = T, row.names = 1))
   #
   # This is because Seurat removes the last '-digit' from barcode ID's when all barcodes finish with the same digit (i.e. come from the same sample)
-  # so that barcodes from --infile_colour_tsne_discrete and --input can match each other
+  # so that barcodes from --infile_colour_tsne_extra_1 and --input can match each other
   rownames(ExtraCellProperties)<-gsub(x =rownames(ExtraCellProperties), pattern = "-[0-9]+$", perl = T, replacement = "")
   seurat.object_1 <- AddMetaData(object = seurat.object_1, metadata = ExtraCellProperties)
   #
@@ -792,8 +874,6 @@ pdf(file=paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput1, ".SEURAT_Heatmap.p
 DoHeatmap(object = seurat.object_1, genes.use = top_genes_by_cluster_for_heatmap$gene, slim.col.label = T, remove.key = T, title = PrefixInput1, cex.row = 6)
 dev.off()
 
-
-
 ####################################
 ####################################
 ####################################
@@ -801,7 +881,7 @@ dev.off()
 ####################################
 ####################################
 ####################################
-writeLines("\n*** Process ***\n")
+writeLines("\n*** Process dataset 2 ***\n")
 #
 writeLines("\n*** Get  mitochondrial genes ***\n")
 #
@@ -1085,18 +1165,18 @@ FeaturePlot(object = seurat.object_2, features.plot = CellPropertiesToTsne, cols
 dev.off()
 #
 ####################################
-### Colour t-SNE by -infile_colour_tsne_discrete
+### Colour t-SNE by -infile_colour_tsne_extra_2
 ####################################
-writeLines("\n*** Colour t-SNE by -infile_colour_tsne_discrete dataset 2 ***\n")
+writeLines("\n*** Colour t-SNE by -infile_colour_tsne_extra_2 ***\n")
 #
-if (regexpr("^NA$", ColourTsne, ignore.case = T)[1] == 1) {
+if (regexpr("^NA$", ColourTsne2, ignore.case = T)[1] == 1) {
   print("No extra barcode-attributes will be used for t-SNE plots")
 }else{
   seurat.object_2.meta.data<-seurat.object_2@meta.data
-  ExtraCellProperties <- data.frame(read.table(ColourTsne, header = T, row.names = 1))
+  ExtraCellProperties <- data.frame(read.table(ColourTsne2, header = T, row.names = 1))
   #
   # This is because Seurat removes the last '-digit' from barcode ID's when all barcodes finish with the same digit (i.e. come from the same sample)
-  # so that barcodes from --infile_colour_tsne_discrete and --input can match each other
+  # so that barcodes from --infile_colour_tsne_extra_2 and --input can match each other
   rownames(ExtraCellProperties)<-gsub(x =rownames(ExtraCellProperties), pattern = "-[0-9]+$", perl = T, replacement = "")
   seurat.object_2 <- AddMetaData(object = seurat.object_2, metadata = ExtraCellProperties)
   #
@@ -1478,30 +1558,31 @@ dev.off()
 outfileRDs_c12<-paste(Tempdir,"/",PrefixOutfiles,"_merged.Dataset.RDS", sep="")
 saveRDS(seurat.object_c12, file = outfileRDs_c12)
 #
+
 ####################################
 ### Colour t-SNE by nGene, nUMI, and percent.mito
 ####################################
-writeLines("\n*** Colour t-SNE by nGene, nUMI, and percent.mito merged dataset ***\n")
+writeLines("\n*** Colour t-SNE by nGene, nUMI, and percent.mito each dataset ***\n")
 #
 CellPropertiesToTsne<-c("nGene", "nUMI", "percent.mito")
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,"_merged.SEURAT_TSNEPlot_QC.pdf", sep=""), width = 15, height = 5)
 FeaturePlot(object = seurat.object_c12, features.plot = CellPropertiesToTsne, cols.use = c("grey", "blue"), reduction.use = "tsne", nCol = 3, pt.size = 1.5)
 dev.off()
-#
+
 ####################################
-### Colour t-SNE by -infile_colour_tsne_discrete
+### Colour t-SNE by -infile_colour_tsne_extra_merged
 ####################################
-writeLines("\n*** Colour t-SNE by -infile_colour_tsne_discrete merged dataset ***\n")
+writeLines("\n*** Colour t-SNE by -infile_colour_tsne_extra_merged ***\n")
 #
-if (regexpr("^NA$", ColourTsne, ignore.case = T)[1] == 1) {
+if (regexpr("^NA$", ColourTsneM, ignore.case = T)[1] == 1) {
   print("No extra barcode-attributes will be used for t-SNE plots")
 }else{
   #
   seurat.object_c12.meta.data<-seurat.object_c12@meta.data
-  ExtraCellProperties <- data.frame(read.table(ColourTsne, header = T, row.names = 1))
+  ExtraCellProperties <- data.frame(read.table(ColourTsneM, header = T, row.names = 1))
   #
   # This is because Seurat removes the last '-digit' from barcode ID's when all barcodes finish with the same digit (i.e. come from the same sample)
-  # so that barcodes from --infile_colour_tsne_discrete and --input can match each other
+  # so that barcodes from --infile_colour_tsne_extra_merged and --input can match each other
   rownames(ExtraCellProperties)<-gsub(x =rownames(ExtraCellProperties), pattern = "-[0-9]+$", perl = T, replacement = "")
   seurat.object_c12 <- AddMetaData(object = seurat.object_c12, metadata = ExtraCellProperties)
   #
@@ -1616,6 +1697,7 @@ write.table(x=paste(ColNames_2, PrefixInput2, sep = "\t"), file=OutfileCellDatas
 DatasetPerBarcode <- data.frame(read.table(OutfileCellDatasets, header = T, row.names = 1))
 seurat.object_c12 <- AddMetaData(object = seurat.object_c12, metadata = DatasetPerBarcode)
 #
+#################
 ## t-SNE showing both datasets overlapped, coloured per dataset
 pdf(file=paste(Tempdir,"/",PrefixOutfiles,"_merged.SEURAT_TSNEPlot_ColourByDataset.pdf", sep=""))
 TSNEPlot(object = seurat.object_c12, group.by = "Dataset",
@@ -1623,18 +1705,20 @@ TSNEPlot(object = seurat.object_c12, group.by = "Dataset",
 )
 dev.off()
 #
+#################
 ## t-SNE's showing each dataset, coordinates and colours based on clustering of seurat.object_c12
 seurat.object_c12_1<-SubsetData(object = seurat.object_c12, cells.use = ColNames_1)
 seurat.object_c12_2<-SubsetData(object = seurat.object_c12, cells.use = ColNames_2)
 #
 pdf(file=paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput1, ".SEURAT_TSNEPlot_CoordsAndColoursFromMerged.pdf", sep=""))
-TSNEPlot(object = seurat.object_c12_1, plot.title = paste(PrefixInput1, " - coords and colours from merged", sep = "", collapse = "") , do.label = T, label.size = 10)
+TSNEPlot(object = seurat.object_c12_1, plot.title = paste(PrefixInput1, " - coordinates and colours from merged", sep = "", collapse = "") , do.label = T, label.size = 10)
 dev.off()
 #
 pdf(file=paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput2, ".SEURAT_TSNEPlot_CoordsAndColoursFromMerged.pdf", sep=""))
-TSNEPlot(object = seurat.object_c12_2, plot.title = paste(PrefixInput2, " - coords and colours from merged", sep = "", collapse = "") , do.label = T, label.size = 10)
+TSNEPlot(object = seurat.object_c12_2, plot.title = paste(PrefixInput2, " - coordinates and colours from merged", sep = "", collapse = "") , do.label = T, label.size = 10)
 dev.off()
 #
+#################
 ## t-SNE's showing each dataset, coordinates based on clustering of seurat.object_c12, colours based on each dataset clustering
 InfileClusters1<-paste(Tempdir,"/",PrefixOutfiles, "_res", Resolution1,  "_", PrefixInput1, ".SEURAT_CellClusters.tsv", sep="")
 InfileClusters2<-paste(Tempdir,"/",PrefixOutfiles, "_res", Resolution2,  "_", PrefixInput2, ".SEURAT_CellClusters.tsv", sep="")
@@ -1646,12 +1730,26 @@ seurat.object_c12_1 <- AddMetaData(object = seurat.object_c12_1, metadata = Clus
 seurat.object_c12_2 <- AddMetaData(object = seurat.object_c12_2, metadata = Clusters2)
 #
 pdf(file=paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput1, ".SEURAT_TSNEPlot_CoordsFromMerged_ColoursFromItself.pdf", sep=""))
-TSNEPlot(object = seurat.object_c12_1, group.by = "seurat_clusters", plot.title = paste(PrefixInput1, " - coords from merged, colours from ", PrefixInput1, sep = "", collapse = "") , do.label = T, label.size = 10)
+TSNEPlot(object = seurat.object_c12_1, group.by = "seurat_clusters", plot.title = paste(PrefixInput1, " - coordinates from merged, colours from ", PrefixInput1, sep = "", collapse = "") , do.label = T, label.size = 10)
 dev.off()
 #
 pdf(file=paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput2, ".SEURAT_TSNEPlot_CoordsFromMerged_ColoursFromItself.pdf", sep=""))
-TSNEPlot(object = seurat.object_c12_2, group.by = "seurat_clusters", plot.title = paste(PrefixInput2, " - coords from merged, colours from ", PrefixInput2, sep = "", collapse = "") , do.label = T, label.size = 10)
+TSNEPlot(object = seurat.object_c12_2, group.by = "seurat_clusters", plot.title = paste(PrefixInput2, " - coordinates from merged, colours from ", PrefixInput2, sep = "", collapse = "") , do.label = T, label.size = 10)
 dev.off()
+#
+#################
+## t-SNE's showing each dataset, coordinates based on clustering of seurat.object_c12, colours based on QC nGene, nUMI, percent.mito for each dataset
+CellPropertiesToTsne<-c("nGene", "nUMI", "percent.mito")
+#
+pdf(file=paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput1, ".SEURAT_TSNEPlot_QC_CoordsFromMerge.pdf", sep=""), width = 15, height = 5)
+FeaturePlot(object = seurat.object_c12_1, features.plot = CellPropertiesToTsne, cols.use = c("grey", "blue"), reduction.use = "tsne", nCol = 3, pt.size = 1.5)
+dev.off()
+#
+pdf(file=paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput2, ".SEURAT_TSNEPlot_QC_CoordsFromMerge.pdf", sep=""), width = 15, height = 5)
+FeaturePlot(object = seurat.object_c12_2, features.plot = CellPropertiesToTsne, cols.use = c("grey", "blue"), reduction.use = "tsne", nCol = 3, pt.size = 1.5)
+dev.off()
+
+
 
 
 
@@ -1797,6 +1895,9 @@ if (regexpr("^y$", SummaryPlots, ignore.case = T)[1] == 1) {
     paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput1, ".SEURAT_TSNEPlot_CoordsFromMerged_ColoursFromItself.pdf", sep=""),
     paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput2, ".SEURAT_TSNEPlot_CoordsFromMerged_ColoursFromItself.pdf", sep=""),
     paste(Tempdir,"/",PrefixOutfiles, "_CombDatasets.circos.pdf", sep=""),
+    paste(Tempdir,"/",PrefixOutfiles, "_merged.SEURAT_TSNEPlot_QC.pdf", sep=""),
+    paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput1, ".SEURAT_TSNEPlot_QC_CoordsFromMerge.pdf", sep=""),
+    paste(Tempdir,"/",PrefixOutfiles, "_", PrefixInput2, ".SEURAT_TSNEPlot_QC_CoordsFromMerge.pdf", sep=""),
     paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_CellsVennDiagram.pdf", sep=""),
     paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_GenesVennDiagram.pdf", sep="")
   )
@@ -1860,25 +1961,37 @@ ReportTime<-c(
 )
 #
 write(file = OutfileCPUusage, x=c(ReportTime))
-#
+
 ####################################
 ### Moving outfiles into outdir
 ####################################
 writeLines("\n*** Moving outfiles into outdir ***\n")
 writeLines(paste(Outdir,"/SEURAT/",sep="",collapse = ""))
-#
+
 outfiles_to_move <- list.files(Tempdir,pattern = PrefixOutfiles, full.names = F)
 sapply(outfiles_to_move,FUN=function(eachFile){
   ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
   file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/SEURAT/",eachFile,sep=""),overwrite=T)
   file.remove(paste(Tempdir,"/",eachFile,sep=""))
 })
-#
+
+####################################
+### Remove temporary files
+####################################
+
+if (ToRemoveDowngraded1 == 1) {
+  system(command = paste("rm -r ", NewInput1, sep = "", collapse = ""))
+}
+
+if (ToRemoveDowngraded2 == 1) {
+  system(command = paste("rm -r ", NewInput2, sep = "", collapse = ""))
+}
+
 ####################################
 ### Turning warnings on
 ####################################
 options(warn = oldw)
-#
+
 ####################################
 ### Finish
 ####################################
