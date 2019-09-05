@@ -595,7 +595,10 @@ writeLines("\n*** Outputting normalized count matrix as tsv ***\n")
 
 normalized_count_matrix <- as.matrix(seurat.object.f@assays[["RNA"]]@data)
 write.table(normalized_count_matrix, file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_normalized_count_matrix.tsv", sep=""), sep="\t", row.names=TRUE, col.names=TRUE)
+} else {
+  writeLines("\n*** Skipping normalized count matrix tsv output ***\n")
 }
+
 
 
 ####################################
