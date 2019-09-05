@@ -1,16 +1,22 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
-### Script that takes a mtx set of files (barcodes.tsv, genes.tsv and matrix.mtx)
-### and a list of barcodes and returns a new set of mtx files restricted to
-### --select_barcodes and --select_genes
+### Uses Seurat to load the matrix and library(DropletUtils) to write the subsampled matrix
+###
+### THINGS TO DO
+### 1) Implement DropletUtils v1.4.1 or upper, as it seems to be able to write (also read?) Cell Ranger v3 MTX files (barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz)
+###    Then we may not need Seurat anymore
 ####################################
 
 ####################################
 ### Required libraries
 ####################################
-suppressPackageStartupMessages(library(DropletUtils))  # to habdle reading and writing mtx files
-suppressPackageStartupMessages(library(Matrix))        # to get rowSums (number of reads for each barcode)
-suppressPackageStartupMessages(library(optparse))      # (CRAN) to handle one-line-commands
+suppressPackageStartupMessages(library(DropletUtils)) # to handle reading and writing mtx files
+suppressPackageStartupMessages(library(Seurat))       # to run QC, differential gene expression and clustering analyses
+### Seurat v3 can be installed like:
+### install.packages('devtools')
+### devtools::install_github(repo = 'satijalab/seurat', ref = 'release/3.0')
+suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
+suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 ####################################
 
 ####################################
@@ -25,22 +31,29 @@ options( warn = -1 )
 #
 option_list <- list(
   make_option(c("-i", "--input"), default="NA",
-              help="Path/name to a 10X *directory* with barcodes.tsv, genes.tsv and matrix.mtx files"),
-#
+              help="The path/name to a MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files
+              Notes:
+              The 'MTX' files can be for example the output from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
+              Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
+              Default = 'No default. It's mandatory to specify this parameter'"),
+  #
   make_option(c("-b", "--select_barcodes"), default="NA",
               help="One of three options:
               A path/name for the *file* with the list of barcodes to select, one-per-row
               Or type a *numeric value* to print barcodes with a *sum* across all genes >= *numeric value*
-              Or type 'ALL' to print all barcodes from --input into outfile"),
-#
+              Or type 'ALL' to print all barcodes from --input into outfile
+              Default = 'No default. It's mandatory to specify this parameter'"),
+  #
   make_option(c("-g", "--select_genes"), default="NA",
               help="One of three options:
               A path/name for the *file* with the list of genes to select, one-per-row
               Or type a *numeric value* to print genes with a *sum* across all barcodes >= *numeric value*
-              Or type 'ALL' to print all genes from --input into outfile"),
-#
-  make_option(c("-o", "--outdir"), default="selected_gene_bc_matrices",
-              help="A path/name for the directory where the new mtx files will be saved")
+              Or type 'ALL' to print all genes from --input into outfile
+              Default = 'No default. It's mandatory to specify this parameter'"),
+  #
+  make_option(c("-o", "--outdir"), default="NA",
+              help="A path/name for the directory where the new mtx files will be saved
+              Default = 'No default. It's mandatory to specify this parameter'")
   )
 
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -51,13 +64,22 @@ SelectGenes    <- opt$select_genes
 Outdir         <- opt$outdir
 PrefixOutfiles <- "selected_gene_bc_matrices"
 
-StartTimeOverall<-Sys.time()
+Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+
+####################################
+### Start stopwatches
+####################################
+
+StopWatchStart <- list()
+StopWatchEnd   <- list()
+
+StopWatchStart$Overall  <- Sys.time()
 
 ####################################
 ### Check that mandatory parameters are not 'NA' (default)
 ####################################
 
-ListMandatory<-list("input")
+ListMandatory<-list("input", "select_barcodes", "select_genes", "outdir")
 for (param in ListMandatory) {
   if (length(grep('^NA$',opt[[param]], perl = T))) {
     stop(paste("Parameter -", param, " can't be 'NA' (default). Use option -h for help.", sep = "", collapse = ""))
@@ -75,55 +97,99 @@ Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Out
 OutdirFinal<-paste(Outdir, "/selected_gene_bc_matrices",  sep = "", collapse = "")
 dir.create(file.path(OutdirFinal), recursive = T)
 
+####################################
+### Load MTX data
+####################################
+writeLines("\n*** Load MTX files ***\n")
+
+StopWatchStart$LoadScRNAseqData  <- Sys.time()
+
+print("Loading MTX infiles")
+input.matrix <- Read10X(data.dir = Input)
+dim(input.matrix)
+
+StopWatchEnd$LoadScRNAseqData  <- Sys.time()
 
 ####################################
-### Load data
+### Create a Seurat object
 ####################################
+writeLines("\n*** Create a Seurat object ***\n")
 
-fullmat.sce<-read10xCounts(samples = Input, col.names = T)
+StopWatchStart$CreateSeuratObject  <- Sys.time()
+
+seurat.object.u  <- CreateSeuratObject(counts = input.matrix, project = PrefixOutfiles)
+nCellsInOriginalMatrix<-length(seurat.object.u@meta.data$orig.ident)
+seurat.object.u
+
+StopWatchEnd$CreateSeuratObject  <- Sys.time()
 
 ####################################
-### Select barcodes
+### Determine barcodes to subsample
 ####################################
+writeLines("\n*** Determine barcodes to subsample ***\n")
 
-if (regexpr("^ALL$", SelectBarcodes, ignore.case = T)[1] == 1) {
-  colNamesForNewOutput<-colnames(fullmat.sce)
-}else if (is.numeric(SelectBarcodes) == T) {
-  colNamesForNewOutput<-colSums(counts(fullmat.sce)) > SelectBarcodes
+StopWatchStart$DetermineBarcodesToSubsample  <- Sys.time()
+
+if ((grepl(pattern = "^[0-9]+$", x = SelectBarcodes)) == TRUE) {
+  stop("Subsetting barcodes by number needs to be implemented")
+}else if ((grepl(pattern = "^ALL$", x = SelectBarcodes)) == TRUE) {
+  stop("Including ALL barcodes needs to be implemented")
 }else{
-  select_bcs.file<-read.table(file = SelectBarcodes, header = F, row.names = 1)
-  colNamesForNewOutput<-rownames(select_bcs.file)
+  sampled.barcodes <- data.frame(read.table(SelectBarcodes, header = F, row.names = NULL))
 }
 
-####################################
-### Select genes
-####################################
+StopWatchEnd$DetermineBarcodesToSubsample  <- Sys.time()
 
-if (regexpr("^ALL$", SelectGenes, ignore.case = T)[1] == 1) {
-  rowNamesForNewOutput<-rownames(fullmat.sce)
-}else if (is.numeric(SelectGenes) == T) {
-  rowNamesForNewOutput<-rowSums(counts(fullmat.sce)) > SelectGenes
+####################################
+### Determine genes to subsample
+####################################
+writeLines("\n*** Determine genes to subsample ***\n")
+
+StopWatchStart$DetermineGenesToSubsample  <- Sys.time()
+
+if ((grepl(pattern = "^[0-9]+$", x = SelectGenes)) == TRUE) {
+  stop("Subsetting genes needs to be implemented")
+}else if ((grepl(pattern = "^ALL$", x = SelectGenes)) == TRUE) {
+  print("Using all genes")
 }else{
-  select_genes.file<-read.table(file = SelectGenes, header = F, row.names = 1)
-  rowNamesForNewOutput<-rownames(select_genes.file)
+  stop("Subsetting genes needs to be implemented")
 }
 
-####################################
-### Make new matrix
-####################################
-
-submat.sce<-fullmat.sce[rowNamesForNewOutput,colNamesForNewOutput]
+StopWatchEnd$DetermineGenesToSubsample  <- Sys.time()
 
 ####################################
-### Write output
+### Get subset of barcodes and genes from Seurat object
 ####################################
-write10xCounts(path = OutdirFinal, x = counts(submat.sce) , barcodes=colnames(submat.sce), gene.id=rowData(submat.sce)$ID,
-               gene.symbol=rowData(submat.sce)$Symbol, overwrite=T)
+writeLines("\n*** Get subset of barcodes and genes from Seurat object ***\n")
+
+StopWatchStart$SubsampleMatrix  <- Sys.time()
+
+seurat.object.subsampled <- SubsetData(object = seurat.object.u, cells = as.vector(sampled.barcodes[,1]))
+
+StopWatchEnd$SubsampleMatrix  <- Sys.time()
+
+####################################
+### Write subsampled matrix
+####################################
+writeLines("\n*** Write subsampled matrix ***\n")
+
+StopWatchStart$WriteSubsampledMatrix  <- Sys.time()
+
+OutdirFinal
+
+write10xCounts(path = OutdirFinal, x = GetAssayData(object = seurat.object.subsampled, slot = "counts"),
+               barcodes=colnames(x = seurat.object.subsampled),
+               gene.id=rownames(x = seurat.object.subsampled),
+               gene.symbol=rownames(x = seurat.object.subsampled), overwrite=T)
+
+StopWatchEnd$WriteSubsampledMatrix  <- Sys.time()
 
 ####################################
 ### Report used options
 ####################################
-OutfileOptionsUsed<-paste(OutdirFinal,"/",PrefixOutfiles,".submatrix_from_mtx_UsedOptions.txt", sep="")
+writeLines("\n*** Report used options ***\n")
+
+OutfileOptionsUsed<-paste(Tempdir,"/",PrefixOutfiles,".Subsample_UsedOptions.txt", sep="")
 TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
 write(file = OutfileOptionsUsed, x=c(TimeOfRun,"\n","Options used:"))
 
@@ -132,17 +198,39 @@ for (optionInput in option_list) {
 }
 
 ####################################
-### Report time used
+### Obtain computing time used
 ####################################
-EndTimeOverall<-Sys.time()
+writeLines("\n*** Obtain computing time used***\n")
 
-TookTimeOverall <-format(difftime(EndTimeOverall, StartTimeOverall, units = "secs"))
-OutfileCPUusage<-paste(OutdirFinal,"/",PrefixOutfiles,".submatrix_from_mtx_CPUusage.txt", sep="")
-ReportTime<-c(
-  paste("overall",TookTimeOverall,collapse = "\t")
-)
+StopWatchEnd$Overall  <- Sys.time()
 
-write(file = OutfileCPUusage, x=c(ReportTime))
+OutfileCPUusage<-paste(Tempdir,"/",PrefixOutfiles,".Subsample_CPUusage.txt", sep="")
+
+Headers<-paste("Step", "Time(minutes)", sep="\t")
+write.table(Headers,file = OutfileCPUusage, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
+for (stepToClock in names(StopWatchStart)) {
+  TimeStart <- StopWatchStart[[stepToClock]]
+  TimeEnd   <- StopWatchEnd[[stepToClock]]
+  TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
+  ReportTime<-c(paste(stepToClock, TimeDiff, sep = "\t", collapse = ""))
+  write(file = OutfileCPUusage, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
+}
+
+####################################
+### Moving outfiles into outdir
+####################################
+writeLines("\n*** Moving outfiles into outdir ***\n")
+writeLines(paste(Outdir,"SUBSAMPLED/",sep="",collapse = ""))
+
+outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".Subsample_", sep=""), full.names = F)
+sapply(outfiles_to_move,FUN=function(eachFile){
+  ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
+  file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/SUBSAMPLED/",eachFile,sep=""),overwrite=T)
+  file.remove(paste(Tempdir,"/",eachFile,sep=""))
+})
+
+print(paste("Outfiles at: ", Outdir, "SUBSAMPLED/", sep = "", collapse = ""))
 
 ####################################
 ### Turning warnings on
@@ -152,7 +240,6 @@ options(warn = oldw)
 ####################################
 ### Finish
 ####################################
-
-print("END - All done!!!")
+writeLines(paste("END - All done!!! See:\n", OutfileCPUusage, "\nfor computing times report", sep = "", collapse = ""))
 
 quit()
