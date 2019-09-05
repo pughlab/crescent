@@ -2,14 +2,16 @@
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Script that takes a mtx set of files (barcodes.tsv, genes.tsv and matrix.mtx)
 ### and transforms it into a genes (rows) vs. barcodes (columns) sparse matrix
+###
+### NEW IMPLEMENTATIONS SINCE Seurat v2:
+### 1) Rewritten with Seurat v3 commands (including ability to read output from Cell Ranger v3)
+###    Main differences vs. Seurat v2 include:
+###    a) new function names
 ####################################
 
 ####################################
 ### Required libraries
 ####################################
-# suppressPackageStartupMessages(library(DropletUtils)) # to habdle reading and writing mtx files
-# suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
-# suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table
 suppressPackageStartupMessages(library(Seurat))       # to run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
@@ -71,25 +73,25 @@ dir.create(file.path(Outdir, "GENE_VS_BARCODE_MATRIX"), recursive = T)
 dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
 
 ####################################
-### Load data
+### Load scRNA-seq data
 ####################################
-print("Loading 10X infiles")
+writeLines("\n*** Load scRNA-seq data ***\n")
 input.matrix <- Read10X(data.dir = Input)
 dim(input.matrix)
 
 ####################################
 ### Create a Seurat object
 ####################################
-
-seurat.object <- CreateSeuratObject(raw.data = input.matrix)
+writeLines("\n*** Create a Seurat object ***\n")
+seurat.object  <- CreateSeuratObject(counts = input.matrix, project = PrefixOutfiles)
 
 ####################################
 ### Write gene vs. barcode outfile
 ####################################
 OutfileDGE<-paste(Tempdir,"/",PrefixOutfiles,".gene_vs_barcode.tsv", sep="")
-Headers<-paste("GENES",paste(colnames(seurat.object@data),sep="",collapse = "\t"),sep="\t",collapse = "\t")
+Headers<-paste("GENES",paste(colnames(GetAssayData(object = seurat.object, slot = 'counts')),sep="",collapse = "\t"),sep="\t",collapse = "\t")
 write.table(Headers,file = OutfileDGE, row.names = F, col.names = F, sep="\t", quote = F)
-write.table(x=as.matrix(seurat.object@data), file = OutfileDGE, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+write.table(x=as.matrix(GetAssayData(object = seurat.object, slot = 'counts')), file = OutfileDGE, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
 ### Report used options
