@@ -218,11 +218,12 @@ ProgramOutdir <- "SEURAT"
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ### Outfiles will be stored into `ProgramOutdir` directory
-  PrefixOutfiles <- "cwl_run"
-  Tempdir        <- ProgramOutdir
+  #PrefixOutfiles <- "cwl_run" 
+  PrefixOutfiles  <- opt$prefix_outfiles
+  Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F) ## Note Tempdir will be the final out-directory as well
 }else{
-  PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
+  #PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
   ## Using `Tempdir` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
   Tempdir        <- "~/temp" 
@@ -586,6 +587,16 @@ StopWatchEnd$NormalizeData  <- Sys.time()
 }else{
   writeLines("\n*** Data assumed to be already normalized ***\n")
 }
+
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+
+# output the normalized count matrix for violin plots
+writeLines("\n*** Outputting normalized count matrix as tsv ***\n")
+
+normalized_count_matrix <- as.matrix(seurat.object.f@assays[["RNA"]]@data)
+write.table(normalized_count_matrix, file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_normalized_count_matrix.tsv", sep=""), sep="\t", row.names=TRUE, col.names=TRUE)
+}
+
 
 ####################################
 ### Detect, save list and plot variable genes
@@ -991,7 +1002,8 @@ writeLines("\n*** Transform select *pdf files into *png ***\n")
 StopWatchStart$TransformPdfToPng  <- Sys.time()
 
 ListOfPdfFilesToPnge<-c(paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_PCElbowPlot.pdf", sep = "", collapse = ""),
-                        paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_QC_VlnPlot.pdf",  sep = "", collapse = "")
+                        paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_QC_VlnPlot.pdf",  sep = "", collapse = ""),
+                        paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_TSNEPlot_EachTopGene.pdf",  sep = "", collapse = "")
 )
 
 sapply(ListOfPdfFilesToPnge,FUN=function(eachFile) {
