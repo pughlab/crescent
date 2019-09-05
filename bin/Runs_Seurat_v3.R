@@ -223,7 +223,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F) ## Note Tempdir will be the final out-directory as well
 }else{
-  #PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
+  PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
   ## Using `Tempdir` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
   Tempdir        <- "~/temp" 
