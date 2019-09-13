@@ -115,7 +115,7 @@ option_list <- list(
   make_option(c("-t", "--input_type"), default="NA",
               help="Indicates if input is either a 'MTX' directory or a 'DGE' file
                 Default = 'No default. It's mandatory to specify this parameter'"),
-#
+  #
   make_option(c("-b", "--normalize_and_scale_sample"), default="Y",
               help="Indicates if input is either raw counts and hence needs to be normalized and scaled [use 'y']
                 or it's already normalized (e.g. if inputting transcripts per million counts (TPMs)) [use 'n']
@@ -575,31 +575,29 @@ rm(UnfilteredData.df)
 ### Normalize data (if applicable)
 ####################################
 if (regexpr("^Y$", NormalizeAnsScale, ignore.case = T)[1] == 1) {
-
-writeLines("\n*** Normalize data ***\n")
-
-StopWatchStart$NormalizeData  <- Sys.time()
-
-seurat.object.f <- NormalizeData(object = seurat.object.f, normalization.method = "LogNormalize", scale.factor = DefaultParameters$ScaleFactor)
-
-StopWatchEnd$NormalizeData  <- Sys.time()
-
+  
+  writeLines("\n*** Normalize data ***\n")
+  
+  StopWatchStart$NormalizeData  <- Sys.time()
+  
+  seurat.object.f <- NormalizeData(object = seurat.object.f, normalization.method = "LogNormalize", scale.factor = DefaultParameters$ScaleFactor)
+  
+  StopWatchEnd$NormalizeData  <- Sys.time()
+  
 }else{
   writeLines("\n*** Data assumed to be already normalized ***\n")
 }
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-
-# output the normalized count matrix for violin plots
-writeLines("\n*** Outputting normalized count matrix as tsv ***\n")
-
-normalized_count_matrix <- as.matrix(seurat.object.f@assays[["RNA"]]@data)
-write.table(normalized_count_matrix, file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_normalized_count_matrix.tsv", sep=""), sep="\t", row.names=TRUE, col.names=TRUE)
+  
+  # output the normalized count matrix for violin plots
+  writeLines("\n*** Outputting normalized count matrix as tsv ***\n")
+  
+  normalized_count_matrix <- as.matrix(seurat.object.f@assays[["RNA"]]@data)
+  write.table(normalized_count_matrix, file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_normalized_count_matrix.tsv", sep=""), sep="\t", row.names=TRUE, col.names=TRUE)
 } else {
   writeLines("\n*** Skipping normalized count matrix tsv output ***\n")
 }
-
-
 
 ####################################
 ### Detect, save list and plot variable genes
@@ -765,23 +763,23 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   ### Run non-linear dimensional reductions
   ####################################
   writeLines(paste("\n*** Run ", DimensionReductionMethods[[dim_red_method]][["name"]], " ***\n", sep = "", collapse = ""))
-
+  
   ### NOTES:
   ### In RunTSNE: if the datasets is small user may get error:
   ### `Error in Rtsne.default(X = as.matrix(x = data.use), dims = dim.embed,  : Perplexity is too large.`
   ### User can try tunning down the default RunTSNE(..., perplexity=30) to say 5 or 10
   
   seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, do.fast = T)
-
+  
   pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot.pdf", sep="", collapse = ""))
   print(DimPlot(object = seurat.object.f, reduction = dim_red_method, group.by = 'ident', label = T, label.size=10))
   dev.off()
-
+  
   ####################################
   ### Write out coordinates
   ####################################
   writeLines(paste("\n*** Write out ", DimensionReductionMethods[[dim_red_method]][["name"]], " coordinates ***\n", sep = "", collapse = ""))
-
+  
   OutfileCoordinates<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_", DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv", sep="", collapse = "")
   Headers<-paste("Barcode",paste(colnames(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings),sep="",collapse="\t"),sep="\t",collapse = "\t")
   write.table(Headers,file = OutfileCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
@@ -791,7 +789,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   ### Colour dimension reduction plots by nFeature_RNA, nCount_RNA, percent.mito and percent.ribo
   ####################################
   writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by nFeature_RNA, nCount_RNA, percent.mito and percent.ribo ***\n", sep = "", collapse = ""))
-
+  
   CellPropertiesToColour<-c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo")
   pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_QC.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf * 1.5, height = DefaultParameters$BaseSizeSinglePlotPdf * 1.5)
   print(FeaturePlot(object = seurat.object.f, label = T, order = T, features = CellPropertiesToColour, cols = c("lightgrey", "blue"), reduction = dim_red_method, ncol = 2, pt.size = 1.5))
@@ -824,7 +822,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     }
     dev.off()
   }
-
+  
   ####################################
   ### Colour dimension reduction plots showing each requested gene
   ####################################
@@ -946,7 +944,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   pdf(file=paste(Tempdir,"/",PrefixOutfiles,".SEURAT_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_EachTopGene.pdf", sep=""), width=pdfWidth, height=pdfHeight)
   print(FeaturePlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), cols = c("lightgrey", "blue"), reduction = dim_red_method))
   dev.off()
-
+  
 }
 
 ####################################
@@ -1061,7 +1059,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
 } else {
   writeLines("\n*** Moving outfiles into outdir ***\n")
   writeLines(paste(Outdir,"/SEURAT/", sep="", collapse = ""))
-
+  
   outfiles_to_move <- list.files(Tempdir, pattern = paste(PrefixOutfiles, ".SEURAT_", sep=""), full.names = F)
   sapply(outfiles_to_move,FUN=function(eachFile) {
     ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
