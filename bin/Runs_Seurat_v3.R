@@ -74,7 +74,7 @@ suppressPackageStartupMessages(library(Seurat))       # to run QC, differential 
 suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # to calculate the percentages of extra properties to be t-SNE plotted
-suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table - only needed if using '-t DGE'
+suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # To run parallel processes
@@ -854,8 +854,6 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 ####################################
 writeLines("\n*** Finding differentially expressed genes for each cell cluster ***\n")
 
-StopWatchStart$FindDiffMarkers  <- Sys.time()
-
 ### Finding markers for every cluster compared to all remaining cells
 ### only.pos allows to report only the positive ones
 ### Using min.pct and thresh.use (renamed logfc.threshold in latest Seurat versions) to speed comparisons up. Other options to further speed are min.diff.pct, and  max.cells.per.ident
@@ -879,11 +877,11 @@ StopWatchStart$FindDiffMarkers  <- Sys.time()
 ###    This is sufficiently small as to not compress logGER magnitudes,
 ###    while keeping comparisons with zero reasonably close to the range of potential logGER values (Innes and Bader, 2018, F1000 Research)
 
+StopWatchStart$FindDiffMarkers  <- Sys.time()
+
 FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.f@meta.data))
 
-StartTimeFindAllMarkers<-Sys.time()
 seurat.object.markers <- FindAllMarkers(object = seurat.object.f, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-EndTimeFindAllMarkers<-Sys.time()
 
 write.table(data.frame("GENE"=rownames(seurat.object.markers),seurat.object.markers),paste(Tempdir,"/",PrefixOutfiles,".SEURAT_MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
 ### Get top-2 genes sorted by cluster, then by p-value
