@@ -1,6 +1,5 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
-### Integrates Rajiv samples
 ### Script made based on https://satijalab.org/seurat/v3.0/merge_vignette.html
 ### and https://satijalab.org/seurat/v3.0/sctransform_vignette.html
 ####################################
@@ -15,7 +14,7 @@ suppressPackageStartupMessages(library(Seurat))       # to run QC, differential 
 suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # to calculate the percentages of extra properties to be t-SNE plotted
-suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table - only needed if using '-t DGE'
+suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # To run parallel processes
@@ -75,20 +74,20 @@ option_list <- list(
   #
   make_option(c("-d", "--pca_dimensions"), default="10",
               help="Max value of PCA dimensions to use for clustering and t-SNE functions
-              FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
-              Typically '10' is enough, if unsure use '10' and afterwards check these two files:
-              *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
-              *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
-              Default = '10'"),
+                FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
+                Typically '10' is enough, if unsure use '10' and afterwards check these two files:
+                *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
+                *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
+                Default = '10'"),
   #
   make_option(c("-m", "--percent_mito"), default="0,0.05",
               help="<comma> delimited min,max number of percentage of mitochondrial gene counts in a cell to be included in normalization and clustering analyses
-              For example, for whole cell scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
-              Default = '0,0.05'"),
+               For example, for whole cell scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
+               Default = '0,0.05'"),
   #
   make_option(c("-n", "--n_genes"), default="50,8000",
               help="<comma> delimited min,max number of unique gene counts in a cell to be included in normalization and clustering analyses
-              Default = '50,8000'"),
+                Default = '50,8000'"),
   #
   make_option(c("-e", "--return_threshold"), default="0.01",
               help="For each cluster only return markers that have a p-value < return_thresh
@@ -494,9 +493,9 @@ for (dataset in rownames(InputsTable)) {
     rm(UnfilteredData.df)
     
     ####################################
-    ### Assign data to list(Datasets)
+    ### Assign data to Datasets lists
     ####################################
-    writeLines(paste("\n*** Assign data to list(Datasets): ", dataset, " ***\n", sep = "", collapse = ""))
+    writeLines(paste("\n*** Assign data to Datasets lists: ", dataset, " ***\n", sep = "", collapse = ""))
     
     SeuratObjects[[as.character(NumberOfDatasets)]]  <- seurat.object.integrated
     DatasetIds[[as.character(NumberOfDatasets)]]     <- dataset
@@ -629,14 +628,14 @@ StopWatchEnd$RunTsne  <- Sys.time()
 ####################################
 writeLines("\n*** Write out t-SNE coordinates ***\n")
 
-StopWatchStart$WriteTsneCoords  <- Sys.time()
+StopWatchStart$WriteTsneCoords <- Sys.time()
 
 OutfileTsneCoordinates<-paste(Tempdir,"/",PrefixOutfiles,".SEURAT_TSNECoordinates.tsv", sep="")
-Headers<-paste("Barcode",paste(colnames(seurat.object.integrated@reductions$tsne@cell.embeddings),sep="",collapse="\t"),sep="\t",collapse = "\t")
-write.table(Headers,file = OutfileTsneCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
+Headers<-paste("Barcode", paste(colnames(seurat.object.integrated@reductions$tsne@cell.embeddings), sep="", collapse="\t"), sep="\t", collapse = "\t")
+write.table(Headers, file = OutfileTsneCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(seurat.object.integrated@reductions$tsne@cell.embeddings, file = OutfileTsneCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
-StopWatchEnd$WriteTsneCoords  <- Sys.time()
+StopWatchEnd$WriteTsneCoords <- Sys.time()
 
 ####################################
 ### Colour UMAP plot by dataset
@@ -833,15 +832,16 @@ write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names =
 write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
-### Cluster each sample cells from integrated data
+### Cluster each sample cells, colour UMAP and t-SNE plots by cell cluster
+### and finding differentially expressed genes from integrated data
 ####################################
-writeLines("\n*** Cluster each sample cells from integrated data ***\n")
+writeLines("\n*** Cluster each sample cells, colour UMAP and t-SNE plots by cell cluster and finding differentially expressed genes from integrated data ***\n")
 
 Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$sample
 
 Headers<-paste("Cell_barcode", paste("seurat_cluster_r", Resolution, sep = "", collapse = ""), sep="\t")
 #
-OutfileEachSampleClusters<-paste(Tempdir,"/",PrefixOutfiles, "_EachSample", ".SEURAT_CellClusters.tsv", sep="")
+OutfileEachSampleClusters<-paste(Tempdir,"/",PrefixOutfiles, ".SEURAT_EachSampleCellClusters.tsv", sep="")
 write.table(Headers,file = OutfileEachSampleClusters, row.names = F, col.names = F, sep="\t", quote = F)
 
 for (dataset in rownames(InputsTable)) {
@@ -897,6 +897,44 @@ for (dataset in rownames(InputsTable)) {
   
   StopWatchEnd$UmapAndTsneColourByEachSampleCellCluster$dataset <- Sys.time()
 
+  ####################################
+  ### Finding differentially expressed genes for each cell cluster (each sample reclustered)
+  ####################################
+  writeLines("\n*** Finding differentially expressed genes for each cell cluster (each sample reclustered) ***\n")
+  
+  ### Finding markers for every cluster compared to all remaining cells
+  ### only.pos allows to report only the positive ones
+  ### Using min.pct and thresh.use (renamed logfc.threshold in latest Seurat versions) to speed comparisons up. Other options to further speed are min.diff.pct, and  max.cells.per.ident
+  ### See http://satijalab.org/seurat/de_vignette.html
+  ### Other options
+  ### find all markers of cluster 1
+  ### cluster1.markers <- FindMarkers(object = seurat.object.each_sample, ident.1 = 1, min.pct = DefaultParameters$FindAllMarkers.MinPct)
+  ### print(x = head(x = cluster1.markers, n = 5))
+  ###
+  ### find all markers distinguishing cluster 5 from clusters 0 and 3
+  ### cluster5.markers <- FindMarkers(object = seurat.object.each_sample, ident.1 = 5, ident.2 = c(0, 3), min.pct = DefaultParameters$FindAllMarkers.MinPct)
+  ### print(x = head(x = cluster5.markers, n = 5))
+  ###
+  ### NOTES:
+  ### 1) FindAllMarkers() uses return.thresh = 0.01 as defaults, but FindMarkers() displays all genes passing previous filters.
+  ###    Thus to make the outputs between these two commands identical to each other use return.thresh = 1
+  ###
+  ### 2) Default pseudocount.use=1, which sounds high for a Log level correction
+  ###    An earlier version of this script was using 1e-99, but it was probably too small
+  ###    Now using the inverse of the number of cells in the data.
+  ###    This is sufficiently small as to not compress logGER magnitudes,
+  ###    while keeping comparisons with zero reasonably close to the range of potential logGER values (Innes and Bader, 2018, F1000 Research)
+  
+  StopWatchStart$FindDiffMarkers$dataset  <- Sys.time()
+    
+  FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample@meta.data))
+    
+  seurat.object.each_sample.markers <- FindAllMarkers(object = seurat.object.each_sample, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+    
+  write.table(data.frame("GENE"=rownames(seurat.object.each_sample.markers),seurat.object.each_sample.markers),paste(Tempdir,"/",PrefixOutfiles, "_", dataset, ".SEURAT_MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
+
+  StopWatchEnd$FindDiffMarkers$dataset  <- Sys.time()
+
 }
 
 ####################################
@@ -931,53 +969,6 @@ write.table(data.frame(cluster.averages$SCT),file = OutfileClusterAveragesSCT, r
 #
 write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-
-
-####################################
-### Finding differentially expressed genes for each cell cluster (each sample reclustered)
-####################################
-writeLines("\n*** Finding differentially expressed genes for each cell cluster (each sample reclustered) ***\n")
-
-StopWatchStart$FindDiffMarkers  <- Sys.time()
-
-### Finding markers for every cluster compared to all remaining cells
-### only.pos allows to report only the positive ones
-### Using min.pct and thresh.use (renamed logfc.threshold in latest Seurat versions) to speed comparisons up. Other options to further speed are min.diff.pct, and  max.cells.per.ident
-### See http://satijalab.org/seurat/de_vignette.html
-### Other options
-### find all markers of cluster 1
-### cluster1.markers <- FindMarkers(object = seurat.object.f, ident.1 = 1, min.pct = DefaultParameters$FindAllMarkers.MinPct)
-### print(x = head(x = cluster1.markers, n = 5))
-###
-### find all markers distinguishing cluster 5 from clusters 0 and 3
-### cluster5.markers <- FindMarkers(object = seurat.object.f, ident.1 = 5, ident.2 = c(0, 3), min.pct = DefaultParameters$FindAllMarkers.MinPct)
-### print(x = head(x = cluster5.markers, n = 5))
-###
-### NOTES:
-### 1) FindAllMarkers() uses return.thresh = 0.01 as defaults, but FindMarkers() displays all genes passing previous filters.
-###    Thus to make the outputs between these two commands identical to each other use return.thresh = 1
-###
-### 2) Default pseudocount.use=1, which sounds high for a Log level correction
-###    An earlier version of this script was using 1e-99, but it was probably too small
-###    Now using the inverse of the number of cells in the data.
-###    This is sufficiently small as to not compress logGER magnitudes,
-###    while keeping comparisons with zero reasonably close to the range of potential logGER values (Innes and Bader, 2018, F1000 Research)
-
-FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.f@meta.data))
-
-StartTimeFindAllMarkers<-Sys.time()
-seurat.object.markers <- FindAllMarkers(object = seurat.object.f, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-EndTimeFindAllMarkers<-Sys.time()
-
-write.table(data.frame("GENE"=rownames(seurat.object.markers),seurat.object.markers),paste(Tempdir,"/",PrefixOutfiles,".SEURAT_MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
-### Get top-2 genes sorted by cluster, then by p-value
-top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% top_n(DefaultParameters$NumberOfGenesPerClusterToPlotTsne, avg_logFC))
-NumberOfClusters<-length(unique(seurat.object.markers[["cluster"]]))
-
-StopWatchEnd$FindDiffMarkers  <- Sys.time()
-
-
-
 
 
 ####################################
