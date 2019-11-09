@@ -429,11 +429,28 @@ writeLines("\n*** Filter cells based gene counts and mitochondrial representatio
 
 StopWatchStart$FilterCells  <- Sys.time()
 
+rm(seurat.object.f)
+
 if (length(mito.features)[[1]] > 0) {
-  seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA > DefaultParameters$MinGenes & nFeature_RNA < DefaultParameters$MaxGenes & percent.mito > DefaultParameters$MinPMito & percent.mito < DefaultParameters$MaxPMito)
+  seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes & percent.mito >= DefaultParameters$MinPMito & percent.mito <= DefaultParameters$MaxPMito)
+  
+  ### Get list of barcodes excluded by mito and/or nFeature_RNA
+  BarcodesExcludedByMito            <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = percent.mito >= DefaultParameters$MinPMito & percent.mito <= DefaultParameters$MaxPMito)))
+  BarcodesExcludedByNFeature        <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)))
+  BarcodesExcludedByMitoAndNFeature <- intersect(BarcodesExcludedByMito, BarcodesExcludedByNFeature)
+
 }else{
-  seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA > DefaultParameters$MinGenes & nFeature_RNA < DefaultParameters$MaxGenes)
+  seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)
+
+  ### Get list of barcodes excluded by nFeature_RNA
+  BarcodesExcludedByMito            <- NULL
+  BarcodesExcludedByNFeature        <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)))
+  BarcodesExcludedByMitoAndNFeature <- NULL
+
 }
+NumberOfBarcodesExcludedByMito            <- length(BarcodesExcludedByMito)
+NumberOfBarcodesExcludedByNFeature        <- length(BarcodesExcludedByNFeature)
+NumberOfBarcodesExcludedByMitoAndNFeature <- length(BarcodesExcludedByMitoAndNFeature)
 
 StopWatchEnd$FilterCells  <- Sys.time()
 
@@ -478,8 +495,6 @@ nCount_RNAStats.u  <-paste(c(" mean = ", QCStats$unfiltered$mean$nCount_RNA,  "\
 percent.mito.u     <-paste(c(" mean = ", QCStats$unfiltered$mean$percent.mito,"\n", "median = ", QCStats$unfiltered$median$percent.mito), sep = "", collapse="")
 percent.ribo.u     <-paste(c(" mean = ", QCStats$unfiltered$mean$percent.ribo,"\n", "median = ", QCStats$unfiltered$median$percent.ribo), sep = "", collapse="")
 
-QCStats$unfiltered$mean$nFeature_RNA
-
 ### Get filtered data QC statistics
 nFeature_RNA.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$nFeature_RNA, nGenes = 2)
 nCount_RNA.f.df    <-data.frame(Expression_level = seurat.object.f@meta.data$nCount_RNA,   nCount_RNA = 2)
@@ -501,7 +516,6 @@ LabelFiltered      <-paste("After filters:  No. of cells = ", nrow(seurat.object
 NumberOfCells<- list()
 NumberOfCells[["unfiltered"]] <- nrow(seurat.object.u@meta.data)
 NumberOfCells[["filtered"]]   <- nrow(seurat.object.f@meta.data)
-#LabelFilters       <-paste("Filters: No. of genes per cell = ", ListNGenes, "Fraction mitochondrial protein genes per cell = ", ListPMito), sep ="", collapse = "")
 
 ### Commands for violin ggplot's
 DataForHeader.df<-data.frame(forx = c(0.4,0.4), fory = c(0.09,0.03), label = c(LabelFiltered,LabelUnfiltered))
@@ -514,7 +528,8 @@ nFeature_RNA.plot<-ggplot(data=nFeature_RNA.m.df, aes(x = factor(nGenes), y = Ex
   theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
         axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
   scale_fill_manual(values = ColoursQCViolinPlots) +
-  labs(x="No. of genes") +
+  # labs(x="No. of genes") +
+  labs(x=paste("No. of genes", "\n", "Filter: ", "min=", ListNGenes[[1]], " max=", ListNGenes[[2]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByNFeature, sep = "", collapse = "")) +
   annotate("text", x = 1 , y = max(nFeature_RNA.m.df$Expression_level)*1.1, label = nFeature_RNAStats.u, col = ColoursQCViolinPlots[[1]]) +
   annotate("text", x = 2 , y = max(nFeature_RNA.m.df$Expression_level)*1.1, label = nFeature_RNAStats.f, col = ColoursQCViolinPlots[[2]])
 
@@ -523,7 +538,7 @@ nCount_RNA.plot<-ggplot(data=nCount_RNA.m.df, aes(x = factor(nCount_RNA), y = Ex
   theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
         axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
   scale_fill_manual(values = ColoursQCViolinPlots) +
-  labs(x="No. of reads") +
+  labs(x=paste("No. of reads", "\n", "no filter was used", "\n", sep = "", collapse = "")) +
   annotate("text", x = 1 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.u, col = ColoursQCViolinPlots[[1]]) +
   annotate("text", x = 2 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.f, col = ColoursQCViolinPlots[[2]])
 
@@ -533,6 +548,7 @@ percent.mito.plot<-ggplot(data=percent.mito.m.df, aes(x = factor(percent.mito), 
         axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
   scale_fill_manual(values = ColoursQCViolinPlots) +
   labs(x="Mitochondrial genes (fraction)") +
+  labs(x=paste("Mitochondrial genes", "\n", "Filter: ", "min=", ListPMito[[1]], " max=", ListPMito[[2]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByMito, sep = "", collapse = "")) +
   annotate("text", x = 1 , y = max(percent.mito.m.df$Expression_level)*1.1, label = percent.mito.u, col = ColoursQCViolinPlots[[1]]) +
   annotate("text", x = 2 , y = max(percent.mito.m.df$Expression_level)*1.1, label = percent.mito.f, col = ColoursQCViolinPlots[[2]])
 
@@ -541,7 +557,7 @@ percent.ribo.plot<-ggplot(data=percent.ribo.m.df, aes(x = factor(percent.ribo), 
   theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
         axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
   scale_fill_manual(values = ColoursQCViolinPlots) +
-  labs(x="Ribosomal protein genes (fraction)") +
+  labs(x=paste("Ribosomal protein genes (fraction)", "\n", "no filter was used", "\n", sep = "", collapse = "")) +
   annotate("text", x = 1 , y = max(percent.ribo.m.df$Expression_level)*1.1, label = percent.ribo.u, col = ColoursQCViolinPlots[[1]]) +
   annotate("text", x = 2 , y = max(percent.ribo.m.df$Expression_level)*1.1, label = percent.ribo.f, col = ColoursQCViolinPlots[[2]])
 
@@ -573,7 +589,7 @@ for (filter_status in names(QCStats)) {
   }
 }
 
-StopWatchStart$QCsummarytable  <- Sys.time()
+StopWatchEnd$QCsummarytable  <- Sys.time()
 
 
 ####################################
