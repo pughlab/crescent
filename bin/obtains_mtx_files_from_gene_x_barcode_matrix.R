@@ -8,10 +8,10 @@
 ####################################
 ### Required libraries
 ####################################
-suppressPackageStartupMessages(library(earlycross))   # to handle reading and writing mtx files
-### Which can be installed like:
-### install.packages('devtools')
-### devtools::install_github("daskelly/earlycross")
+suppressPackageStartupMessages(library(DropletUtils)) # to write MTX/H5 format files. Note it has about the same speed than library(earlycross) which can't handly H5
+### Requires DropletUtils (tested on v1.7.1), which can be installed like:
+### install.packages("remotes")
+### remotes::install_github("MarioniLab/DropletUtils")
 suppressPackageStartupMessages(library(Seurat))       # to create a Seurat object for earlycross
 ### Requires Seurat v3 (tested on v3.0.3.9023), which can be installed like:
 ### install.packages('devtools')
@@ -32,28 +32,34 @@ options( warn = -1 )
 #
 option_list <- list(
   make_option(c("-i", "--input"), default="NA",
-              help="Path/name to a genes (rows) vs. barcodes (columns) matrix"),
+              help="Path/name to a genes (rows) vs. barcodes (columns) matrix
+                Default = 'No default. It's mandatory to specify this parameter'"),
+              
   #
   make_option(c("-o", "--outdir"), default="selected_gene_bc_matrices",
-              help="A path/name for the directory where the new mtx files will be saved"),
+              help="A path/name for the directory where the new mtx files will be saved
+                Default = 'selected_gene_bc_matrices'"),
+  
   #
   make_option(c("-p", "--prefix_outfiles"), default="NA",
               help="A prefix for outfile names, e.g. your project ID
-              Note: if using option `-l y`, outfile names will be:
-              prefix_outfiles.mtx, prefix_outfiles.mtx_rows and prefix_outfiles.mtx_cols
-              Or if using `-l n`, outfile names will be:
-              'barcodes.tsv', 'genes.tsv' and 'matrix.mtx'"),
-  #
+                Note: if using option `-l y`, outfile names will be:
+                prefix_outfiles.mtx, prefix_outfiles.mtx_rows and prefix_outfiles.mtx_cols
+                Or if using `-l n`, outfile names will be:
+                'barcodes.tsv', 'genes.tsv' and 'matrix.mtx'
+                Default = 'NA'"),
+    #
   make_option(c("-l", "--add_barcode_and_gene_numbers"), default="N",
               help="Indicates if 'barcodes.tsv' and 'genes.tsv' outfiles should have numbers in the first column (type [y/Y] or [n/N]), like:
-              1	SRR3541565
-              2	SRR3541564
-              3	SRR3541563
-              and
-              1	ENSG00000000003
-              2	ENSG00000000005
-              3	ENSG00000000419")
-)
+                1	SRR3541565
+                2	SRR3541564
+                3	SRR3541563
+                and
+                1	ENSG00000000003
+                2	ENSG00000000005
+                3	ENSG00000000419
+                Default = 'N'")
+  )
 
 opt <- parse_args(OptionParser(option_list=option_list))
 
@@ -80,7 +86,8 @@ for (param in ListMandatory) {
 ####################################
 
 print("Loading genes (rows) vs. barcodes (columns) matrix")
-input.matrix <- data.frame(fread(Input),row.names=1)
+## Note `check.names = F` is needed for both `fread` and `data.frame`
+input.matrix <- as.matrix(data.frame(fread(Input, check.names = F), row.names=1, check.names = F))
 
 print("Creating Seurat object")
 seurat.object  <- CreateSeuratObject(counts = input.matrix, project = PrefixOutfiles)
@@ -97,17 +104,7 @@ for (file in MtxFilesList) {
 }
 
 print("Writing MTX files")
-Write10X(obj = seurat.object, dir = OutdirFinal)
-
-####################################
-### Reformat features.tsv.gz
-####################################
-features        <- read.table(file = paste(OutdirFinal, "/features.tsv.gz", sep = "", collapse = ""), row.names = 2)
-featuresOutMod  <- paste(OutdirFinal, "/features.dup.tsv.gz", sep = "", collapse = "")
-#
-write(file = featuresOutMod, x = paste(row.names(features), row.names(features), "Gene Expression", sep = "\t", collapse = "\n"))
-file.copy(from=featuresOutMod, to=paste(OutdirFinal, "/features.tsv.gz", sep = "", collapse = ""), overwrite=T)
-file.remove(featuresOutMod)
+write10xCounts(path = OutdirFinal, x = seurat.object@assays[["RNA"]]@data, gene.type="Gene Expression", overwrite=T, type="sparse", version="3")
 
 ####################################
 ### Reformat (if needed)
