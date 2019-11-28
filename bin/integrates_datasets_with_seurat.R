@@ -121,6 +121,11 @@ option_list <- list(
               help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
                 Default = 'MAX'"),
   #
+  make_option(c("-s", "--save_r_object"), default="N",
+              help="Indicates if a R object with the data and analyzes from the run should be saved
+                Note that this may be time consuming. Type 'y/Y' or 'n/N'
+                Default = 'N'"),
+  #
   make_option(c("-w", "--run_cwl"), default="N",
               help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME' . Type 'y/Y' or 'n/N'.
                 Note, if using 'y/Y' this supersedes option -o
@@ -141,6 +146,7 @@ ListPMito               <- opt$percent_mito
 ListNGenes              <- opt$n_genes
 ThreshReturn            <- as.numeric(opt$return_threshold)
 NumbCores               <- opt$number_cores
+SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
 
 Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
@@ -616,6 +622,10 @@ seurat.object.integrated <- IntegrateData(anchorset = seurat.object.anchors, nor
 
 StopWatchEnd$Integration  <- Sys.time()
 
+
+seurat.object.integrated
+
+
 ####################################
 ### Reducing dimensions
 ####################################
@@ -768,14 +778,6 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   
   StopWatchEnd$DimensionReduction$dim_red_method  <- Sys.time()
   
-  StopWatchStart$DimensionReductionPlot$dim_red_method  <- Sys.time()
-  
-  pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot.pdf", sep="", collapse = ""))
-  print(DimPlot(object = seurat.object.integrated, reduction = dim_red_method, group.by = 'ident', label = T, label.size=10))
-  dev.off()
-  
-  StopWatchEnd$DimensionReductionPlot$dim_red_method  <- Sys.time()
-  
   ####################################
   ### Write out dimension reduction plot coordinates using integrated data
   ####################################
@@ -830,7 +832,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     print("No extra barcode-attributes will be used for dimension reduction plots")
   }else{
     
-    StopWatchStart$DimRedPlotsColuredByOptC$dim_red_method  <- Sys.time()
+    StopWatchStart$DimRedPlotsColuredByMetadata$dim_red_method  <- Sys.time()
     
     seurat.object.meta.data<-seurat.object.integrated@meta.data
     ExtraCellProperties <- data.frame(read.table(InfileColourDimRedPlots, header = T, row.names = 1))
@@ -847,11 +849,16 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     # Thus each property plot is written to a separate page of a single *pdf outfile
     pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ExtraProperties.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf, height = DefaultParameters$BaseSizeSinglePlotPdf)
     for (property in colnames(ExtraCellProperties)) {
-      print(DimPlot(object = seurat.object.integrated, reduction = dim_red_method, group.by = property, combine = T, legend = "none") + ggtitle(property))
+      if ( (sum(ExtraCellProperties[,property] %in% 0:1 == T)) == (nrow(ExtraCellProperties)) ) { ## is binary
+        CellsToHighlight <- rownames(ExtraCellProperties2)[ExtraCellProperties2[,property]==1]
+        print(DimPlot(object = seurat.object.integrated, reduction = dim_red_method, group.by = property, combine = T, legend = "none", cells.highlight = CellsToHighlight) + ggtitle(property))
+      }else{
+        print(DimPlot(object = seurat.object.integrated, reduction = dim_red_method, group.by = property, combine = T, legend = "none") + ggtitle(property))
+      }
     }
     dev.off()
     
-    StopWatchEnd$DimRedPlotsColuredByOptC$dim_red_method  <- Sys.time()
+    StopWatchEnd$DimRedPlotsColuredByMetadata$dim_red_method  <- Sys.time()
     
   }
   
@@ -902,15 +909,16 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 
   StopWatchStart$DimRedOPlotColourByCellCluster$dim_red_method  <- Sys.time()
   
-  plots <- DimPlot(seurat.object.integrated, group.by = c("seurat_clusters"), combine = FALSE, reduction = dim_red_method, label = T, label.size = 5)
-  plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 3))))
-  IntegratedUMAPPlotPdf<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "_ColourByCellClusters.pdf", sep="")
+  plots <- DimPlot(seurat.object.integrated, group.by = c("seurat_clusters"), combine = FALSE, reduction = dim_red_method, label = T, label.size = 10)
+  plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + guides(color = guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 3))))
+  IntegratedUMAPPlotPdf<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
   pdf(file=IntegratedUMAPPlotPdf, width = 7, height = 8)
   print(CombinePlots(plots))
   dev.off()
   
   StopWatchEnd$DimRedOPlotColourByCellCluster$dim_red_method  <- Sys.time()
 }
+
 
 ####################################
 ### FOR EACH SAMPLE merge sample ID and global cluster identities to make sample-specific identities
@@ -1002,13 +1010,79 @@ for (dataset in rownames(InputsTable)) {
                       reduction = dim_red_method, order = T, slot = "data", pt.size = 1.5, min.cutoff = "q0.1", max.cutoff = "q90"))
     dev.off()
     
-    rm(seurat.object.each_sample.sa)
-    
     StopWatchEnd$DimRedPlotsByDatasetColuredByGenes$dim_red_method  <- Sys.time()
 
+    rm(seurat.object.each_sample.sa)
+    
   }
 }
 
+####################################
+### Colour dimension reduction plots for each sample by -infile_colour_dim_red_plots using integrated data
+####################################
+
+if (regexpr("^NA$", InfileColourDimRedPlots, ignore.case = T)[1] == 1) {
+  print("No extra barcode-attributes will be used for dimension reduction plots")
+}else{
+  writeLines("\n*** Colour dimension reduction plots for each sample by -infile_colour_dim_red_plots using integrated data ***\n")
+    
+  seurat.object.meta.data<-seurat.object.integrated@meta.data
+  ExtraCellProperties <- data.frame(read.table(InfileColourDimRedPlots, header = T, row.names = 1))
+  print(head(ExtraCellProperties))
+  
+  # This is because Seurat removes the last '-digit' from barcode ID's when all barcodes finish with the same digit (i.e. come from the same sample)
+  # so that barcodes from --infile_colour_dim_red_plots and --input can match each other
+  rownames(ExtraCellProperties)<-gsub(x =rownames(ExtraCellProperties), pattern = "-[0-9]+$", perl = T, replacement = "")
+  seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = ExtraCellProperties)
+
+  NumberOfDatasets <- 0
+  for (dataset in rownames(InputsTable)) {
+    NumberOfDatasets <- NumberOfDatasets + 1
+    print(NumberOfDatasets)
+    
+    if (exists(x = "seurat.object.each_sample") == T) {
+      rm(seurat.object.each_sample)
+    }
+    seurat.object.each_sample <- subset(x = seurat.object.integrated, idents = dataset)
+    print(seurat.object.each_sample)
+    
+    for (dim_red_method in names(DimensionReductionMethods)) {
+      
+      StopWatchStart$DimRedPlotsByMetadata$dataset$dim_red_method  <- Sys.time()
+  
+      # Generating outfile
+      # Note DimPlot() takes the entire current device (pdf)
+      # even if using layout(matrix(...)) or  par(mfrow=())
+      # Thus each property plot is written to a separate page of a single *pdf outfile
+      pdf(file=paste(Tempdir,"/",PrefixOutfiles, "_", dataset, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ExtraProperties.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf, height = DefaultParameters$BaseSizeSinglePlotPdf)
+      for (property in colnames(ExtraCellProperties)) {
+        
+        if ( (sum(ExtraCellProperties[,property] %in% 0:1 == T)) == (nrow(ExtraCellProperties)) ) { ## is binary
+          CellsToHighlight <- rownames(ExtraCellProperties2)[ExtraCellProperties2[,property]==1]
+          print(DimPlot(object = seurat.object.each_sample, reduction = dim_red_method, group.by = property, combine = T, legend = "none", cells.highlight = CellsToHighlight) + ggtitle(property))
+        }else{
+          print(DimPlot(object = seurat.object.each_sample, reduction = dim_red_method, group.by = property, combine = T, legend = "none") + ggtitle(property))
+        }
+      }
+      dev.off()
+      
+      StopWatchEnd$DimRedPlotsByMetadata$dataset$dim_red_method  <- Sys.time()
+        
+    }
+  }
+}
+
+for (property in colnames(ExtraCellProperties)) {
+ if (na.omit(ExtraCellProperties[,property]) %in% 0:1) {
+   print(paste(property,"NO"))
+ }else{
+   print(paste(property,"NO"))
+ }
+}
+
+dim(ExtraCellProperties)
+
+sum(ExtraCellProperties[,"TCR"] %in% 0 == T)
 
 
 ####################################
@@ -1160,6 +1234,7 @@ write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names =
 write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 
+
 ####################################
 ### FOR EACH SAMPLE TYPE uses integrated/normalized counts and re-clusters cells
 ### Then get DGE and colour dimension reduction plots 
@@ -1270,20 +1345,46 @@ for (sample_type in SampleTypes) {
   
   for (dim_red_method in names(DimensionReductionMethods)) {
 
-    StopWatchStart$UmapAndTsneColourByEachSampleCellCluster$sample_type  <- Sys.time()
+    StopWatchStart$UmapAndTsneColourByEachSampleTypeCellCluster$sample_type  <- Sys.time()
     
     plots <- DimPlot(seurat.object.each_sample_type, group.by = c("seurat_clusters"), combine = FALSE, reduction = dim_red_method, label = T, label.size = 5)
     plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 3))))
-    IntegratedUMAPPlotPdf<-paste(Tempdir,"/",PrefixOutfiles, "_", sample_type, ".", ProgramOutdir, "_", dim_red_method, "_ColourByEachSampleTypeCellClusters.pdf", sep="")
+    IntegratedUMAPPlotPdf<-paste(Tempdir,"/",PrefixOutfiles, "_", sample_type, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByEachSampleTypeCellClusters.pdf", sep="")
     pdf(file=IntegratedUMAPPlotPdf, width = 7, height = 8)
     print(CombinePlots(plots))
     dev.off()
   
-    StopWatchEnd$UmapAndTsneColourByEachSampleCellCluster$sample_type <- Sys.time()
+    StopWatchEnd$UmapAndTsneColourByEachSampleTypeCellCluster$sample_type <- Sys.time()
+  
+    StopWatchEnd$DimRedPlotsBySampleTypeColuredByGenes$dim_red_method  <- Sys.time()
+
+    ListOfGenesForDimRedPlots<-unlist(strsplit(ListGenes, ","))
+    if (length(ListOfGenesForDimRedPlots) <= 4) {
+      pdfWidth  <- (length(ListOfGenesForDimRedPlots) * DefaultParameters$BaseSizeMultiplePlotPdfWidth)
+      pdfHeight <- DefaultParameters$BaseSizeMultiplePlotPdfHeight
+      nColFeaturePlot <- length(ListOfGenesForDimRedPlots)
+    }else{
+      pdfWidth  <- 4 * DefaultParameters$BaseSizeMultiplePlotPdfWidth
+      pdfHeight <- (as.integer(length(ListOfGenesForDimRedPlots) / 4) + 1) * DefaultParameters$BaseSizeMultiplePlotPdfHeight
+      nColFeaturePlot <- 4
+    }
+    
+    ### Making a new Seurat object `seurat.object.integrated.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
+    ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
+    seurat.object.each_sample_type.sa <- CreateSeuratObject(seurat.object.each_sample_type@assays$RNA@data)
+    seurat.object.each_sample_type.sa@reductions$umap <- seurat.object.each_sample_type@reductions$umap
+    seurat.object.each_sample_type.sa@reductions$tsne <- seurat.object.each_sample_type@reductions$tsne
+    
+    pdf(file=paste(Tempdir,"/",PrefixOutfiles, "_", sample_type, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_SelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
+    print(FeaturePlot(object = seurat.object.each_sample_type.sa, ncol = nColFeaturePlot, features = ListOfGenesForDimRedPlots, cols = c("lightgrey", "blue"),
+                      reduction = dim_red_method, order = T, slot = "data", pt.size = 1.5, min.cutoff = "q0.1", max.cutoff = "q90"))
+    dev.off()
+    
+    rm(seurat.object.each_sample_type.sa)
+    
+    StopWatchEnd$DimRedPlotsBySampleTypeColuredByGenes$dim_red_method  <- Sys.time()
   
   }
-  
-  
 }
 
 ####################################
@@ -1319,6 +1420,20 @@ write.table(data.frame(cluster.averages$SCT),file = OutfileClusterAveragesSCT, r
 write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
+
+
+
+####################################
+### Saving the R object
+####################################
+writeLines("\n*** Saving the R object ***\n")
+
+StopWatchStart$SaveRDS  <- Sys.time()
+
+OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_integrated_object.rds", sep="")
+saveRDS(seurat.object.integrated, file = OutfileRDS)
+
+StopWatchEnd$SaveRDS  <- Sys.time()
 
 
 ####################################
