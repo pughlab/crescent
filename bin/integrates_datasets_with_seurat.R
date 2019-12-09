@@ -757,7 +757,6 @@ write.table(data.frame("GENE"=rownames(seurat.object.integrated.markers),seurat.
 
 StopWatchEnd$FindDiffMarkers  <- Sys.time()
 
-
 ####################################
 ### FOR EACH DIMENSION REDUCTION TYPE colour plots using integrated data
 ####################################
@@ -1135,7 +1134,7 @@ for (dataset in rownames(InputsTable)) {
   write(x=NumberOfClusters,file = OutfileNumbClusters)
   
   StopWatchEnd$WriteClustersEachSampleCellClusterTables$dataset <- Sys.time()
-
+  
   ####################################
   ### Finding differentially expressed genes for each sample re-clustered cell clusters
   ####################################
@@ -1170,7 +1169,6 @@ for (dataset in rownames(InputsTable)) {
     StopWatchEnd$DimRedPlotsByEachSampleReclusteredCellCluster$dataset$dim_red_method <- Sys.time()
     
   }
-    
 }
 
 ####################################
@@ -1183,7 +1181,7 @@ seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metad
 
 # switch the identity class of all cells to reflect each sample clusters
 Idents(object = seurat.object.integrated) <- seurat.object.integrated$EachSampleCellReClusters
-  
+
 ####################################
 ### Get average gene expression for each sample re-clustered clusters
 ####################################
@@ -1225,8 +1223,31 @@ seurat.object.integrated$sample_type<-mapply(gsub, pattern = dataset, replacemen
 }
 SampleTypes <- unique(seurat.object.integrated$sample_type)
 
-# switch the identity class of all cells to reflect sample_type
+####################################
+### Colour dimension reduction plots by sample type
+####################################
+writeLines("\n*** Colour dimension reduction plots by sample type ***\n")
+
+# switch identity to sample type
 Idents(object = seurat.object.integrated) <- seurat.object.integrated$sample_type
+
+for (dim_red_method in names(DimensionReductionMethods)) {
+  
+  writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " coloured by sample_type ***\n", sep = "", collapse = ""))
+  
+  StopWatchStart$DimRedOPlotColourBySampleType$dim_red_method  <- Sys.time()
+  
+  plots <- DimPlot(seurat.object.integrated, group.by = c("sample_type"), combine = FALSE, reduction = dim_red_method, label = F, label.size = 10)
+  plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 3))))
+  IntegratedDimRedPlotPdf<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySampleType.pdf", sep="")
+  pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
+  print(CombinePlots(plots))
+  dev.off()
+  print(IntegratedDimRedPlotPdf)
+  
+  StopWatchEnd$DimRedOPlotColourBySampleType$dim_red_method  <- Sys.time()
+  
+}
 
 ####################################
 ### Write out each sample type global cluster assignments
@@ -1237,7 +1258,7 @@ writeLines("\n*** Write out each sample type global cluster assignments ***\n")
 Headers<-paste("Cell_barcode", paste("seurat_cluster_r", Resolution, sep = "", collapse = ""), sep="\t")
 OutfileEachSampleTypeGlobalClusters<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "EachSampleType_CellClusters.tsv", sep="")
 GlobalClustersBySampleType<- unlist(x = strsplit(x = paste(seurat.object.integrated@meta.data$sample_type, seurat.object.integrated@meta.data$seurat_clusters, sep = "_c", collapse = "\n"), split = "\n"))
-write.table(Headers,file = OutfileEachSampleTypeClusters, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(Headers,file = OutfileEachSampleTypeGlobalClusters, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(paste(colnames(seurat.object.integrated),GlobalClustersBySampleType, sep = "\t", collapse = "\n"),
             file = OutfileEachSampleTypeGlobalClusters, row.names = F, col.names = F, quote = F, append = T)
 
@@ -1275,35 +1296,12 @@ write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names =
 write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
-### Colour dimension reduction plots by sample type
+### Colour dimension reduction plots for each sample type by glabal clusters and gets DGE
 ####################################
-writeLines("\n*** Colour dimension reduction plots by sample type ***\n")
+writeLines("\n*** Colour dimension reduction plots for each sample type by glabal clusters and gets DGE ***\n")
 
-# switch identity to samplde type
+# switch identity to sample type global cluster
 Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$sample_type
-
-for (dim_red_method in names(DimensionReductionMethods)) {
-
-  writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " coloured by sample_type ***\n", sep = "", collapse = ""))
-  
-  StopWatchStart$DimRedOPlotColourBySampleType$dim_red_method  <- Sys.time()
-  
-  plots <- DimPlot(seurat.object.integrated, group.by = c("sample_type"), combine = FALSE, reduction = dim_red_method, label = F, label.size = 10)
-  plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 2, byrow = TRUE, override.aes = list(size = 3))))
-  IntegratedDimRedPlotPdf<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySampleType.pdf", sep="")
-  pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
-  print(CombinePlots(plots))
-  dev.off()
-  print(IntegratedDimRedPlotPdf)
-  
-  StopWatchEnd$DimRedOPlotColourBySampleType$dim_red_method  <- Sys.time()
-
-}
-
-####################################
-### Colour dimension reduction plots for each sample type and gets DGE based on global clusters
-####################################
-writeLines("\n*** Colour dimension reduction plots for each sample type and gets DGE based on global clusters ***\n")
 
 NumberOfSampleTypes <- 0
 for (sample_type in SampleTypes) {
@@ -1314,42 +1312,43 @@ for (sample_type in SampleTypes) {
     rm(seurat.object.each_sample_type)
   }
   seurat.object.each_sample_type <- subset(x = seurat.object.integrated, idents = sample_type)
-  print(seurat.object.each_sample_type)
-  
+
   ####################################
   ### Colour dimension reduction plots by each sample type using global cell clusters
   ####################################
-  
+
   writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot for ", sample_type, " using global cell clusters ***\n", sep = "", collapse = ""))
-  
+
   for (dim_red_method in names(DimensionReductionMethods)) {
-    
+
     StopWatchStart$DimRedOPlotSampleTypeColourByCellCluster$sample_type$dim_red_method  <- Sys.time()
-    
+
     plots <- DimPlot(seurat.object.each_sample_type, group.by = c("seurat_clusters"), combine = FALSE, reduction = dim_red_method, label = T, label.size = 10)
     plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + guides(color = guide_legend(override.aes = list(size = 3))))
     IntegratedDimRedPlotPdf<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", sample_type,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
     pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
     print(CombinePlots(plots))
     dev.off()
-    
+
     StopWatchEnd$DimRedOPlotSampleTypeColourByCellCluster$sample_type$dim_red_method  <- Sys.time()
-    
+
   }
-  
+
   ####################################
   ### Finding differentially expressed genes for each sample type using global cell clusters
   ####################################
   writeLines("\n*** Finding differentially expressed genes for each sample type using global cell clusters ***\n")
   
+  Idents(object = seurat.object.each_sample_type) <- seurat.object.each_sample_type@meta.data$EachSampleTypeGlobalCellClusters
+
   StopWatchStart$FindDiffMarkers$sample_type  <- Sys.time()
   
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample_type@meta.data))
-  
-  seurat.object.each_sample_type.markers <- FindAllMarkers(object = seurat.object.each_sample_type, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-  
-  write.table(data.frame("GENE"=rownames(seurat.object.each_sample_type.markers),seurat.object.each_sample_type.markers), paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_" , sample_type, "_MarkersPerCluster.tsv", sep=""),row.names = F,sep="\t",quote = F)
 
+  seurat.object.each_sample_type.markers <- FindAllMarkers(object = seurat.object.each_sample_type, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+
+  write.table(data.frame("GENE"=rownames(seurat.object.each_sample_type.markers),seurat.object.each_sample_type.markers), paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_" , sample_type, "_MarkersPerCluster.tsv", sep=""),row.names = F,sep="\t",quote = F)
+  
   StopWatchEnd$FindDiffMarkers$sample_type  <- Sys.time()
 }
 
