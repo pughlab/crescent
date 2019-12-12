@@ -216,7 +216,7 @@ if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
 }else if (is.numeric(NumbCores) == T) {
   NumbCoresToUse <- as.numeric(NumbCores)
 }else{
-  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n", sep=""))
+  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript integrates_datasets_with_seurat.R -h\n\n", sep=""))
 }
 
 cat("Using ", NumbCoresToUse, "cores")
@@ -592,7 +592,7 @@ for (dataset in rownames(InputsTable)) {
     DatasetIds[[as.character(NumberOfDatasets)]]     <- dataset
     
   }else{
-    stop(paste("Unexpected type of input: ", DatasetType, "\n\nFor help type:\n\nintegrates_datasets_with_seurat.R -h\n\n", sep=""))
+    stop(paste("Unexpected type of input: ", DatasetType, "\n\nFor help type:\n\nRscript integrates_datasets_with_seurat.R -h\n\n", sep=""))
   }
 }
 
