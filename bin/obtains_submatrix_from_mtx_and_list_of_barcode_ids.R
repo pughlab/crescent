@@ -1,21 +1,17 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Uses Seurat to load the matrix and library(DropletUtils) to write the subsampled matrix
-###
-### THINGS TO DO
-### 1) Implement DropletUtils v1.4.1 or upper, as it seems to be able to write (also read?) Cell Ranger v3 MTX files (barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz)
-###    Then we may not need Seurat anymore
 ####################################
 
 ####################################
 ### Required libraries
 ####################################
-suppressPackageStartupMessages(library(DropletUtils)) # to handle reading and writing mtx files
-suppressPackageStartupMessages(library(Seurat))       # to run QC, differential gene expression and clustering analyses
+suppressPackageStartupMessages(library(DropletUtils)) # (Bioconductor) to handle reading and writing mtx files
+suppressPackageStartupMessages(library(Seurat))       # (CRAN) to run QC, differential gene expression and clustering analyses
 ### Seurat v3 can be installed like:
 ### install.packages('devtools')
 ### devtools::install_github(repo = 'satijalab/seurat', ref = 'release/3.0')
-suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
+suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 ####################################
 
@@ -169,18 +165,13 @@ seurat.object.subsampled <- SubsetData(object = seurat.object.u, cells = as.vect
 StopWatchEnd$SubsampleMatrix  <- Sys.time()
 
 ####################################
-### Write subsampled matrix
+### Write downsubsampled matrix
 ####################################
-writeLines("\n*** Write subsampled matrix ***\n")
+writeLines("\n*** Write downsubsampled matrix ***\n")
 
 StopWatchStart$WriteSubsampledMatrix  <- Sys.time()
 
-OutdirFinal
-
-write10xCounts(path = OutdirFinal, x = GetAssayData(object = seurat.object.subsampled, slot = "counts"),
-               barcodes=colnames(x = seurat.object.subsampled),
-               gene.id=rownames(x = seurat.object.subsampled),
-               gene.symbol=rownames(x = seurat.object.subsampled), overwrite=T)
+write10xCounts(path = OutdirFinal, x = seurat.object.subsampled@assays[["RNA"]]@data, gene.type="Gene Expression", overwrite=T, type="sparse", version="3")
 
 StopWatchEnd$WriteSubsampledMatrix  <- Sys.time()
 
