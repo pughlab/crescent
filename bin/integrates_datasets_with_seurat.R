@@ -843,11 +843,11 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   ####################################
   ### Colour dimension reduction plots by -infile_colour_dim_red_plots using integrated data
   ####################################
-  writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by -infile_colour_dim_red_plots ***\n", sep = "", collapse = ""))
   
   if (regexpr("^NA$", InfileColourDimRedPlots, ignore.case = T)[1] == 1) {
     print("No extra barcode-attributes will be used for dimension reduction plots")
   }else{
+    writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by -infile_colour_dim_red_plots ***\n", sep = "", collapse = ""))
     
     StopWatchStart$DimRedPlotsColuredByMetadata$dim_red_method  <- Sys.time()
     
@@ -864,21 +864,26 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     # Note DimPlot() takes the entire current device (pdf)
     # even if using layout(matrix(...)) or  par(mfrow=())
     # Thus each property plot is written to a separate page of a single *pdf outfile
-    pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByExtraProperties.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf, height = DefaultParameters$BaseSizeSinglePlotPdf)
     for (property in colnames(ExtraCellProperties)) {
+      pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBy_", property, ".pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf, height = DefaultParameters$BaseSizeSinglePlotPdf)
       if ( (sum(ExtraCellProperties[,property] %in% 0:1 == T)) == (nrow(ExtraCellProperties)) ) { ## is binary
         CellsToHighlight <- rownames(ExtraCellProperties)[ExtraCellProperties[,property]==1]
-        print(DimPlot(object = seurat.object.integrated, reduction = dim_red_method, group.by = property, combine = T, legend = "none", cells.highlight = CellsToHighlight) + ggtitle(property))
+        plots <- DimPlot(seurat.object.integrated, group.by = property, combine = FALSE, reduction = dim_red_method, label = FALSE, cells.highlight = CellsToHighlight)
+        plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + labs(title = property) + guides(color = guide_legend(override.aes = list(size = 3))))
+        print(CombinePlots(plots))
+        
       }else{
-        print(DimPlot(object = seurat.object.integrated, reduction = dim_red_method, group.by = property, combine = T, legend = "none") + ggtitle(property))
+        plots <- DimPlot(seurat.object.integrated, group.by = property, combine = FALSE, reduction = dim_red_method, label = FALSE)
+        plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + labs(title = property) + guides(color = guide_legend(override.aes = list(size = 3))))
+        print(CombinePlots(plots))
+        
       }
+      dev.off()
     }
-    dev.off()
     
     StopWatchEnd$DimRedPlotsColuredByMetadata$dim_red_method  <- Sys.time()
-    
   }
-  
+
   ####################################
   ### Colour dimension reduction plots showing each requested gene using integrated data
   ####################################
@@ -1060,20 +1065,32 @@ if (regexpr("^NA$", InfileColourDimRedPlots, ignore.case = T)[1] == 1) {
       # Note DimPlot() takes the entire current device (pdf)
       # even if using layout(matrix(...)) or  par(mfrow=())
       # Thus each property plot is written to a separate page of a single *pdf outfile
-      pdf(file=paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByExtraProperties.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf, height = DefaultParameters$BaseSizeSinglePlotPdf)
       for (property in colnames(ExtraCellProperties)) {
-        
-        if ( (sum(ExtraCellProperties[,property] %in% 0:1 == T)) == (nrow(ExtraCellProperties)) ) { ## is binary
-          CellsToHighlight <- rownames(ExtraCellProperties)[ExtraCellProperties[,property]==1]
-          print(DimPlot(object = seurat.object.each_sample, reduction = dim_red_method, group.by = property, combine = T, legend = "none", cells.highlight = CellsToHighlight) + ggtitle(property))
+
+        if (sum(is.na(seurat.object.each_sample[[property]]==T)) == ncol(seurat.object.each_sample)) {
+          
+          print(paste("No extra barcode-attributes '", property, "' found for sample ", dataset))
+          
         }else{
-          print(DimPlot(object = seurat.object.each_sample, reduction = dim_red_method, group.by = property, combine = T, legend = "none") + ggtitle(property))
+
+          pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBy_", property, ".pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf, height = DefaultParameters$BaseSizeSinglePlotPdf)
+          
+          if ( (sum(ExtraCellProperties[,property] %in% 0:1 == T)) == (nrow(ExtraCellProperties)) ) { ## is binary
+            CellsToHighlight <- rownames(ExtraCellProperties)[ExtraCellProperties[,property]==1]
+            plots <- DimPlot(seurat.object.each_sample, group.by = property, combine = FALSE, reduction = dim_red_method, label = FALSE, cells.highlight = CellsToHighlight)
+            plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + labs(title = property) + guides(color = guide_legend(override.aes = list(size = 3))))
+            print(CombinePlots(plots))
+          }else{
+            plots <- DimPlot(seurat.object.each_sample, group.by = property, combine = FALSE, reduction = dim_red_method, label = FALSE)
+            plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + labs(title = property) + guides(color = guide_legend(override.aes = list(size = 3))))
+            print(CombinePlots(plots))
+          }
+          dev.off()
         }
       }
-      dev.off()
       
       StopWatchEnd$DimRedPlotsByMetadata$dataset$dim_red_method  <- Sys.time()
-        
+      
     }
   }
 }
@@ -1189,9 +1206,9 @@ writeLines("\n*** Get average gene expression for each sample re-clustered clust
 
 cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F)
 
-OutfileClusterAveragesRNA<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleReclustered_", "PerSample_AverageGeneExpression_RNA.tsv", sep="")
-OutfileClusterAveragesSCT<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleReclustered_", "PerSample_AverageGeneExpression_SCT.tsv", sep="")
-OutfileClusterAveragesINT<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleReclustered_", "PerSample_AverageGeneExpression_integrated.tsv", sep="")
+OutfileClusterAveragesRNA<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_EachSampleReclustered_", "PerSample_AverageGeneExpression_RNA.tsv", sep="")
+OutfileClusterAveragesSCT<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_EachSampleReclustered_", "PerSample_AverageGeneExpression_SCT.tsv", sep="")
+OutfileClusterAveragesINT<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_EachSampleReclustered_", "PerSample_AverageGeneExpression_integrated.tsv", sep="")
 #
 Headers<-paste("AVERAGE_GENE_EXPRESSION",paste(names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
 #
@@ -1203,7 +1220,6 @@ write.table(data.frame(cluster.averages$SCT),file = OutfileClusterAveragesSCT, r
 #
 write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-
 
 ####################################
 ### FOR EACH SAMPLE TYPE uses integrated/normalized counts and generates dimension reduction plots for each sample type using:
