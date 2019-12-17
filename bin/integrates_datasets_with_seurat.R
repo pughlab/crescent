@@ -258,8 +258,11 @@ DefaultParameters <- list(
   BaseSizeSinglePlotPdf  = 7,
   BaseSizeSinglePlotPng  = 480,
   BaseSizeMultiplePlotPdfWidth  = 3.7,
-  BaseSizeMultiplePlotPdfHeight = 3
+  BaseSizeMultiplePlotPdfHeight = 3,
   
+  ### Parameters for datasets integration
+  IntegrationNFeatures <- 3000
+
 )
 
 ### Colour definitions
@@ -640,7 +643,7 @@ writeLines("\n*** Integrating datasets ***\n")
 
 StopWatchStart$Integration  <- Sys.time()
 
-seurat.object.integratedfeatures <- SelectIntegrationFeatures(object.list = seurat.object.list, nfeatures = 3000)
+seurat.object.integratedfeatures <- SelectIntegrationFeatures(object.list = seurat.object.list, nfeatures = IntegrationNFeatures)
 seurat.object.list <- PrepSCTIntegration(object.list = seurat.object.list, anchor.features = seurat.object.integratedfeatures, verbose = FALSE)
 seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, verbose = FALSE)
 seurat.object.integrated <- IntegrateData(anchorset = seurat.object.anchors, normalization.method = "SCT", verbose = FALSE)
@@ -687,7 +690,7 @@ StopWatchStart$ClusterAllCells  <- Sys.time()
 
 options(scipen=10) ## Needed to avoid an 'Error in file(file, "rt") : cannot open the connection'
 seurat.object.integrated <- FindNeighbors(object = seurat.object.integrated, dims = PcaDimsUse)
-seurat.object.integrated <- FindClusters(object = seurat.object.integrated, reduction.type = "pca", resolution = Resolution, print.output = 0, save.SNN = T)
+seurat.object.integrated <- FindClusters(object = seurat.object.integrated, resolution = Resolution)
 
 StopWatchEnd$ClusterAllCells  <- Sys.time()
 
@@ -753,7 +756,8 @@ FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data
 
 seurat.object.integrated.markers <- FindAllMarkers(object = seurat.object.integrated, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
 
-write.table(data.frame("GENE"=rownames(seurat.object.integrated.markers),seurat.object.integrated.markers),paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
+SimplifiedDiffExprGenes.df <- seurat.object.integrated.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
+write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerCluster.tsv", sep=""), row.names = F, sep="\t", quote = F)
 
 StopWatchEnd$FindDiffMarkers  <- Sys.time()
 
@@ -1129,7 +1133,7 @@ for (dataset in rownames(InputsTable)) {
   
   options(scipen=10) ## Needed to avoid an 'Error in file(file, "rt") : cannot open the connection'
   seurat.object.each_sample <- FindNeighbors(object = seurat.object.each_sample, dims = PcaDimsUse)
-  seurat.object.each_sample <- FindClusters(object = seurat.object.each_sample, reduction.type = "pca", resolution = Resolution, print.output = 0, save.SNN = T)
+  seurat.object.each_sample <- FindClusters(object = seurat.object.each_sample, resolution = Resolution)
   ClustersThisSample <- unlist(x = strsplit(x = paste(dataset, seurat.object.each_sample@meta.data$seurat_clusters, sep = "_c", collapse = "\n"), split = "\n"))
   
   StopWatchEnd$ClusterEachSampleCellsFromInteg$dataset  <- Sys.time()
@@ -1162,9 +1166,10 @@ for (dataset in rownames(InputsTable)) {
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample@meta.data))
   
   seurat.object.each_sample.markers <- FindAllMarkers(object = seurat.object.each_sample, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-  
-  write.table(data.frame("GENE"=rownames(seurat.object.each_sample.markers),seurat.object.each_sample.markers), paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleReclustered_", dataset, "_MarkersPerCluster.tsv", sep=""),row.names = F,sep="\t",quote = F)
-  
+
+  SimplifiedDiffExprGenes.df <- seurat.object.each_sample.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
+  write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleReclustered_", dataset, "_MarkersPerCluster.tsv", sep=""), row.names = F, sep="\t", quote = F)
+
   StopWatchEnd$FindDiffMarkers$dataset  <- Sys.time()
   
   ####################################
@@ -1363,8 +1368,9 @@ for (sample_type in SampleTypes) {
 
   seurat.object.each_sample_type.markers <- FindAllMarkers(object = seurat.object.each_sample_type, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
 
-  write.table(data.frame("GENE"=rownames(seurat.object.each_sample_type.markers),seurat.object.each_sample_type.markers), paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_" , sample_type, "_MarkersPerCluster.tsv", sep=""),row.names = F,sep="\t",quote = F)
-  
+  SimplifiedDiffExprGenes.df <- seurat.object.each_sample_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
+  write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_" , sample_type, "_MarkersPerCluster.tsv", sep=""), row.names = F, sep="\t", quote = F)
+
   StopWatchEnd$FindDiffMarkers$sample_type  <- Sys.time()
 }
 
@@ -1397,7 +1403,7 @@ for (sample_type in SampleTypes) {
 
   options(scipen=10) ## Needed to avoid an 'Error in file(file, "rt") : cannot open the connection'
   seurat.object.each_sample_type <- FindNeighbors(object = seurat.object.each_sample_type, dims = PcaDimsUse)
-  seurat.object.each_sample_type <- FindClusters(object = seurat.object.each_sample_type, reduction.type = "pca", resolution = Resolution, print.output = 0, save.SNN = T)
+  seurat.object.each_sample_type <- FindClusters(object = seurat.object.each_sample_type, resolution = Resolution)
   ClustersThisSampleType <- unlist(x = strsplit(x = paste(sample_type, seurat.object.each_sample_type@meta.data$seurat_clusters, sep = "_c", collapse = "\n"), split = "\n"))
   
   StopWatchEnd$ClusterEachSampleTypeCellsFromInteg$sample_type  <- Sys.time()
@@ -1431,8 +1437,9 @@ for (sample_type in SampleTypes) {
   
   seurat.object.each_sample_type.markers <- FindAllMarkers(object = seurat.object.each_sample_type, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
   
-  write.table(data.frame("GENE"=rownames(seurat.object.each_sample_type.markers),seurat.object.each_sample_type.markers),paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleTypeReclustered_", sample_type, "_MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
-  
+  SimplifiedDiffExprGenes.df <- seurat.object.each_sample_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
+  write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleTypeReclustered_", sample_type, "_MarkersPerCluster.tsv", sep=""), row.names = F, sep="\t", quote = F)
+
   StopWatchEnd$FindDiffMarkers$sample_type  <- Sys.time()
   
   ####################################
