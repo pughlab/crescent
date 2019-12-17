@@ -156,21 +156,20 @@ option_list <- list(
                 Default = '0.2'"),
   #
   make_option(c("-d", "--pca_dimensions"), default="10",
-              help="Max value of PCA dimensions to use for clustering and t-SNE functions
+              help="Number of PCA dimensions to use for clustering and dimension reduction functions
                 FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
-                Typically '10' is enough, if unsure use '10' and afterwards check these two files:
-                *JackStraw*pdf, use the number of PC's where the solid curve shows a plateau along the dotted line, and
-                *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
+                Typically '10' is enough, if unsure use '10' and afterwards check file *PCElbowPlot.pdf,
+                use the number of PC's where the elbow shows a plateau along the y-axes low numbers
                 Default = '10'"),
   #
   make_option(c("-m", "--percent_mito"), default="0,0.05",
-              help="<comma> delimited min,max number of percentage of mitochondrial gene counts in a cell to be included in normalization and clustering analyses
+              help="<comma> delimited min,max fraction of gene counts of mitochondrial originin a cell to be included in normalization and clustering analyses
                 For example, for whole cell scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
                 For negative values (e.g. if using TPM in log scale refer negative values with an 'n', like this 'n1,0.5')
                 Default = '0,0.05'"),
   #
   make_option(c("-n", "--n_genes"), default="50,8000",
-              help="<comma> delimited min,max number of unique gene counts in a cell to be included in normalization and clustering analyses
+              help="<comma> delimited min,max number of unique genes measured in a cell to be included in normalization and clustering analyses
                 Default = '50,8000'"),
   #
   make_option(c("-e", "--return_threshold"), default="0.01",
@@ -249,7 +248,7 @@ if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
 }else if (is.numeric(NumbCores) == T) {
   NumbCoresToUse <- as.numeric(NumbCores)
 }else{
-  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n", sep=""))
+  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript Runs_Seurat_v3.R -h\n\n", sep=""))
 }
 
 cat("Using ", NumbCoresToUse, "cores")
@@ -285,8 +284,10 @@ DefaultParameters <- list(
   
   ### Parameters for Seurat normalization
   ScaleFactor = 1000000, ### Using 1000000 to set scale.factor as counts per million (CPM)
-
+  NormalizationMethod = "LogNormalize",
+  
   ### Parameters for Seurat variable gene detection
+  VarGeneDetectSelectMethod = "mean.var.plot",
   XLowCutoff = 0.0125,
   XHighCutoff = 3,
   YCutoff = 0.5,
@@ -649,7 +650,7 @@ if (regexpr("^Y$", NormalizeAnsScale, ignore.case = T)[1] == 1) {
   
   StopWatchStart$NormalizeData  <- Sys.time()
   
-  seurat.object.f <- NormalizeData(object = seurat.object.f, normalization.method = "LogNormalize", scale.factor = DefaultParameters$ScaleFactor)
+  seurat.object.f <- NormalizeData(object = seurat.object.f, normalization.method = NormalizationMethod, scale.factor = DefaultParameters$ScaleFactor)
   
   StopWatchEnd$NormalizeData  <- Sys.time()
   
@@ -678,7 +679,7 @@ StopWatchStart$FindVariableGenes  <- Sys.time()
 ### Note: Seurat developers recommend to set default parameters to mark visual outliers on the dispersion plot
 ### x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5
 ### but the exact parameter settings may vary based on the data type, heterogeneity in the sample, and normalization strategy.
-seurat.object.f <- FindVariableFeatures(object = seurat.object.f, selection.method = 'mean.var.plot', mean.cutoff = c(DefaultParameters$XLowCutoff, DefaultParameters$XHighCutoff), dispersion.cutoff = c(DefaultParameters$YCutoff, Inf))
+seurat.object.f <- FindVariableFeatures(object = seurat.object.f, selection.method = VarGeneDetectSelectMethod, mean.cutoff = c(DefaultParameters$XLowCutoff, DefaultParameters$XHighCutoff), dispersion.cutoff = c(DefaultParameters$YCutoff, Inf))
 VariableGenes<-VariableFeatures(object = seurat.object.f)
 length(VariableGenes)
 
@@ -776,6 +777,8 @@ StopWatchEnd$GetSignificantPCs  <- Sys.time()
 writeLines("\n*** Cluster the cells ***\n")
 
 StopWatchStart$ClusterCells  <- Sys.time()
+
+?FindNeighbors
 
 options(scipen=10) ## Needed to avoid an 'Error in file(file, "rt") : cannot open the connection'
 seurat.object.f <- FindNeighbors(object = seurat.object.f, dims = PcaDimsUse) ## This step was part of FindClusters() in Seurat v2
