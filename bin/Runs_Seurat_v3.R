@@ -25,23 +25,19 @@
 ### 1) Parallelize FindAllMarkers() to send each cluster to a separate core
 ###    Although it seems that FindMarkers() is already parallelized by Seurat:
 ###    https://satijalab.org/seurat/v3.0/future_vignette.html
-### 3) Pick the right number of dimension components
-###    E.g. try to automatically get the inflection point from the PCElbowPlot() function output
-### 4) Pick the right resolution from FindClusters()
-###    E.g. implement Iness and Bader paper https://f1000research.com/articles/7-1522/v1 approach
-###    By picking the number of clusters based on differentially expressed genes
-### 5) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
+### 2) Determine automatically the inflection point from the ElbowPlot() and use it as `dims` for FindNeighbors(), RunUMAP() and RunTSNE()
+### 3) Determine automatically the optimal resolution from FindClusters() following Iness and Bader (F1000Research, 2019)
+###    By picking the number of clusters based on differentially expressed genes. See https://f1000research.com/articles/7-1522/v1
+### 4) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
 ###    Need to do it for both Human and Mouse
-### 6) In Seurat v2, Suluxan reported that the -c example Javier provided called a duplicated row names error
+### 5) In Seurat v2, Suluxan reported that the -c example Javier provided called a duplicated row names error
 ###    Need to see if it's still happening
-### 7) To implement a flag to see if inputted dataset matches expected percent.mito
+### 6) To implement a flag to see if inputted dataset matches expected percent.mito
 ###    In particular, if imputting a whole cell sample and using `-m 0,0.05` likely will filterout most cells
 ###    and the script may crash at step 'Perform linear dimensional reduction by PCA'
 ###    because the filtered matrix will be too sparse and small to get the gene PC's
-### 8) To compare SCTransform() vs. [NormalizeData(), ScaleData(), and FindVariableFeatures()]
+### 7) To compare SCTransform() vs. [NormalizeData(), ScaleData(), and FindVariableFeatures()]
 ###    Do they produce similar results? Maybe use Circos plot to evaluate
-### 9) Since we are creating dimension reduction plots (UMAP and tSNE) in a for() loop,
-###    need to record list(StopWatchStart) and list(StopWatchEnd) for these steps
 ###
 ### THINGS NICE TO HAVE:
 ### 1) Assigning cell type identity to clusters (needs supervised annotations, maybe based on GSVA)
@@ -62,6 +58,32 @@
 ###    CTCTACGCAAGAGGCT-1
 ###    CTCGAAAAGCTAACAA-2
 ###    CTGCCTAGTGCAGGTA-3
+####################################
+
+####################################
+### COMMENTS ON FINDING DIFFERENTIALLY EXPRESSED GENES
+### Finding markers for every cluster compared to all remaining cells
+### only.pos allows to report only the positive ones
+### Using min.pct and thresh.use (renamed logfc.threshold in latest Seurat versions) to speed comparisons up. Other options to further speed are min.diff.pct, and  max.cells.per.ident
+### See http://satijalab.org/seurat/de_vignette.html
+### Other options
+### find all markers of cluster 1
+### cluster1.markers <- FindMarkers(object = seurat.object.each_sample, ident.1 = 1, min.pct = DefaultParameters$FindAllMarkers.MinPct)
+### print(x = head(x = cluster1.markers, n = 5))
+###
+### find all markers distinguishing cluster 5 from clusters 0 and 3
+### cluster5.markers <- FindMarkers(object = seurat.object.each_sample, ident.1 = 5, ident.2 = c(0, 3), min.pct = DefaultParameters$FindAllMarkers.MinPct)
+### print(x = head(x = cluster5.markers, n = 5))
+###
+### NOTES:
+### 1) FindAllMarkers() uses return.thresh = 0.01 as defaults, but FindMarkers() displays all genes passing previous filters.
+###    Thus to make the outputs between these two commands identical to each other use return.thresh = 1
+###
+### 2) Default pseudocount.use=1, which sounds high for a Log level correction
+###    An earlier version of this script was using 1e-99, but it was probably too small
+###    Now using the inverse of the number of cells in the data.
+###    This is sufficiently small as to not compress logGER magnitudes,
+###    while keeping comparisons with zero reasonably close to the range of potential logGER values (Innes and Bader, 2018, F1000 Research)
 ####################################
 
 ####################################
@@ -650,7 +672,7 @@ if (regexpr("^Y$", NormalizeAnsScale, ignore.case = T)[1] == 1) {
   
   StopWatchStart$NormalizeData  <- Sys.time()
   
-  seurat.object.f <- NormalizeData(object = seurat.object.f, normalization.method = NormalizationMethod, scale.factor = DefaultParameters$ScaleFactor)
+  seurat.object.f <- NormalizeData(object = seurat.object.f, normalization.method = DefaultParameters$NormalizationMethod, scale.factor = DefaultParameters$ScaleFactor)
   
   StopWatchEnd$NormalizeData  <- Sys.time()
   
@@ -679,7 +701,7 @@ StopWatchStart$FindVariableGenes  <- Sys.time()
 ### Note: Seurat developers recommend to set default parameters to mark visual outliers on the dispersion plot
 ### x.low.cutoff = 0.0125, x.high.cutoff = 3, y.cutoff = 0.5
 ### but the exact parameter settings may vary based on the data type, heterogeneity in the sample, and normalization strategy.
-seurat.object.f <- FindVariableFeatures(object = seurat.object.f, selection.method = VarGeneDetectSelectMethod, mean.cutoff = c(DefaultParameters$XLowCutoff, DefaultParameters$XHighCutoff), dispersion.cutoff = c(DefaultParameters$YCutoff, Inf))
+seurat.object.f <- FindVariableFeatures(object = seurat.object.f, selection.method = DefaultParameters$VarGeneDetectSelectMethod, mean.cutoff = c(DefaultParameters$XLowCutoff, DefaultParameters$XHighCutoff), dispersion.cutoff = c(DefaultParameters$YCutoff, Inf))
 VariableGenes<-VariableFeatures(object = seurat.object.f)
 length(VariableGenes)
 
@@ -699,27 +721,12 @@ writeLines("\n*** Scale data and remove unwanted sources of variation ***\n")
 
 StopWatchStart$ScaleData  <- Sys.time()
 
-seurat.object.f <- ScaleData(object = seurat.object.f, vars.to.regress = c("nCount_RNA", "percent.mito"), features = rownames(x = seurat.object.f), display.progress=F)
+seurat.object.f <- ScaleData(object = seurat.object.f, vars.to.regress = c("nCount_RNA", "percent.mito"), features = rownames(x = seurat.object.f), verbose = T)
 
 StopWatchEnd$ScaleData  <- Sys.time()
 
 ####################################
 ### Perform linear dimensional reduction by PCA
-####################################
-### Examine and visualize PCA results a few different ways
-### Note: DimPlot can now handle 'umap' and 'tsne' in addition to 'pca', but for 'umap'
-### you must first install the umap-learn python package (e.g. via pip install umap-learn)
-### https://github.com/satijalab/seurat/blob/master/R/dimensional_reduction.R
-###
-### Note on Error:
-### `Error in irlba(A = t(x = object), nv = npcs, ...) :
-### max(nu, nv) must be strictly less than min(nrow(A), ncol(A))
-### Calls: RunPCA ... RunPCA -> RunPCA.Assay -> RunPCA -> RunPCA.default -> irlba
-### Execution halted`
-### This error has to do with `-m` parameter
-### For whole cell scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
-### If you use '0,0.05' for whole cell you will filter out most of the cells and won't have enough data to get the requested -d (PC's)
-### Also see here: https://github.com/satijalab/seurat/issues/127
 ####################################
 writeLines("\n*** Perform linear dimensional reduction by PCA ***\n")
 
@@ -754,9 +761,6 @@ writeLines("\n*** Determine statistically significant principal components ***\n
 
 StopWatchStart$GetSignificantPCs  <- Sys.time()
 
-### NOTE: JackStraw() process can take a long time for big datasets
-### More approximate techniques such PCElbowPlot() can be used to reduce computation time
-
 ForElbowPlot<-ElbowPlot(object = seurat.object.f, ndims = 50, reduction = "pca")
 MaxYAxis<-as.integer(max(ForElbowPlot$data$stdev)+1)
 
@@ -778,12 +782,9 @@ writeLines("\n*** Cluster the cells ***\n")
 
 StopWatchStart$ClusterCells  <- Sys.time()
 
-?FindNeighbors
-
 options(scipen=10) ## Needed to avoid an 'Error in file(file, "rt") : cannot open the connection'
 seurat.object.f <- FindNeighbors(object = seurat.object.f, dims = PcaDimsUse) ## This step was part of FindClusters() in Seurat v2
-seurat.object.f <- FindClusters(object = seurat.object.f, reduction.type = "pca", resolution = Resolution, print.output = 0, save.SNN = T)
-EndTimeClustering<-Sys.time()
+seurat.object.f <- FindClusters(object = seurat.object.f, resolution = Resolution)
 
 StopWatchEnd$ClusterCells  <- Sys.time()
 
@@ -838,18 +839,18 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   ### `Error in Rtsne.default(X = as.matrix(x = data.use), dims = dim.embed,  : Perplexity is too large.`
   ### User can try tunning down the default RunTSNE(..., perplexity=30) to say 5 or 10
   
-  seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, do.fast = T)
+  seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse)
 
   StopWatchEnd$DimensionReduction$dim_red_method  <- Sys.time()
 
   StopWatchStart$DimensionReductionPlot$dim_red_method  <- Sys.time()
-    
+  
   pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot.pdf", sep="", collapse = ""))
   print(DimPlot(object = seurat.object.f, reduction = dim_red_method, group.by = 'ident', label = T, label.size=10))
   dev.off()
 
   StopWatchEnd$DimensionReductionPlot$dim_red_method  <- Sys.time()
-  
+
   ####################################
   ### Write out coordinates
   ####################################
@@ -949,36 +950,15 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 ####################################
 writeLines("\n*** Finding differentially expressed genes for each cell cluster ***\n")
 
-### Finding markers for every cluster compared to all remaining cells
-### only.pos allows to report only the positive ones
-### Using min.pct and thresh.use (renamed logfc.threshold in latest Seurat versions) to speed comparisons up. Other options to further speed are min.diff.pct, and  max.cells.per.ident
-### See http://satijalab.org/seurat/de_vignette.html
-### Other options
-### find all markers of cluster 1
-### cluster1.markers <- FindMarkers(object = seurat.object.f, ident.1 = 1, min.pct = DefaultParameters$FindAllMarkers.MinPct)
-### print(x = head(x = cluster1.markers, n = 5))
-###
-### find all markers distinguishing cluster 5 from clusters 0 and 3
-### cluster5.markers <- FindMarkers(object = seurat.object.f, ident.1 = 5, ident.2 = c(0, 3), min.pct = DefaultParameters$FindAllMarkers.MinPct)
-### print(x = head(x = cluster5.markers, n = 5))
-###
-### NOTES:
-### 1) FindAllMarkers() uses return.thresh = 0.01 as defaults, but FindMarkers() displays all genes passing previous filters.
-###    Thus to make the outputs between these two commands identical to each other use return.thresh = 1
-###
-### 2) Default pseudocount.use=1, which sounds high for a Log level correction
-###    An earlier version of this script was using 1e-99, but it was probably too small
-###    Now using the inverse of the number of cells in the data.
-###    This is sufficiently small as to not compress logGER magnitudes,
-###    while keeping comparisons with zero reasonably close to the range of potential logGER values (Innes and Bader, 2018, F1000 Research)
-
 StopWatchStart$FindDiffMarkers  <- Sys.time()
 
 FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.f@meta.data))
 
 seurat.object.markers <- FindAllMarkers(object = seurat.object.f, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
 
-write.table(data.frame("GENE"=rownames(seurat.object.markers),seurat.object.markers),paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_MarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
+SimplifiedDiffExprGenes.df <- seurat.object.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
+write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_MarkersPerCluster.tsv",sep=""), row.names = F, sep="\t", quote = F)
+
 ### Get top-2 genes sorted by cluster, then by p-value
 top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% top_n(DefaultParameters$NumberOfGenesPerClusterToPlotTsne, avg_logFC))
 NumberOfClusters<-length(unique(seurat.object.markers[["cluster"]]))
@@ -1125,7 +1105,7 @@ for (optionInput in option_list) {
 ####################################
 ### Obtain computing time used
 ####################################
-writeLines("\n*** Obtain computing time used***\n")
+writeLines("\n*** Obtain computing time used ***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
