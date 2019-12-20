@@ -23,9 +23,8 @@ Please use these templates to: <br />
 [report bugs](https://github.com/pughlab/crescent/blob/master/.github/ISSUE_TEMPLATE/bug_report.md) <br />
 [request features](https://github.com/pughlab/crescent/blob/master/.github/ISSUE_TEMPLATE/feature_request.md)
 
-Bugs and Feature Requests
+General inquires
 ================
-General inquires: <br />
 <crescent@uhnresearch.ca>
 
 Authors
