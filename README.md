@@ -1,7 +1,7 @@
 # CReSCENT: CanceR Single Cell ExpressioN Toolkit
 
 
-This repository contains applications implemented for CReSCENT. They work as either one-line-command scripts or as a web portal implemented using the Common Workflow Language at https://crescent.cloud which has its own repository https://github.com/pughlab/crescent-frontend.
+This repository contains applications implemented for CReSCENT. They work as either one-line-command scripts or as a web portal implemented using the Common Workflow Language at https://crescent.cloud which has its own repository at https://github.com/pughlab/crescent-frontend.
 
 There are three directories in this repository: `bin`, `doc` and `examples`. `bin` contains the applications code, `doc` contains documentation, including dependencies, and `Examples` provides links to inputs and expected outputs.
 
