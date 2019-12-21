@@ -20,6 +20,7 @@
 ### 10) Added a stopwatch to every step
 ### 11) Added a step to define outdirs and CWL parameters, which can be tuned with option `-w`, variable 'RunsCwl'
 ### 12) Added a step to transform select *pdf files into *png
+### 13) Added a function to handle datasets with < 150 cells reducing perplexity for RunTSNE()
 ### 
 ### THINGS TO DO:
 ### 1) Parallelize FindAllMarkers() to send each cluster to a separate core
@@ -38,6 +39,7 @@
 ###    because the filtered matrix will be too sparse and small to get the gene PC's
 ### 7) To compare SCTransform() vs. [NormalizeData(), ScaleData(), and FindVariableFeatures()]
 ###    Do they produce similar results? Maybe use Circos plot to evaluate
+###    Implement variants with option -b
 ###
 ### THINGS NICE TO HAVE:
 ### 1) Assigning cell type identity to clusters (needs supervised annotations, maybe based on GSVA)
@@ -329,6 +331,8 @@ DefaultParameters <- list(
   NumberOfGenesPerClusterToPlotHeatmap  =  10,
   
   ### Parameters for dimmension reduction plots
+  MinNumberOfCellsToReducePerplexity = 150,
+  ReducedPerplexity = 7,
   BaseSizeSinglePlotPdf  = 7,
   BaseSizeSinglePlotPng  = 480,
   BaseSizeMultiplePlotPdfWidth  = 3.7,
@@ -826,7 +830,7 @@ StopWatchEnd$AverageGeneExpression  <- Sys.time()
 writeLines("\n*** Run and plot dimension reductions ***\n")
 
 for (dim_red_method in names(DimensionReductionMethods)) {
-
+  
   ####################################
   ### Run non-linear dimensional reductions
   ####################################
@@ -836,10 +840,16 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   
   ### NOTES:
   ### In RunTSNE: if the datasets is small user may get error:
-  ### `Error in Rtsne.default(X = as.matrix(x = data.use), dims = dim.embed,  : Perplexity is too large.`
+  ### `Error in .check_tsne_params(nrow(X), dims = dims, perplexity = perplexity,  : 
+  ### perplexity is too large for the number of samples`
   ### User can try tunning down the default RunTSNE(..., perplexity=30) to say 5 or 10
   
-  seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse)
+  if (("tsne" %in% dim_red_method) & (length(colnames(seurat.object.f)) < DefaultParameters$MinNumberOfCellsToReducePerplexity)) {
+    writeLines(paste("\n*** Using reduced perplexity = ", DefaultParameters$ReducedPerplexity, " because found ",  length(colnames(seurat.object.f)), " cells", " ***\n", sep = "", collapse = ""))
+    seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, perplexity = DefaultParameters$ReducedPerplexity)
+  }else{
+    seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse)
+  }
 
   StopWatchEnd$DimensionReduction$dim_red_method  <- Sys.time()
 
@@ -850,7 +860,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   dev.off()
 
   StopWatchEnd$DimensionReductionPlot$dim_red_method  <- Sys.time()
-
+  
   ####################################
   ### Write out coordinates
   ####################################
@@ -1105,21 +1115,37 @@ for (optionInput in option_list) {
 ####################################
 ### Obtain computing time used
 ####################################
-writeLines("\n*** Obtain computing time used ***\n")
+writeLines("\n*** Obtain computing time used***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
-OutfileCPUusage<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_CPUusage.txt", sep="")
+OutfileCPUusage<-paste(Tempdir, "/" , PrefixOutfiles, ".", ProgramOutdir, "_CPUusage.txt", sep="")
 write(file = OutfileCPUusage, x = paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
 Headers<-paste("Step", "Time(minutes)", sep="\t")
 write.table(Headers,file = OutfileCPUusage, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 
 for (stepToClock in names(StopWatchStart)) {
-  TimeStart <- StopWatchStart[[stepToClock]]
-  TimeEnd   <- StopWatchEnd[[stepToClock]]
-  TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
-  ReportTime<-c(paste(stepToClock, TimeDiff, sep = "\t", collapse = ""))
-  write(file = OutfileCPUusage, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
+  if (regexpr("POSIXct", class(StopWatchStart[[stepToClock]]), ignore.case = T)[1] == 1) {
+    TimeStart <- StopWatchStart[[stepToClock]]
+    TimeEnd   <- StopWatchEnd[[stepToClock]]
+    TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
+    ReportTime<-c(paste(stepToClock, TimeDiff, sep = "\t", collapse = ""))
+    write(file = OutfileCPUusage, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
+  }else{
+    ### This is NOT being printed out
+    ### Because the StopWatch[Start|End]$STEP$SUB_STEP
+    ### need to be split and programmed are using the word provided by SUB_STEP itself as key
+    ### need to pass the SUB_STEP value instead
+    for (substep in rownames(DimensionReductionMethods)) {
+      if (regexpr("POSIXct", class(StopWatchStart[[stepToClock]][[substep]]), ignore.case = T)[1] == 1) {
+        TimeStart <- StopWatchStart[[stepToClock]][[substep]]
+        TimeEnd   <- StopWatchEnd[[stepToClock]][[substep]]
+        TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
+        ReportTime<-c(paste(stepToClock, TimeDiff, substep, sep = "\t", collapse = ""))
+        write(file = OutfileCPUusage, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
+      }
+    }
+  }
 }
 
 ####################################
@@ -1132,7 +1158,6 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
 } else {
   writeLines("\n*** Moving outfiles into outdir ***\n")
   writeLines(paste(Outdir,"/", ProgramOutdir, "/", sep="", collapse = ""))
-  
   outfiles_to_move <- list.files(Tempdir, pattern = paste(PrefixOutfiles, ".", ProgramOutdir, "_", sep=""), full.names = F)
   sapply(outfiles_to_move,FUN=function(eachFile) {
     ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
@@ -1140,6 +1165,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     file.remove(paste(Tempdir,"/",eachFile,sep=""))
   })
 }
+
 
 ####################################
 ### Turning warnings on
