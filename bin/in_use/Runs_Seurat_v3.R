@@ -1,26 +1,7 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Script made based on https://satijalab.org/seurat/v3.0/pbmc3k_tutorial.html
-### 
-### Requires Seurat v3. Main differences from versions using Seurat v2 include:
-### 1) Updated function names
-### 2) Reads MTX inputs from Cell Ranger v3 (incl. features.tsv.gz instead of genes.tsv)
-### 3) A new function DimPlot() is used for 'uma', 'tsne' and 'pca' plots, instead of PCAPlot() and TSNEPlot()
-###    Hence, now we define 'dimensions' instead of principal components
-### 4) Default parameters are indexed using list(DefaultParameters) instead of variable names. This allows list(DefaultParameters)
-###    to be reported in a *log file
-### 5) Implemented QC violin plots directly in ggplots instead of Seurat's VlnPlot() to have more control of layout, legends, titles, etc.
-### 6) Using R base plot() to create feature-vs-feature scatter plots instead of FeatureScatter()
-### 7) Implemented all ggplots and Seurat plotting functions (which are based on ggplots) with print() function, like:
-###    `print(FeaturePlot(...))` instead of `FeaturePlot(...)` alone
-###    Otherwise using ggplots and Seurat plots inside if/else loops cause errors
-###    https://cran.r-project.org/doc/FAQ/R-FAQ.html#Why-do-lattice_002ftrellis-graphics-not-work_003f
-### 8) Violin plots and t-SNE QC plots show now percentage of ribosomal protein genes in cells
-### 9) Implemented library(future) for parallelization
-### 10) Added a stopwatch to every step
-### 11) Added a step to define outdirs and CWL parameters, which can be tuned with option `-w`, variable 'RunsCwl'
-### 12) Added a step to transform select *pdf files into *png
-### 13) Added a function to handle datasets with < 150 cells reducing perplexity for RunTSNE()
+### and https://satijalab.org/seurat/v3.0/sctransform_vignette.html
 ### 
 ### THINGS TO DO:
 ### 1) Parallelize FindAllMarkers() to send each cluster to a separate core
@@ -31,13 +12,11 @@
 ###    By picking the number of clusters based on differentially expressed genes. See https://f1000research.com/articles/7-1522/v1
 ### 4) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
 ###    Need to do it for both Human and Mouse
-### 5) In Seurat v2, Suluxan reported that the -c example Javier provided called a duplicated row names error
-###    Need to see if it's still happening
-### 6) To implement a flag to see if inputted dataset matches expected percent.mito
+### 5) To implement a flag to see if inputted dataset matches expected percent.mito
 ###    In particular, if imputting a whole cell sample and using `-m 0,0.05` likely will filterout most cells
 ###    and the script may crash at step 'Perform linear dimensional reduction by PCA'
 ###    because the filtered matrix will be too sparse and small to get the gene PC's
-### 7) To compare SCTransform() vs. [NormalizeData(), ScaleData(), and FindVariableFeatures()]
+### 6) To compare SCTransform() vs. [NormalizeData(), ScaleData(), and FindVariableFeatures()]
 ###    Do they produce similar results? Maybe use Circos plot to evaluate
 ###    Implement variants with option -b
 ###
@@ -91,18 +70,33 @@
 ####################################
 ### Required libraries
 ####################################
-suppressPackageStartupMessages(library(Seurat))       # to run QC, differential gene expression and clustering analyses
-### Requires Seurat v3 (tested on v3.0.3.9023), which can be installed like:
+suppressPackageStartupMessages(library(Seurat))       # (CRAN) to run QC, differential gene expression and clustering analyses
+### Package 'Seurat' version 3 is needed - tested using v3.1.1
+### Seurat's latest stable version can be installed like:
+### install.packages('Seurat')
+###
+### Or the development version can be installed like:
 ### install.packages('devtools')
 ### devtools::install_github(repo = "satijalab/seurat", ref = "develop")
-suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
+###
+### Or a specific older version (e.g. v3.0.3.9023) can be installed from GitHub like:
+### `PathForV3_0_3_9023Libs<-paste(.libPaths(), "/Seurat_V3_0_3_9023", sep = "", collapse = "")`
+### `dir.create(file.path(PathForV3_0_3_9023Libs), showWarnings = F, recursive = T)``
+### `devtools::install_github("satijalab/seurat", ref = "556e598", lib = PathForV3_0_3_9023Libs)`
+### ### To check that v3.0.3.9023 is installed
+### `library("Seurat",lib.loc = PathForV3_0_3_9023Libs)``
+### `packageVersion("Seurat")`
+### ### should return:
+### [1] ‘3.0.3.9023’
+
+suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
-suppressPackageStartupMessages(library(fmsb))         # to calculate the percentages of extra properties to be t-SNE plotted
-suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table
+suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be t-SNE plotted
+suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables quicker than read.table
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
-suppressPackageStartupMessages(library(future))       # To run parallel processes
-### library(staplr)     only if using option '-s y', note it needs pdftk
+suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
+suppressPackageStartupMessages(library(staplr))       # (CRAN) to merge pdf files. Note it needs pdftk available. If not available use `SummaryPlots <- "N"`
 ####################################
 
 ####################################
@@ -140,10 +134,12 @@ option_list <- list(
               help="Indicates if input is either a 'MTX' directory or a 'DGE' file
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
-  make_option(c("-b", "--normalize_and_scale_sample"), default="Y",
-              help="Indicates if input is either raw counts and hence needs to be normalized and scaled [use 'y']
-                or it's already normalized (e.g. if inputting transcripts per million counts (TPMs)) [use 'n']
-                Default = 'Y'"),
+  make_option(c("-b", "--normalize_and_scale_sample"), default="2",
+              help="Indicates one of three options:
+                '1' --input contains raw counts (e.g. from cellranger) and this script should use Seurat's NormalizeData() function
+                '2' --input contains raw counts (e.g. from cellranger) and this script should use Seurat's SCTransform() function
+                '3' --input contains pre-normalized counts (e.g. transcripts per million counts [TPMs]) and the normalization step should be skipped
+                Default = '2'"),
   #
   make_option(c("-r", "--resolution"), default="1",
               help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain a larger (smaller) number of cell clusters
@@ -156,11 +152,6 @@ option_list <- list(
   make_option(c("-p", "--prefix_outfiles"), default="NA",
               help="A prefix for outfile names, e.g. your project ID
                 Default = 'No default. It's mandatory to specify this parameter'"),
-  #
-  make_option(c("-s", "--summary_plots"), default="y",
-              help="Indicates if a *summary_plots.pdf file should be generated [use 'y'] or not [use 'n']
-                Note this needs 'pdftk' and R library(staplr)
-                Default = 'y'"),
   #
   make_option(c("-c", "--infile_colour_dim_red_plots"), default="NA",
               help="A <tab> delimited table of barcodes and discrete properties to colour the t-SNE, like:
@@ -204,6 +195,11 @@ option_list <- list(
               help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
                 Default = 'MAX'"),
   #
+  make_option(c("-s", "--save_r_object"), default="N",
+              help="Indicates if a R object with the data and analyzes from the run should be saved
+                Note that this may be time consuming. Type 'y/Y' or 'n/N'
+                Default = 'N'"),
+  #
   make_option(c("-w", "--run_cwl"), default="N",
               help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME' . Type 'y/Y' or 'n/N'.
                 Note, if using 'y/Y' this supersedes option -o
@@ -214,11 +210,10 @@ opt <- parse_args(OptionParser(option_list=option_list))
 
 Input                   <- opt$input
 InputType               <- opt$input_type
-NormalizeAnsScale       <- opt$normalize_and_scale_sample
+NormalizeAndScale       <- as.numeric(opt$normalize_and_scale_sample)
 Resolution              <- as.numeric(opt$resolution) ## using as.numeric avoids FindClusters() to crash by inputting it as.character [default from parse_args()]
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
-SummaryPlots            <- opt$summary_plots
 InfileColourDimRedPlots <- opt$infile_colour_dim_red_plots
 ListGenes               <- opt$list_genes
 Opacity                 <- as.numeric(opt$opacity)
@@ -227,6 +222,7 @@ ListPMito               <- opt$percent_mito
 ListNGenes              <- opt$n_genes
 ThreshReturn            <- as.numeric(opt$return_threshold)
 NumbCores               <- opt$number_cores
+SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
 
 ### To be able to take negative values for ListPMito entered using optparse (e.g. -m m1,1 means mito.percentage from -1 to 1)
@@ -638,10 +634,10 @@ UnfilteredData.df<-data.frame(nCount_RNA = seurat.object.u@meta.data$nCount_RNA,
                               nGene = seurat.object.u@meta.data$nFeature_RNA,
                               percent.mito = seurat.object.u@meta.data$percent.mito,
                               filtered_out = colnames(seurat.object.u) %in% colnames(seurat.object.f))
-UnfilteredData.df$DotColour<-gsub(x=UnfilteredData.df$filtered_out, pattern = TRUE,  replacement = ColoursQCViolinPlots[[1]])
-UnfilteredData.df$DotColour<-gsub(x=UnfilteredData.df$DotColour,    pattern = FALSE, replacement = ColoursQCViolinPlots[[2]])
-UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$filtered_out, pattern = TRUE,  replacement = 4)
-UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$DotPch,       pattern = FALSE, replacement = 16)
+UnfilteredData.df$DotColour<-gsub(x=UnfilteredData.df$filtered_out, pattern = T, replacement = ColoursQCViolinPlots[[1]])
+UnfilteredData.df$DotColour<-gsub(x=UnfilteredData.df$DotColour,    pattern = F, replacement = ColoursQCViolinPlots[[2]])
+UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$filtered_out, pattern = T, replacement = 4)
+UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$DotPch,       pattern = F, replacement = 16)
 
 FeatureVsFeaturePlotPdf<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_NumbReadsVsNumbGenesAndMito_VlnPlot.pdf", sep="")
 pdf(file=FeatureVsFeaturePlotPdf, width = DefaultParameters$BaseSizeSinglePlotPdf * 2, height = DefaultParameters$BaseSizeSinglePlotPdf)
@@ -670,9 +666,9 @@ rm(UnfilteredData.df)
 ####################################
 ### Normalize data (if applicable)
 ####################################
-if (regexpr("^Y$", NormalizeAnsScale, ignore.case = T)[1] == 1) {
+if (NormalizeAndScale == 1) {
   
-  writeLines("\n*** Normalize data ***\n")
+  writeLines("\n*** Normalize data using NormalizeData() ***\n")
   
   StopWatchStart$NormalizeData  <- Sys.time()
   
@@ -680,19 +676,22 @@ if (regexpr("^Y$", NormalizeAnsScale, ignore.case = T)[1] == 1) {
   
   StopWatchEnd$NormalizeData  <- Sys.time()
   
-}else{
+}else if (NormalizeAndScale == 2) {
+    
+    writeLines("\n*** Normalize data using NormalizeData() ***\n")
+    
+    StopWatchStart$SCTransform  <- Sys.time()
+    
+    seurat.object.f <- SCTransform(object = seurat.object.f, verbose = T)
+    
+    StopWatchEnd$SCTransform  <- Sys.time()
+    
+}else if (NormalizeAndScale == 3) {
+  
   writeLines("\n*** Data assumed to be already normalized ***\n")
-}
-
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   
-  # output the normalized count matrix for violin plots
-  writeLines("\n*** Outputting normalized count matrix as tsv ***\n")
-  
-  normalized_count_matrix <- as.matrix(seurat.object.f@assays[["RNA"]]@data)
-  write.table(normalized_count_matrix, file=paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_normalized_count_matrix.tsv", sep=""), sep="\t", row.names=TRUE, col.names=TRUE)
 } else {
-  writeLines("\n*** Skipping normalized count matrix tsv output ***\n")
+  stop(paste("Unexpected option -b", NormalizeAndScale, ". Only options '1', '2', or '3' are allowed. \n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n", sep=""))
 }
 
 ####################################
@@ -947,7 +946,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     }
     
     pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_SelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
-    print(FeaturePlot(object = seurat.object.f, ncol = nColFeaturePlot, features = c(ListOfGenesForDimRedPlots), cols = c("lightgrey", "blue"), reduction = dim_red_method))
+    print(FeaturePlot(object = seurat.object.f, ncol = nColFeaturePlot, features = c(ListOfGenesForDimRedPlots), cols = c("lightgrey", "blue"), reduction = dim_red_method, order = T))
     dev.off()
 
     StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
@@ -978,14 +977,23 @@ StopWatchEnd$FindDiffMarkers  <- Sys.time()
 ####################################
 ### Saving the R object
 ####################################
-writeLines("\n*** Saving the R object ***\n")
 
-StopWatchStart$SaveRDS  <- Sys.time()
-
-OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_object.rds", sep="")
-saveRDS(seurat.object.f, file = OutfileRDS)
-
-StopWatchEnd$SaveRDS  <- Sys.time()
+if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
+  
+  writeLines("\n*** Saving the R object ***\n")
+  
+  StopWatchStart$SaveRDS  <- Sys.time()
+  
+  OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_object.rds", sep="")
+  saveRDS(seurat.object.f, file = OutfileRDS)
+  
+  StopWatchEnd$SaveRDS  <- Sys.time()
+  
+}else{
+  
+  writeLines("\n*** Not saving R object ***\n")
+  
+}
 
 ###################################
 ### Violin plots for top genes
@@ -1025,7 +1033,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   pdfWidth  <- 4 * DefaultParameters$BaseSizeMultiplePlotPdfWidth
   pdfHeight <- NumberOfClusters * DefaultParameters$BaseSizeMultiplePlotPdfHeight / 2
   pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_EachTopGene.pdf", sep=""), width=pdfWidth, height=pdfHeight)
-  print(FeaturePlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), cols = c("lightgrey", "blue"), reduction = dim_red_method))
+  print(FeaturePlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), cols = c("lightgrey", "blue"), reduction = dim_red_method, order = T))
   dev.off()
   
 }
@@ -1050,6 +1058,9 @@ StopWatchEnd$CellClustersHeatmap  <- Sys.time()
 ### Create summary plots outfile
 ####################################
 writeLines("\n*** Create summary plots outfile ***\n")
+
+### Make this option "N" if library(staplr) or pdftk are not available
+SummaryPlots <- "Y"
 
 StopWatchStart$SummaryPlots  <- Sys.time()
 
@@ -1111,6 +1122,14 @@ write(file = OutfileOptionsUsed, x=c(TimeOfRun,"\n","Options used:"))
 for (optionInput in option_list) {
   write(file = OutfileOptionsUsed, x=(paste(optionInput@short_flag, optionInput@dest, opt[optionInput@dest], sep="\t", collapse="\t")),append = T)
 }
+
+####################################
+### Report R sessionInfo
+####################################
+writeLines("\n*** Report R sessionInfo ***\n")
+
+OutfileRSessionInfo<-paste(Tempdir, "/" , PrefixOutfiles, ".", ProgramOutdir, "_RSessionInfo.txt", sep="")
+writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
 
 ####################################
 ### Obtain computing time used
