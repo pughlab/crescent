@@ -5,7 +5,6 @@
 ###
 ### THINGS TO DO:
 ### 1) See Run_Seurat_v3.R for a list of functions to be implemented
-### 2) Fix a bug plotting only 2 out of 4 CellPropertiesToColour
 ####################################
 
 ####################################
@@ -55,7 +54,6 @@
 ###
 ### Or a specific older version (e.g. v3.0.3.9023) can be installed from GitHub like:
 ### `PathForV3_0_3_9023Libs<-paste(.libPaths(), "/Seurat_V3_0_3_9023", sep = "", collapse = "")`
-PathForV3_0_3_9023Libs<-paste(.libPaths(), "/Seurat_V3_0_3_9023", sep = "", collapse = "")
 ### `dir.create(file.path(PathForV3_0_3_9023Libs), showWarnings = F, recursive = T)``
 ### `devtools::install_github("satijalab/seurat", ref = "556e598", lib = PathForV3_0_3_9023Libs)`
 ### ### To check that v3.0.3.9023 is installed
@@ -98,28 +96,40 @@ options( warn = -1 )
 option_list <- list(
   make_option(c("-i", "--inputs_list"), default="NA",
               help="Path/name to a <tab> delimited file with the list of dataset IDs, infile path/names, and dataset type (e.g. batch) like:
-                dataset1_id  /path_to/dataset1_mtx  dataset1_type  dataset_format
-                dataset2_id  /path_to/dataset2_mtx  dataset2_type  dataset_format
-                dataset3_id  /path_to/dataset3_mtx  dataset3_type  dataset_format
+                dataset1_id  /path_to/dataset1  dataset1_type  dataset1_format  dataset1_mito_fraction  dataset1_number_of_genes
+                dataset2_id  /path_to/dataset2  dataset2_type  dataset2_format  dataset2_mito_fraction  dataset2_number_of_genes
+                dataset3_id  /path_to/dataset3  dataset3_type  dataset3_format  dataset3_mito_fraction  dataset3_number_of_genes
                 ...etc
-                
-                Important note:
+                Default = 'No default. It's mandatory to specify this parameter'
+
+                Notes:
+                (1)
                 The order of the list of datasets in --inputs_list influences the results,
                 including number of clusters, t-SNE/UMAP and differentially expressed genes
                 
-                Each dataset input must be in either format 'MTX' or 'DGE':
+                (2)
+                Column 4 indicates the dataset format. It must be in either 'MTX' or 'DGE':
                 a) the path/name to a MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files; or
                 b) the path/name of a <tab> delimited digital gene expression (DGE) *file* with genes in rows vs. barcodes in columns
-                Notes:
-                      The 'MTX' files can be the outputs from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
-                      Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
-
-                Datasets will be normalized using SC transform and three levels of integration will be used for clustering:
+                Notes: The 'MTX' files can be the outputs from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
+                       Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
+                
+                (3)    
+                Column 5 indicates the min,max cutoff values for the fraction of mitochondrial gene counts in each cell. For example:
+                a) for whole cell scRNA-seq use '0,0.2'
+                b) for Nuc-seq use '0,0.05'
+                c) for negative value counts (e.g. if using TPM in log scale) refer negative values with an 'n', like 'n1,0.5'
+                
+                (4)
+                Column 6 indicates the min,max cutoff values for the number of unique genes measured in each cell. For example:
+                '50,8000'
+                
+                (5)
+                Datasets will be normalized using SCTransform and three levels of integration will be used for clustering:
                 1) cluster cells from each dataset
                 2) integrate cells by 'dataset_type' (column 3) and cluster them
-                3) integrate cells from all datasets and cluster them
+                3) integrate cells from all datasets and cluster them"),
                 
-                Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-j", "--inputs_remove_barcodes"), default="NA",
               help="Path/name to a <tab> delimited list of barcodes to be removed from analysis, like:
@@ -165,15 +175,6 @@ option_list <- list(
                 *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
                 Default = '10'"),
   #
-  make_option(c("-m", "--percent_mito"), default="0,0.05",
-              help="<comma> delimited min,max number of percentage of mitochondrial gene counts in a cell to be included in normalization and clustering analyses
-               For example, for whole cell scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
-               Default = '0,0.05'"),
-  #
-  make_option(c("-n", "--n_genes"), default="50,8000",
-              help="<comma> delimited min,max number of unique gene counts in a cell to be included in normalization and clustering analyses
-                Default = '50,8000'"),
-  #
   make_option(c("-e", "--return_threshold"), default="0.01",
               help="For each cluster only return markers that have a p-value < return_thresh
                 Default = '0.01'"),
@@ -217,8 +218,6 @@ InfileColourDimRedPlots <- opt$infile_colour_dim_red_plots
 ListGenes               <- opt$list_genes
 Opacity                 <- as.numeric(opt$opacity)
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
-ListPMito               <- opt$percent_mito
-ListNGenes              <- opt$n_genes
 ThreshReturn            <- as.numeric(opt$return_threshold)
 DiffGeneExprComparisons <- opt$diff_gene_expr_comparisons
 NumbCores               <- opt$number_cores
@@ -237,7 +236,8 @@ if (SeuratVersion == 1) {
   suppressPackageStartupMessages(library("Seurat"))
   suppressPackageStartupMessages(library(earlycross))
 } else if (SeuratVersion == 2) {
-  suppressPackageStartupMessages(library("Seurat", lib.loc = PathForV3_0_3_9023Libs)) ### PathForV3_0_3_9023Libs must be the path of the sub-version installation
+  PathForV3_0_3_9023Libs<-paste(.libPaths(), "/Seurat_V3_0_3_9023", sep = "", collapse = "") ### PathForV3_0_3_9023Libs must be the path of the sub-version installation
+  suppressPackageStartupMessages(library("Seurat", lib.loc = PathForV3_0_3_9023Libs)) 
   suppressPackageStartupMessages(library(earlycross))
 }else{
   stop("Couldn't determine Seurat version to use")
@@ -300,25 +300,15 @@ options(future.globals.maxSize = 4000 * 1024^2)
 ### Some of these default parameters are provided by Seurat developers,
 ### others are tailored according to clusters/t-SNE granularity
 
-ListNGenes = unlist(strsplit(ListNGenes, ","))
-MinGenes   = as.numeric(ListNGenes[1])
-MaxGenes   = as.numeric(ListNGenes[2])
-#
-ListPMito  = unlist(strsplit(ListPMito,  ","))
-MinPMito   = as.numeric(ListPMito[1])
-MaxPMito   = as.numeric(ListPMito[2])
-#
 RequestedDiffGeneExprComparisons = unlist(strsplit(DiffGeneExprComparisons, ","))
 
 DefaultParameters <- list(
-  
+  ### Parameters for QC plots
+  CellPropertiesToQC = c("nFeature_RNA", "nCount_RNA", "mito.fraction", "ribo.fraction"),
+
   ### Parameters for Seurat filters
   MinCells = 3,
-  MinGenes = MinGenes,
-  MaxGenes = MaxGenes,
-  MinPMito = MinPMito,
-  MaxPMito = MaxPMito,
-  
+
   ### Parameters for Cluster Biomarkers
   FindAllMarkers.MinPct     =  0.25,
   FindAllMarkers.ThreshUse  =  0.25,
@@ -380,19 +370,28 @@ for (param in ListMandatory) {
 }
 
 ####################################
-### Load scRNA-seq data
+### Load --inputs_list
 ####################################
-writeLines("\n*** Load scRNA-seq data ***\n")
+writeLines("\n*** Load --inputs_list ***\n")
 
 InputsList<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), InputsList)
 InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat")
+colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","FractMito","NGenes")
+
+####################################
+### Load scRNA-seq data
+####################################
+writeLines("\n*** Load scRNA-seq data ***\n")
 
 SeuratObjects        <-list()
 DatasetIds           <-list()
 list_DatasetToType   <-list()
 list_TypeToDatasets  <-list()
 list_DatasetToFormat <-list()
+list_MinFracMito     <-list()
+list_MaxFracMito     <-list()
+list_MinNGenes       <-list()
+list_MaxNGenes       <-list()
 
 NumberOfDatasets <- 0
 for (dataset in rownames(InputsTable)) {
@@ -401,13 +400,29 @@ for (dataset in rownames(InputsTable)) {
   Dataset.SO <-paste(dataset, ".so",    sep = "", collapse = "")
   
   PathToDataset <- InputsTable[dataset,"PathToDataset"]
-  PathToDataset <- gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), PathToDataset)
   DatasetType   <- InputsTable[dataset,"DatasetType"]
   DatasetFormat <- InputsTable[dataset,"DatasetFormat"]
-  list_DatasetToType[[dataset]] <- DatasetType
-  list_DatasetToFormat[[dataset]] <- DatasetFormat
+  ListMitoFrac  <- InputsTable[dataset,"FractMito"]
+  ListNGenes    <- InputsTable[dataset,"NGenes"]
+  
+  PathToDataset <- gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), PathToDataset)
+  #
+  ListMitoFrac = unlist(strsplit(ListMitoFrac,  ","))
+  MinMitoFrac  = as.numeric(ListMitoFrac[1])
+  MaxMitoFrac  = as.numeric(ListMitoFrac[2])
+  #
+  ListNGenes = unlist(strsplit(ListNGenes, ","))
+  MinGenes   = as.numeric(ListNGenes[1])
+  MaxGenes   = as.numeric(ListNGenes[2])
+  
+  list_DatasetToType[[dataset]]      <- DatasetType
+  list_DatasetToFormat[[dataset]]    <- DatasetFormat
   list_TypeToDatasets[[DatasetType]] <- append(list_TypeToDatasets[[DatasetType]], dataset)
-
+  list_MinFracMito[[dataset]]        <- MinMitoFrac
+  list_MaxFracMito[[dataset]]        <- MaxMitoFrac
+  list_MinNGenes[[dataset]]          <- MinGenes
+  list_MaxNGenes[[dataset]]          <- MaxGenes
+  
   if (regexpr("^MTX$|^DGE$", DatasetFormat, ignore.case = T, perl = T)[1] == 1) {
 
     ####################################
@@ -436,7 +451,7 @@ for (dataset in rownames(InputsTable)) {
     StopWatchStart$CreateSeuratObject$dataset  <- Sys.time()
     
     writeLines(paste("\n*** Create seurat object for ", dataset, " ***\n", sep = "", collapse = ""))
-    seurat.object.u  <- CreateSeuratObject(counts = expression_matrix, min.cells = DefaultParameters$MinCells, min.features = DefaultParameters$MinGenes, project = paste(PrefixOutfiles, "_", dataset, sep = "", collapse = ""))
+    seurat.object.u  <- CreateSeuratObject(counts = expression_matrix, min.cells = DefaultParameters$MinCells, min.features = list_MinNGenes[[dataset]], project = paste(PrefixOutfiles, "_", dataset, sep = "", collapse = ""))
     
     StopWatchEnd$CreateSeuratObject$dataset  <- Sys.time()
     
@@ -456,11 +471,11 @@ for (dataset in rownames(InputsTable)) {
     ####################################
     writeLines(paste("\n*** Add dataset type label for ", dataset, " ***\n", sep = "", collapse = ""))
     
-    StopWatchStart$AddDatasetLabel$dataset  <- Sys.time()
+    StopWatchStart$AddDatasetLabel$dataset_type  <- Sys.time()
     
     seurat.object.u[['dataset_type.label']] <- list_DatasetToType[[dataset]]
     
-    StopWatchEnd$AddDatasetLabel$dataset  <- Sys.time()
+    StopWatchEnd$AddDatasetLabel$dataset_type  <- Sys.time()
 
     ####################################
     ### Get mitochondrial genes
@@ -473,11 +488,11 @@ for (dataset in rownames(InputsTable)) {
     mito.features <- grep(pattern = mitoRegExpressions, ignore.case = T, x = rownames(x = seurat.object.u), value = T)
     
     if (length(mito.features)[[1]] > 0) {
-      percent.mito <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[mito.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
-      seurat.object.u[['percent.mito']] <- percent.mito
+      mito.fraction <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[mito.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
+      seurat.object.u[['mito.fraction']] <- mito.fraction
     }else{
-      percent.mito <- 0 / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
-      seurat.object.u[['percent.mito']] <- percent.mito
+      mito.fraction <- 0 / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
+      seurat.object.u[['mito.fraction']] <- mito.fraction
     }
     
     StopWatchEnd$GetMitoGenes$dataset  <- Sys.time()
@@ -493,11 +508,11 @@ for (dataset in rownames(InputsTable)) {
     ribo.features <- grep(pattern = riboRegExpressions, ignore.case = T, x = rownames(x = seurat.object.u), value = T)
     
     if (length(ribo.features)[[1]] > 0) {
-      percent.ribo <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[ribo.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
-      seurat.object.u[['percent.ribo']] <- percent.ribo
+      ribo.fraction <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[ribo.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
+      seurat.object.u[['ribo.fraction']] <- ribo.fraction
     }else{
-      percent.ribo <- 0 / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
-      seurat.object.u[['percent.ribo']] <- percent.ribo
+      ribo.fraction <- 0 / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
+      seurat.object.u[['ribo.fraction']] <- ribo.fraction
     }
     
     StopWatchEnd$GetRiboGenes$dataset  <- Sys.time()
@@ -510,16 +525,16 @@ for (dataset in rownames(InputsTable)) {
     StopWatchStart$FilterCells$dataset  <- Sys.time()
     
     if (length(mito.features)[[1]] > 0) {
-      seurat.object.integrated<-subset(x = seurat.object.u, subset = nFeature_RNA > DefaultParameters$MinGenes & nFeature_RNA < DefaultParameters$MaxGenes & percent.mito > DefaultParameters$MinPMito & percent.mito < DefaultParameters$MaxPMito)
+      seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA > list_MinNGenes[[dataset]]  & nFeature_RNA < list_MaxNGenes[[dataset]] & mito.fraction > list_MinFracMito[[dataset]] & mito.fraction < list_MaxFracMito[[dataset]])
     }else{
-      seurat.object.integrated<-subset(x = seurat.object.u, subset = nFeature_RNA > DefaultParameters$MinGenes & nFeature_RNA < DefaultParameters$MaxGenes)
+      seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA > list_MinNGenes[[dataset]]  & nFeature_RNA < list_MaxNGenes[[dataset]])
     }
     
     StopWatchEnd$FilterCells$dataset  <- Sys.time()
     
     ### Just reporting the summary of the UNfiltered and filtered objects
     seurat.object.u
-    seurat.object.integrated
+    seurat.object.f
     
     ####################################
     ### QC EDA violin plots
@@ -531,32 +546,32 @@ for (dataset in rownames(InputsTable)) {
     ### Get unfiltered data QC statistics
     nFeature_RNA.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$nFeature_RNA, nGenes = 1)
     nCount_RNA.u.df    <-data.frame(Expression_level = seurat.object.u@meta.data$nCount_RNA,   nCount_RNA = 1)
-    percent.mito.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$percent.mito, percent.mito = 1)
-    percent.ribo.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$percent.ribo, percent.ribo = 1)
+    mito.fraction.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$mito.fraction, mito.fraction = 1)
+    ribo.fraction.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$ribo.fraction, ribo.fraction = 1)
     #
     nFeature_RNAStats.u<-paste(c(" mean = ",round(mean(seurat.object.u@meta.data[,"nFeature_RNA"]),0),"\n", "median = ",round(median(seurat.object.u@meta.data[,"nFeature_RNA"]),0)), sep = "", collapse="")
     nCount_RNAStats.u  <-paste(c( "mean = ",round(mean(seurat.object.u@meta.data[,"nCount_RNA"]),0),  "\n", "median = ",round(median(seurat.object.u@meta.data[,"nCount_RNA"]),0)),   sep = "", collapse="")
-    percent.mito.u     <-paste(c(" mean = ",round(mean(seurat.object.u@meta.data[,"percent.mito"]),3),"\n", "median = ",round(median(seurat.object.u@meta.data[,"percent.mito"]),3)), sep = "", collapse="")
-    percent.ribo.u     <-paste(c(" mean = ",round(mean(seurat.object.u@meta.data[,"percent.ribo"]),3),"\n", "median = ",round(median(seurat.object.u@meta.data[,"percent.ribo"]),3)), sep = "", collapse="")
+    mito.fraction.u     <-paste(c(" mean = ",round(mean(seurat.object.u@meta.data[,"mito.fraction"]),3),"\n", "median = ",round(median(seurat.object.u@meta.data[,"mito.fraction"]),3)), sep = "", collapse="")
+    ribo.fraction.u     <-paste(c(" mean = ",round(mean(seurat.object.u@meta.data[,"ribo.fraction"]),3),"\n", "median = ",round(median(seurat.object.u@meta.data[,"ribo.fraction"]),3)), sep = "", collapse="")
     
     ### Get filtered data QC statistics
-    nFeature_RNA.f.df  <-data.frame(Expression_level = seurat.object.integrated@meta.data$nFeature_RNA, nGenes = 2)
-    nCount_RNA.f.df    <-data.frame(Expression_level = seurat.object.integrated@meta.data$nCount_RNA,   nCount_RNA = 2)
-    percent.mito.f.df  <-data.frame(Expression_level = seurat.object.integrated@meta.data$percent.mito, percent.mito = 2)
-    percent.ribo.f.df  <-data.frame(Expression_level = seurat.object.integrated@meta.data$percent.ribo, percent.ribo = 2)
+    nFeature_RNA.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$nFeature_RNA, nGenes = 2)
+    nCount_RNA.f.df    <-data.frame(Expression_level = seurat.object.f@meta.data$nCount_RNA,   nCount_RNA = 2)
+    mito.fraction.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$mito.fraction, mito.fraction = 2)
+    ribo.fraction.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$ribo.fraction, ribo.fraction = 2)
     #
-    nFeature_RNAStats.f<-paste(c(" mean = ",round(mean(seurat.object.integrated@meta.data[,"nFeature_RNA"]),0),"\n", "median = ",round(median(seurat.object.integrated@meta.data[,"nFeature_RNA"]),0)), sep = "", collapse="")
-    nCount_RNAStats.f  <-paste(c(" mean = ",round(mean(seurat.object.integrated@meta.data[,"nCount_RNA"]),0),  "\n", "median = ",round(median(seurat.object.integrated@meta.data[,"nCount_RNA"]),0)),   sep = "", collapse="")
-    percent.mito.f     <-paste(c(" mean = ",round(mean(seurat.object.integrated@meta.data[,"percent.mito"]),3),"\n", "median = ",round(median(seurat.object.integrated@meta.data[,"percent.mito"]),3)), sep = "", collapse="")
-    percent.ribo.f     <-paste(c(" mean = ",round(mean(seurat.object.integrated@meta.data[,"percent.ribo"]),3),"\n", "median = ",round(median(seurat.object.integrated@meta.data[,"percent.ribo"]),3)), sep = "", collapse="")
+    nFeature_RNAStats.f<-paste(c(" mean = ",round(mean(seurat.object.f@meta.data[,"nFeature_RNA"]),0),"\n", "median = ",round(median(seurat.object.f@meta.data[,"nFeature_RNA"]),0)), sep = "", collapse="")
+    nCount_RNAStats.f  <-paste(c(" mean = ",round(mean(seurat.object.f@meta.data[,"nCount_RNA"]),0),  "\n", "median = ",round(median(seurat.object.f@meta.data[,"nCount_RNA"]),0)),   sep = "", collapse="")
+    mito.fraction.f     <-paste(c(" mean = ",round(mean(seurat.object.f@meta.data[,"mito.fraction"]),3),"\n", "median = ",round(median(seurat.object.f@meta.data[,"mito.fraction"]),3)), sep = "", collapse="")
+    ribo.fraction.f     <-paste(c(" mean = ",round(mean(seurat.object.f@meta.data[,"ribo.fraction"]),3),"\n", "median = ",round(median(seurat.object.f@meta.data[,"ribo.fraction"]),3)), sep = "", collapse="")
     
     ### Put QC statistics together
     nFeature_RNA.m.df  <-data.frame(rbind(nFeature_RNA.u.df,nFeature_RNA.f.df))
     nCount_RNA.m.df    <-data.frame(rbind(nCount_RNA.u.df,nCount_RNA.f.df))
-    percent.mito.m.df  <-data.frame(rbind(percent.mito.u.df,percent.mito.f.df))
-    percent.ribo.m.df  <-data.frame(rbind(percent.ribo.u.df,percent.ribo.f.df))
+    mito.fraction.m.df  <-data.frame(rbind(mito.fraction.u.df,mito.fraction.f.df))
+    ribo.fraction.m.df  <-data.frame(rbind(ribo.fraction.u.df,ribo.fraction.f.df))
     LabelUnfiltered    <-paste("Before filters: No. of cells = ", nrow(seurat.object.u@meta.data), sep ="", collapse = "")
-    LabelFiltered      <-paste("After filters:  No. of cells = ", nrow(seurat.object.integrated@meta.data), sep ="", collapse = "")
+    LabelFiltered      <-paste("After filters:  No. of cells = ", nrow(seurat.object.f@meta.data), sep ="", collapse = "")
     #LabelFilters       <-paste("Filters: No. of genes per cell = ", ListNGenes, "Fraction mitochondrial protein genes per cell = ", ListPMito), sep ="", collapse = "")
     
     ### Commands for violin ggplot's
@@ -583,25 +598,25 @@ for (dataset in rownames(InputsTable)) {
       annotate("text", x = 1 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.f, col = ColoursQCViolinPlots[[2]])
     
-    percent.mito.plot<-ggplot(data=percent.mito.m.df, aes(x = factor(percent.mito), y = Expression_level)) +
-      geom_violin(aes(fill = factor(percent.mito))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
+    mito.fraction.plot<-ggplot(data=mito.fraction.m.df, aes(x = factor(mito.fraction), y = Expression_level)) +
+      geom_violin(aes(fill = factor(mito.fraction))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
             axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
       scale_fill_manual(values = ColoursQCViolinPlots) +
       labs(x="Mitochondrial genes (fraction)") +
-      annotate("text", x = 1 , y = max(percent.mito.m.df$Expression_level)*1.1, label = percent.mito.u, col = ColoursQCViolinPlots[[1]]) +
-      annotate("text", x = 2 , y = max(percent.mito.m.df$Expression_level)*1.1, label = percent.mito.f, col = ColoursQCViolinPlots[[2]])
+      annotate("text", x = 1 , y = max(mito.fraction.m.df$Expression_level)*1.1, label = mito.fraction.u, col = ColoursQCViolinPlots[[1]]) +
+      annotate("text", x = 2 , y = max(mito.fraction.m.df$Expression_level)*1.1, label = mito.fraction.f, col = ColoursQCViolinPlots[[2]])
     
-    percent.ribo.plot<-ggplot(data=percent.ribo.m.df, aes(x = factor(percent.ribo), y = Expression_level)) +
-      geom_violin(aes(fill = factor(percent.ribo))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
+    ribo.fraction.plot<-ggplot(data=ribo.fraction.m.df, aes(x = factor(ribo.fraction), y = Expression_level)) +
+      geom_violin(aes(fill = factor(ribo.fraction))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
             axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
       scale_fill_manual(values = ColoursQCViolinPlots) +
       labs(x="Ribosomal protein genes (fraction)") +
-      annotate("text", x = 1 , y = max(percent.ribo.m.df$Expression_level)*1.1, label = percent.ribo.u, col = ColoursQCViolinPlots[[1]]) +
-      annotate("text", x = 2 , y = max(percent.ribo.m.df$Expression_level)*1.1, label = percent.ribo.f, col = ColoursQCViolinPlots[[2]])
+      annotate("text", x = 1 , y = max(ribo.fraction.m.df$Expression_level)*1.1, label = ribo.fraction.u, col = ColoursQCViolinPlots[[1]]) +
+      annotate("text", x = 2 , y = max(ribo.fraction.m.df$Expression_level)*1.1, label = ribo.fraction.f, col = ColoursQCViolinPlots[[2]])
     
-    bottom_row<-plot_grid(nFeature_RNA.plot, nCount_RNA.plot, percent.mito.plot, percent.ribo.plot, ncol = 4)
+    bottom_row<-plot_grid(nFeature_RNA.plot, nCount_RNA.plot, mito.fraction.plot, ribo.fraction.plot, ncol = 4)
     
     ### Create a *pdf file with the violin ggplot's
     
@@ -621,8 +636,8 @@ for (dataset in rownames(InputsTable)) {
     
     UnfilteredData.df<-data.frame(nCount_RNA = seurat.object.u@meta.data$nCount_RNA,
                                   nGene = seurat.object.u@meta.data$nFeature_RNA,
-                                  percent.mito = seurat.object.u@meta.data$percent.mito,
-                                  filtered_out = colnames(seurat.object.u) %in% colnames(seurat.object.integrated))
+                                  mito.fraction = seurat.object.u@meta.data$mito.fraction,
+                                  filtered_out = colnames(seurat.object.u) %in% colnames(seurat.object.f))
     UnfilteredData.df$DotColour<-gsub(x=UnfilteredData.df$filtered_out, pattern = T, replacement = ColoursQCViolinPlots[[1]])
     UnfilteredData.df$DotColour<-gsub(x=UnfilteredData.df$DotColour,    pattern = F, replacement = ColoursQCViolinPlots[[2]])
     UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$filtered_out, pattern = T, replacement = 4)
@@ -632,7 +647,7 @@ for (dataset in rownames(InputsTable)) {
     pdf(file=FeatureVsFeaturePlotPdf, width = 10, height = 5)
     par(mfrow=c(1,2))
     ## No. of reads vs. Mitochond. %
-    plot(x = UnfilteredData.df$nCount_RNA, UnfilteredData.df$percent.mito, col = UnfilteredData.df$DotColour, pch = as.integer(UnfilteredData.df$DotPch),
+    plot(x = UnfilteredData.df$nCount_RNA, UnfilteredData.df$mito.fraction, col = UnfilteredData.df$DotColour, pch = as.integer(UnfilteredData.df$DotPch),
          xlab ="No. of reads", ylab = "Mitochond. %")
     legend("topright", legend = c("No", "Yes"), title = "Filtered cells", col = ColoursQCViolinPlots, pch = c(4,16))
     
@@ -657,7 +672,7 @@ for (dataset in rownames(InputsTable)) {
     ####################################
     writeLines(paste("\n*** Assign data to Datasets lists: ", dataset, " ***\n", sep = "", collapse = ""))
     
-    SeuratObjects[[as.character(NumberOfDatasets)]]  <- seurat.object.integrated
+    SeuratObjects[[as.character(NumberOfDatasets)]]  <- seurat.object.f
     DatasetIds[[as.character(NumberOfDatasets)]]     <- dataset
     
   }else{
@@ -671,7 +686,7 @@ for (dataset in rownames(InputsTable)) {
 
 if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
 
-    writeLines("\n*** Ignoring option -j ***\n")
+    writeLines("\n*** No barcodes are removed by option -j ***\n")
 
 }else{
 
@@ -698,22 +713,41 @@ if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
 }
 
 ####################################
+### Write out QC data for each sample
+####################################
+writeLines("\n*** Write out QC data for each sample ***\n")
+
+StopWatchStart$WriteOutQCData  <- Sys.time()
+
+Headers<-paste("Cell_barcode", paste(DefaultParameters$CellPropertiesToQC, sep = "", collapse = "\t") ,sep="\t")
+
+NumberOfDatasets <- 0
+for (dataset in rownames(InputsTable)) {
+  NumberOfDatasets <- NumberOfDatasets + 1
+  SeuratObject     <- SeuratObjects[[NumberOfDatasets]]
+  BarcodeIdsWithDataset <- unlist(x = strsplit(x = paste(dataset, colnames(SeuratObject), sep = "_", collapse = "\n"), split = "\n"))
+  OutfileQCMetadata<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", "QC_metadata.tsv", sep = "", collapse = "")
+  write.table(Headers, file = OutfileQCMetadata, row.names = F, col.names = F, sep="\t", quote = F)
+  write.table(data.frame(BarcodeIdsWithDataset, SeuratObject@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadata, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+}
+
+StopWatchEnd$WriteOutQCData  <- Sys.time()
+
+####################################
 ### Merge Seurat objects
 ####################################
 writeLines("\n*** Merge Seurat objects ***\n")
 
 StopWatchStart$MergeSeuratObjects  <- Sys.time()
 
-FirstSeuratObject <- SeuratObjects[[1]]
-FirstSampleId     <- DatasetIds[[1]]
+FirstSeuratObject   <- SeuratObjects[[1]]
+FirstSampleId       <- DatasetIds[[1]]
 RestOfSeuratObjects <- SeuratObjects[c(2:NumberOfDatasets)]
 RestOfSamplesIds    <- unlist(DatasetIds[c(2:NumberOfDatasets)])
 
 seurat.object.merged <- merge(FirstSeuratObject, y = RestOfSeuratObjects, 
                               add.cell.ids = DatasetIds,
                               project = PrefixOutfiles)
-
-StopWatchEnd$MergeSeuratObjects  <- Sys.time()
 
 dataset.label.metadata<-cbind.data.frame(sample=seurat.object.merged@meta.data$dataset.label)
 rownames(dataset.label.metadata)<-colnames(seurat.object.merged)
@@ -751,9 +785,9 @@ seurat.object.integrated <- IntegrateData(anchorset = seurat.object.anchors, nor
 StopWatchEnd$Integration  <- Sys.time()
 
 ####################################
-### Reducing dimensions
+### Obtaining principal components
 ####################################
-writeLines("\n*** Reducing dimensions ***\n")
+writeLines("\n*** Obtaining principal components ***\n")
 
 StopWatchStart$RunPCA  <- Sys.time()
 
@@ -776,6 +810,61 @@ print(ForElbowPlot
 dev.off()
 
 StopWatchEnd$PCAPlots  <- Sys.time()
+
+####################################
+### Run dimension reductions using integrated data
+####################################
+writeLines("\n*** Run dimension reductions using integrated data ***\n")
+
+for (dim_red_method in names(DimensionReductionMethods)) {
+  ####################################
+  ### Run non-linear dimension reductions using integrated data
+  ####################################
+  writeLines(paste("\n*** Run ", DimensionReductionMethods[[dim_red_method]][["name"]], " ***\n", sep = "", collapse = ""))
+  
+  StopWatchStart$DimensionReduction$dim_red_method  <- Sys.time()
+  
+  ### NOTES:
+  ### In RunTSNE: if the datasets is small user may get error:
+  ### `Error in Rtsne.default(X = as.matrix(x = data.use), dims = dim.embed,  : Perplexity is too large.`
+  ### User can try tunning down the default RunTSNE(..., perplexity=30) to say 5 or 10
+  
+  seurat.object.integrated <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.integrated, dims = PcaDimsUse, do.fast = T)
+  
+  StopWatchEnd$DimensionReduction$dim_red_method  <- Sys.time()
+}
+
+####################################
+### Colour dimension reduction plots for each sample by QC (nFeature_RNA, nCount_RNA, mito.fraction and ribo.fraction)
+####################################
+writeLines("\n*** Colour dimension reduction plots for each sample by QC (nFeature_RNA, nCount_RNA, mito.fraction and ribo.fraction) ***\n")
+
+Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$sample
+
+NumberOfDatasets <- 0
+for (dataset in rownames(InputsTable)) {
+  
+  ### Note: need to AddMetaData() mito.fraction and ribo.fraction from OutfileQCMetadata to generate FeaturePlot()
+  ### because they are not inherited in seurat.object.integrated by IntegrateData()
+  InfileQCMetadata<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", "QC_metadata.tsv", sep = "", collapse = "")
+  QCMetadata <- data.frame(read.table(InfileQCMetadata, header = T, row.names = 1))
+  seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = QCMetadata)
+  
+  NumberOfDatasets <- NumberOfDatasets + 1
+  print(NumberOfDatasets)
+  
+  if (exists(x = "seurat.object.each_sample") == T) {
+    rm(seurat.object.each_sample)
+  }
+  seurat.object.each_sample <- subset(x = seurat.object.integrated, idents = dataset)
+  print(seurat.object.each_sample)
+  
+  for (dim_red_method in names(DimensionReductionMethods)) {
+    pdf(file=paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByQC.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf * 1.5, height = DefaultParameters$BaseSizeSinglePlotPdf * 1.5)
+    print(FeaturePlot(object = seurat.object.each_sample, label = F, order = T, features = DefaultParameters$CellPropertiesToQC, cols = c("lightgrey", "blue"), reduction = dim_red_method, ncol = 2, pt.size = 1.5))
+    dev.off()
+  }
+}
 
 ####################################
 ### Globally cluster cells using integrated data
@@ -847,6 +936,11 @@ write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAverage
 
 StopWatchEnd$AverageGeneExpression  <- Sys.time()
 
+####################################
+####################################
+### A break for crescent.cloud could go here
+####################################
+####################################
 
 ####################################
 ### Finding differentially expressed genes for each global cell cluster vs. rest of cells
@@ -873,22 +967,7 @@ if (1 %in% RequestedDiffGeneExprComparisons == T) {
 writeLines("\n*** FOR EACH DIMENSION REDUCTION TYPE colour plots using integrated data ***\n")
 
 for (dim_red_method in names(DimensionReductionMethods)) {
-  ####################################
-  ### Run non-linear dimension reductions using integrated data
-  ####################################
-  writeLines(paste("\n*** Run ", DimensionReductionMethods[[dim_red_method]][["name"]], " ***\n", sep = "", collapse = ""))
 
-  StopWatchStart$DimensionReduction$dim_red_method  <- Sys.time()
-
-  ### NOTES:
-  ### In RunTSNE: if the datasets is small user may get error:
-  ### `Error in Rtsne.default(X = as.matrix(x = data.use), dims = dim.embed,  : Perplexity is too large.`
-  ### User can try tunning down the default RunTSNE(..., perplexity=30) to say 5 or 10
-  
-  seurat.object.integrated <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.integrated, dims = PcaDimsUse, do.fast = T)
-  
-  StopWatchEnd$DimensionReduction$dim_red_method  <- Sys.time()
-  
   ####################################
   ### Colour dimension reduction plot by global cell clusters using integrated data
   ####################################
@@ -934,22 +1013,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   dev.off()
   
   StopWatchEnd$DimRedPlotsByDataset$dim_red_method  <- Sys.time()
-  
-  
-  ####################################
-  ### Colour dimension reduction plots by nFeature_RNA, nCount_RNA, percent.mito and percent.ribo using integrated data
-  ####################################
-  writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by nFeature_RNA, nCount_RNA, percent.mito and percent.ribo ***\n", sep = "", collapse = ""))
-  
-  StopWatchStart$QCDimRedPlots$dim_red_method  <- Sys.time()
-  
-  CellPropertiesToColour<-c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo")
-  pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByQC.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf * 1.5, height = DefaultParameters$BaseSizeSinglePlotPdf * 1.5)
-  print(FeaturePlot(object = seurat.object.integrated, label = T, order = T, features = CellPropertiesToColour, cols = c("lightgrey", "blue"), reduction = dim_red_method, ncol = 2, pt.size = 1.5))
-  dev.off()
 
-  StopWatchEnd$QCDimRedPlots$dim_red_method  <- Sys.time()
-  
   ####################################
   ### Colour dimension reduction plots by -infile_colour_dim_red_plots using integrated data
   ####################################
@@ -1109,10 +1173,10 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
 }
 
 ####################################
-### Colour dimension reduction plots for each sample based on global clusters
+### Colour dimension reduction plots for each sample based on global clusters and selected genes
 ####################################
 
-writeLines("\n*** Colour dimension reduction plots for each sample based on global clusters ***\n")
+writeLines("\n*** Colour dimension reduction plots for each sample based on global clusters and selected genes ***\n")
 
 Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$sample
 
@@ -1129,6 +1193,11 @@ for (dataset in rownames(InputsTable)) {
 
   for (dim_red_method in names(DimensionReductionMethods)) {
     
+    ####################################
+    ### Colour dimension reduction plots by global cell clusters
+    ####################################
+    writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by global cell clusters ***\n", sep = "", collapse = ""))
+
     StopWatchStart$DimRedPlotsByDatasetIntegratedCellClusters$dataset$dim_red_method  <- Sys.time()
     
     plots <- DimPlot(seurat.object.each_sample, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 5)
@@ -1139,12 +1208,17 @@ for (dataset in rownames(InputsTable)) {
     dev.off()
     
     StopWatchEnd$DimRedPlotsByDatasetIntegratedCellClusters$dataset$dim_red_method  <- Sys.time()
+
+    ####################################
+    ### Colour dimension reduction plots by selected genes (option -g)
+    ####################################
     
     ### To program layout() for more than 3 genes in multiple rows
     if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
       print("No selected genes for dimension reduction plots")
     }else{
-
+      writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by selected genes (option -g) ***\n", sep = "", collapse = ""))
+      
       StopWatchStart$DimRedPlotsByDatasetColuredByGenes$dim_red_method  <- Sys.time()
       
       ListOfGenesForDimRedPlots<-unlist(strsplit(ListGenes, ","))
