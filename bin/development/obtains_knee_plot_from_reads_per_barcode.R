@@ -30,42 +30,49 @@ BAMTagHistogram <- "~/PROGRAMS/DROPSEQ/Drop-seq_tools-1.13/BAMTagHistogram"
 option_list <- list(
   make_option(c("-i", "--infile"), default="NA",
               help="A path/name to either a <tab> delimited *file* with number of reads per barcode, like:
-              #INPUT=/path_to_file/file.bam  TAG=XC FILTER_PCR...
-              203177  CTTATGGCTTTA
-              196369  TTAGCGCTTATA
-              151561  CGGCTGCTAATC
-              Presumably produced by Dropseq-tools 'BAMTagHistogram'
-              Or
-              A possorted_genome_bam.bam file resumably produced by 'cellranger count'
-              In the last case 'BAMTagHistogram' will be run first"),
+                #INPUT=/path_to_file/file.bam  TAG=XC FILTER_PCR...
+                203177  CTTATGGCTTTA
+                196369  TTAGCGCTTATA
+                151561  CGGCTGCTAATC
+                Presumably produced by Dropseq-tools 'BAMTagHistogram'
+                Or
+                A possorted_genome_bam.bam file resumably produced by 'cellranger count'
+                In the last case 'BAMTagHistogram' will be run first
+                Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-t", "--input_type"), default="NA",
-              help="Indicates if input is either a 'TAB' delimited file or a 'BAM' file"),
+              help="Indicates if input is either a 'TAB' delimited file or a 'BAM' file
+                Default = 'No default. It's mandatory to specify this parameter'"),
+  #
+  make_option(c("-m", "--max_number_of_barcodes_to_plot"), default="60000",
+              help="A path/name for the results directory
+                Default = '60000'"),
   #   
   make_option(c("-o", "--outdir"), default="NA",
-              help="A path/name for the results directory"),
-  #
+              help="A path/name for the results directory
+                Default = 'No default. It's mandatory to specify this parameter'"),
+ #
   make_option(c("-p", "--prefix_outfiles"), default="NA",
-              help="A prefix for outfile names, e.g. your project ID"),
+              help="A prefix for outfile names, e.g. your project ID
+                Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-c", "--cluster_name"), default="NA",
               help="Name of either of the following clusters where process are running
-              'mordor'
-              'h4h'
-              'samwise'
-              'local'")
+                'mordor'
+                'h4h'
+                'samwise'
+                'local'")
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
 
 Infile          <- opt$infile
 InputType       <- opt$input_type
+MaxBarcodes     <- as.numeric(opt$max_number_of_barcodes_to_plot)
 Outdir          <- opt$outdir
 PrefixOutfiles  <- opt$prefix_outfiles
 ClusterName     <- opt$cluster_name
 Tempdir         <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
-
-MaxNumberOfCells <- 30000 ### Note this parameter may change the inflection point
 
 StartTimeOverall<-Sys.time()
 
@@ -159,16 +166,49 @@ if(regexpr("^TAB$", InputType, ignore.case = T)[1] == 1) {
 
 ####################################
 ### Load read-counts per cell data and get knee-plot
+### Note: earlier versions of this script used library(dropbead) plotCumulativeFractionOfReads() and estimateCellNumber()
+###       but they failed to produce a kneeplot for dataset: ~/SINGLE_CELL/10X/SMARTER_VACCINE/DATA_FROM_PUGHLAB/SMTR04t1_NonRad/5p_RNA
+###       Thus decided to program this part over
 ####################################
 print(paste("Start reading table of read-counts from:",InfileTab))
 print(Sys.time())
 
-mat<-as.data.frame(read.table(InfileTab,header=F))
+mat<-read.table(InfileTab, row.names=NULL, header = FALSE)
+colnames(mat)<-c("reads","barcode")
+
+### Get cumulative
+
+barcode_number <- 0
+for (i in rownames(mat)) {
+  barcode_number <- barcode_number+1
+  ivalue <- mat[barcode_number,"reads"]
+  if (barcode_number == 1) {
+    jvalue <- ivalue
+  }else{
+    jvalue <- jvalue + ivalue
+  }
+  mat[barcode_number,"cumulative"] <- jvalue
+}
+
+####################################
+### Generate outfiles
+####################################
+
+### Kneeplot
+XaxisLenght <- min(MaxBarcodes,nrow(mat))
 pdf(OutPdf)
-plotCumulativeFractionOfReads(mat, cutoff = MaxNumberOfCells, draw.knee.point = TRUE)
+InflectionPoint<-estimateCellNumber(mat[, "reads"], max.cells = min(XaxisLenght))
+plot(x = c(1:XaxisLenght), y = mat[c(1:XaxisLenght),"cumulative"], type="l",
+     xlab = "Sorted barcodes", ylab = "Cumulative reads", lwd = 2, main = paste(PrefixOutfiles, "\n", "Inflection = ", InflectionPoint, " cells", sep = "", collapse = ""))
+abline(v=InflectionPoint, col = "red", lwd = 2, lty =2)
 dev.off()
-InflectionPoint<-estimateCellNumber(mat[, 1], max.cells = MaxNumberOfCells)
-write(file=OutInf,x=InflectionPoint)
+
+### Kneeplot inflection
+write(file = OutInf, x = InflectionPoint)
+
+### Top barcodes based on kneeplot inflection
+OutTop<-paste(Tempdir, "/", PrefixOutfiles, "_Top", InflectionPoint, "cells", sep="", collapse = "")
+write.table(file = OutTop, x = mat[c(1:InflectionPoint),"barcode"], row.names = F, col.names = F, quote = F)
 
 ####################################
 ### Report used options
@@ -196,13 +236,15 @@ ReportTime<-c(
 write(file = OutfileCPUusage, x=c(ReportTime))
 
 ####################################
-### Moving outfiles into outdir
+### Moving outfiles into outdir or keeping them at tempdir (if using CWL)
 ####################################
 
-outfiles_to_move <- list.files(Tempdir,pattern = c(paste(PrefixOutfiles, ".kneeplot", sep=""), paste(PrefixOutfiles, ".reads_per_barcode.tsv", sep="")), full.names = F)
-sapply(outfiles_to_move,FUN=function(eachFile){
+writeLines("\n*** Moving outfiles into outdir ***\n")
+writeLines(paste(Outdir, sep="", collapse = ""))
+outfiles_to_move <- list.files(Tempdir, pattern = PrefixOutfiles, full.names = F)
+sapply(outfiles_to_move,FUN=function(eachFile) {
   ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
-  file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/",eachFile,sep=""),overwrite=T)
+  file.copy(from=paste(Tempdir,"/",eachFile,sep=""), to=paste(Outdir, "/", eachFile, sep=""), overwrite=T)
   file.remove(paste(Tempdir,"/",eachFile,sep=""))
 })
 
