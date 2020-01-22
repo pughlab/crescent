@@ -35,16 +35,38 @@ option_list <- list(
   #
   make_option(c("-b", "--select_barcodes"), default="NA",
               help="One of three options:
-              A path/name for the *file* with the list of barcodes to select, one-per-row
-              Or type a *numeric value* to print barcodes with a *sum* across all genes >= *numeric value*
-              Or type 'ALL' to print all barcodes from --input into outfile
+              (1)
+              A path/name for the *file* with the list of barcodes to select, one-per-row.
+              Barcode
+              ATTATCCAGACTAGAT-1
+              TGCTGCTAGCTCCTTC-1
+              GGACAAGTCAGTGTTG-1
+              Note: the 'Barcode' header may be absent
+              
+              (2)
+              Type a *numeric value* to print barcodes with a *sum* across all genes >= *numeric value*
+              
+              (3)
+              Type 'ALL' to print all barcodes from --input into outfile
+              
               Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-g", "--select_genes"), default="NA",
               help="One of three options:
-              A path/name for the *file* with the list of genes to select, one-per-row
-              Or type a *numeric value* to print genes with a *sum* across all barcodes >= *numeric value*
-              Or type 'ALL' to print all genes from --input into outfile
+              (1)
+              A path/name for the *file* with the list of genes to select, one-per-row.
+              Gene
+              SAMD11
+              NOC2L
+              KLHL17
+              Note: the 'Gene' header may be absent
+              
+              (2)
+              Type a *numeric value* to print genes with a *sum* across all barcodes >= *numeric value*
+              
+              (3)
+              Type 'ALL' to print all genes from --input into outfile
+              
               Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-o", "--outdir"), default="NA",
@@ -59,8 +81,6 @@ SelectBarcodes <- opt$select_barcodes
 SelectGenes    <- opt$select_genes
 Outdir         <- opt$outdir
 PrefixOutfiles <- "selected_gene_bc_matrices"
-
-Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
 
 ####################################
 ### Start stopwatches
@@ -86,11 +106,21 @@ for (param in ListMandatory) {
 ### Create outdirs
 ####################################
 
+## Using `Tempdir` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
+Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+#
 CommandsToGetUserHomeDirectory<-("eval echo \"~$USER\"")
 UserHomeDirectory<-system(command = CommandsToGetUserHomeDirectory, input = NULL, wait = T, intern = T)
 #
 Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Outdir)
-OutdirFinal<-paste(Outdir, "/selected_gene_bc_matrices",  sep = "", collapse = "")
+Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Tempdir)
+Outdir<-gsub("/+", "/", Outdir, perl = T)
+Tempdir<-gsub("/+", "/", Tempdir, perl = T)
+Outdir<-gsub("/$", "", Outdir)
+Tempdir<-gsub("/$", "", Tempdir)
+#
+OutdirFinal<-paste(Outdir, "/", PrefixOutfiles,  sep = "", collapse = "")
 dir.create(file.path(OutdirFinal), recursive = T)
 
 ####################################
@@ -132,6 +162,12 @@ if ((grepl(pattern = "^[0-9]+$", x = SelectBarcodes)) == TRUE) {
   stop("Including ALL barcodes needs to be implemented")
 }else{
   sampled.barcodes <- data.frame(read.table(SelectBarcodes, header = F, row.names = NULL))
+  if ((grepl(pattern = "^barcode", ignore.case = T, x = sampled.barcodes[1,"V1"])) == TRUE) {
+    sampled.barcodes <- sampled.barcodes[-1,]
+    sampled.barcodes<-gsub("-1$", "", sampled.barcodes)
+  }else{
+    sampled.barcodes<-gsub("-1$", "", as.factor(sampled.barcodes[,1]))
+  }
 }
 
 StopWatchEnd$DetermineBarcodesToSubsample  <- Sys.time()
@@ -160,7 +196,7 @@ writeLines("\n*** Get subset of barcodes and genes from Seurat object ***\n")
 
 StopWatchStart$SubsampleMatrix  <- Sys.time()
 
-seurat.object.subsampled <- SubsetData(object = seurat.object.u, cells = as.vector(sampled.barcodes[,1]))
+seurat.object.subsampled <- SubsetData(object = seurat.object.u, cells = as.vector(sampled.barcodes))
 
 StopWatchEnd$SubsampleMatrix  <- Sys.time()
 
@@ -212,16 +248,20 @@ for (stepToClock in names(StopWatchStart)) {
 ### Moving outfiles into outdir
 ####################################
 writeLines("\n*** Moving outfiles into outdir ***\n")
-writeLines(paste(Outdir,"SUBSAMPLED/",sep="",collapse = ""))
+writeLines(paste(Outdir,"/", PrefixOutfiles, sep="",collapse = ""))
 
-outfiles_to_move <- list.files(Tempdir,pattern = paste(PrefixOutfiles, ".Subsample_", sep=""), full.names = F)
+outfiles_to_move <- list.files(Tempdir, pattern = paste(PrefixOutfiles, ".Subsample_", sep=""), full.names = F)
 sapply(outfiles_to_move,FUN=function(eachFile){
   ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
-  file.copy(from=paste(Tempdir,"/",eachFile,sep=""),to=paste(Outdir,"/SUBSAMPLED/",eachFile,sep=""),overwrite=T)
-  file.remove(paste(Tempdir,"/",eachFile,sep=""))
+  if (Outdir == Tempdir) {
+    ### Do nothing
+  }else{
+    print(paste(Tempdir,"/",eachFile, sep=""))
+    print(paste(Outdir,"/", eachFile, sep=""))
+    file.copy(from=paste(Tempdir,"/",eachFile, sep=""),to=paste(Outdir,"/", eachFile, sep=""),overwrite=T)
+    file.remove(paste(Tempdir,"/",eachFile, sep=""))
+  }
 })
-
-print(paste("Outfiles at: ", Outdir, "SUBSAMPLED/", sep = "", collapse = ""))
 
 ####################################
 ### Turning warnings on
