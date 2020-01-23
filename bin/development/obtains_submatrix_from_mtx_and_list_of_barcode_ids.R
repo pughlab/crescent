@@ -80,7 +80,7 @@ Input          <- opt$input
 SelectBarcodes <- opt$select_barcodes
 SelectGenes    <- opt$select_genes
 Outdir         <- opt$outdir
-PrefixOutfiles <- "selected_gene_bc_matrices"
+PrefixOutfiles <- "selected_feature_bc_matrix"
 
 ####################################
 ### Start stopwatches
