@@ -58,9 +58,7 @@ option_list <- list(
   #
   make_option(c("-c", "--cluster_name"), default="NA",
               help="Name of either of the following clusters where process are running
-                'mordor'
                 'h4h'
-                'samwise'
                 'local'")
 )
 
@@ -121,13 +119,18 @@ if(regexpr("^TAB$", InputType, ignore.case = T)[1] == 1) {
   print(Sys.time())
 
   InfileTab <- paste(Tempdir, "/" , PrefixOutfiles, ".kneeplot_reads_per_barcode.tsv",collapse="",sep="")
-  OutfileCommandsForBAMTagHistogram<-paste(Tempdir,"/",PrefixOutfiles,".kneeplot_CommandsForBAMTagHistogram.sh", sep="")
-  write(file = OutfileCommandsForBAMTagHistogram, x=c("module load java/8",
-                                              paste(BAMTagHistogram, " \\" , sep = "", collapse = ""),
-                                              paste("I=", Infile, " \\", sep = "", collapse = ""),
-                                              paste("O=", InfileTab, " \\", sep = "", collapse = ""),
-                                              "TAG=CB"))
-  Chmod<-paste("chmod +x ", OutfileCommandsForBAMTagHistogram, sep = "", collapse = "")
+
+  CommandsForBAMTagHistogram <- c("module load java/8",
+                                  paste(BAMTagHistogram, " \\" , sep = "", collapse = ""),
+                                  paste("I=", Infile, " \\", sep = "", collapse = ""),
+                                  paste("O=", InfileTab, " \\", sep = "", collapse = ""),
+                                  "TAG=CB")
+
+  OutfileLocalCommandsForBAMTagHistogram<-paste(Tempdir,"/",PrefixOutfiles,".kneeplot_CommandsForBAMTagHistogram.sh", sep="")
+  
+  write(file = OutfileLocalCommandsForBAMTagHistogram, x = CommandsForBAMTagHistogram)
+        
+  Chmod<-paste("chmod +x ", OutfileLocalCommandsForBAMTagHistogram, sep = "", collapse = "")
   system(command = Chmod[[1]],  input = NULL, intern = TRUE)
   
   ### Runnig BAMTagHistogram
@@ -138,13 +141,29 @@ if(regexpr("^TAB$", InputType, ignore.case = T)[1] == 1) {
     }
 
     if(regexpr("^local$", ClusterName, ignore.case = T)[1] == 1) {
-      CommandToGetKneePlot<-OutfileCommandsForBAMTagHistogram
+      CommandToGetKneePlot<-OutfileLocalCommandsForBAMTagHistogram
+      
     }else if (regexpr("^h4h$", ClusterName, ignore.case = T)[1] == 1) {
-      stop(paste("This script works with option '-c local' but it fails in clusters because it need to figure out how to pass a 'qsub' call"))
-      CommandToGetKneePlot<-paste("qsub -q all -l vmem=30G,walltime=10:00:00 ", OutfileCommandsForBAMTagHistogram, sep = "", collapse = "")
-    }else if (regexpr("(^mordor$|^samwise$)", ClusterName, ignore.case = T)[1] == 1) {
-      stop(paste("This script works with option '-c local' but it fails in clusters because it need to figure out how to pass a 'qsub' call"))
-      CommandToGetKneePlot<-paste("qsub -q all.q -l vmem=30G,walltime=10:00:00 ", OutfileCommandsForBAMTagHistogram, sep = "", collapse = "")
+      HeadersSlurm <- "#!/bin/bash
+#SBATCH -t 72:00:00  #	<-- walltime for your job in format of days-hours:minutes:seconds
+#SBATCH --mem=60G    #	<-- amount of memory your job needs to run, in megabytes by default
+#SBATCH -J BAMTagHist  #	<-- name of your job
+#SBATCH -p himem     #  <-- partition you job wants to run
+#SBATCH -c 1 	     #  <-- number of CPUs your job needs to run
+#SBATCH -N 1 	     #  <-- number of nodes your job needs to run. Please use 1 node unless you are running mpi jobs.
+#SBATCH -o %x-%j.out #  <-- redirect job output (both stdout and stderr) to a file called “<job name>-<job id>.out”. The Slurm default output file is called “Slurm-<job id>.out”
+"
+      OutfileH4HCommandsForBAMTagHistogram<-paste(Tempdir,"/",PrefixOutfiles,".kneeplot_CommandsForBAMTagHistogram.sh", sep="")
+      write(file = OutfileH4HCommandsForBAMTagHistogram, x = c(HeadersSlurm, CommandsForBAMTagHistogram))
+      
+      #### Here need to find how to send sbatch
+      
+      
+      SendSlurm<-paste("sbatch ", OutfileH4HCommandsForBAMTagHistogram, sep = "", collapse = "")
+      # stop(SendSlurm)
+      print(SendSlurm[[1]])
+      system(command = SendSlurm[[1]],  input = NULL, intern = TRUE)
+
     }else{
       stop(paste("Unexpected name of cluster: ", ClusterName, "\n\nFor help type:\n\nRscript obtains_knee_plot_from_reads_per_barcode.R -h\n\n", sep=""))
     }
@@ -207,8 +226,9 @@ dev.off()
 write(file = OutInf, x = InflectionPoint)
 
 ### Top barcodes based on kneeplot inflection
-OutTop<-paste(Tempdir, "/", PrefixOutfiles, "_Top", InflectionPoint, "cells", sep="", collapse = "")
-write.table(file = OutTop, x = mat[c(1:InflectionPoint),"barcode"], row.names = F, col.names = F, quote = F)
+OutTop<-paste(Tempdir, "/", PrefixOutfiles, "_Top", InflectionPoint, "cells.csv", sep="", collapse = "")
+write.table(file = OutTop, x = "Barcode", row.names = F, col.names = F, quote = F)
+write.table(file = OutTop, x = mat[c(1:InflectionPoint),"barcode"], row.names = F, col.names = F, quote = F, append = T)
 
 ####################################
 ### Report used options
