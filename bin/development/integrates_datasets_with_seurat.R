@@ -1,7 +1,6 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
-### Script made based on https://satijalab.org/seurat/v3.0/merge_vignette.html
-### and https://satijalab.org/seurat/v3.0/sctransform_vignette.html
+### Script made based on https://satijalab.org/seurat/v3.1/integration.html
 ###
 ### THINGS TO DO:
 ### 1) See Run_Seurat_v3.R for a list of functions to be implemented
@@ -67,14 +66,13 @@
 ### 'earlycross' can be installed like:
 ### install.packages('devtools')
 ### devtools::install_github("daskelly/earlycross")
-suppressPackageStartupMessages(library(dplyr))        # needed by Seurat for data manupulation
+suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
-suppressPackageStartupMessages(library(fmsb))         # to calculate the percentages of extra properties to be t-SNE plotted
-suppressPackageStartupMessages(library(data.table))   # to read tables quicker than read.table
+suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be t-SNE plotted
+suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables quicker than read.table
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
-suppressPackageStartupMessages(library(future))       # To run parallel processes
-### library(staplr)     only if using option '-s y', note it needs pdftk
+suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
 ####################################
 
 ####################################
@@ -96,9 +94,9 @@ options( warn = -1 )
 option_list <- list(
   make_option(c("-i", "--inputs_list"), default="NA",
               help="Path/name to a <tab> delimited file with the list of dataset IDs, infile path/names, and dataset type (e.g. batch) like:
-                dataset1_id  /path_to/dataset1  dataset1_type  dataset1_format  dataset1_mito_fraction  dataset1_number_of_genes
-                dataset2_id  /path_to/dataset2  dataset2_type  dataset2_format  dataset2_mito_fraction  dataset2_number_of_genes
-                dataset3_id  /path_to/dataset3  dataset3_type  dataset3_format  dataset3_mito_fraction  dataset3_number_of_genes
+                dataset1_id_d1  /path_to/d1  d1_type  d1_format  d1_mito_fraction  d1_ribo_fraction  d1_number_of_genes d1_number_of_reads
+                dataset2_id_d2  /path_to/d2  d2_type  d2_format  d2_mito_fraction  d2_ribo_fraction  d2_number_of_genes d2_number_of_reads
+                dataset3_id_d3  /path_to/d3  d3_type  d3_format  d3_mito_fraction  d3_ribo_fraction  d3_number_of_genes d3_number_of_reads
                 ...etc
                 Default = 'No default. It's mandatory to specify this parameter'
 
@@ -119,12 +117,21 @@ option_list <- list(
                 a) for whole cell scRNA-seq use '0,0.2'
                 b) for Nuc-seq use '0,0.05'
                 c) for negative value counts (e.g. if using TPM in log scale) refer negative values with an 'n', like 'n1,0.5'
-                
-                (4)
-                Column 6 indicates the min,max cutoff values for the number of unique genes measured in each cell. For example:
-                '50,8000'
+
+                (4)    
+                Column 6 indicates the min,max cutoff values for the fraction of ribosomal protein gene counts in each cell.
+                For example: '1,0.75'
+                c) for negative value counts (e.g. if using TPM in log scale) refer negative values with an 'n', like 'n1,0.5'
                 
                 (5)
+                Column 7 indicates the min,max cutoff values for the number of unique genes measured in each cell. For example:
+                '50,8000'
+                
+                (6)
+                Column 8 indicates the min,max cutoff values for the number of reads measured in each cell. For example:
+                '1,80000'
+                
+                (7)
                 Datasets will be normalized using SCTransform and three levels of integration will be used for clustering:
                 1) cluster cells from each dataset
                 2) integrate cells by 'dataset_type' (column 3) and cluster them
@@ -133,9 +140,10 @@ option_list <- list(
   #
   make_option(c("-j", "--inputs_remove_barcodes"), default="NA",
               help="Path/name to a <tab> delimited list of barcodes to be removed from analysis, like:
-                dataset1_id  AAACCTGAGCTCCCAG
-                dataset2_id  AAACCTGTCACCATAG
-                dataset3_id  AAACCTGTCAGCTTAG
+                dataset1_id_d1  AAACCTGAGCTCCCAG
+                dataset2_id_d2  AAACCTGTCACCATAG
+                dataset3_id_d3  AAACCTGTCAGCTTAG
+                Note: the barcode id must include the dataset ID
                 Or type 'NA' to include all barcodes
                 Default = 'NA'"),
   #
@@ -153,20 +161,20 @@ option_list <- list(
   #
   make_option(c("-c", "--infile_colour_dim_red_plots"), default="NA",
               help="A <tab> delimited table of barcodes and discrete properties to colour the t-SNE, like:
-                Barcode              CellClass    InOtherDatasets
-                AAACCTGAGCGGCTTC-1   1            yes
-                AAACCTGAGTCGAGTG-1   1            no
-                AAACCTGCAAAGGAAG-1   2            yes
-                AAACCTGGTCTCATCC-1   2            no
+                Barcode                             CellClass    InOtherDatasets
+                dataset1_id_d1_AAACCTGAGCGGCTTC-1   1            yes
+                dataset2_id_d2_AAACCTGAGTCGAGTG-1   1            no
+                dataset3_id_d3_AAACCTGCAAAGGAAG-1   2            yes
+                Note: the barcode id must include the dataset ID
                 Default = 'NA' (i.e. no --infile_colour_dim_red_plots is provided)"),
   #
   make_option(c("-g", "--list_genes"), default="NA",
               help="A <comma> delimited list of gene identifiers whose expression will be mapped into the t-SNE plots
-                Default = 'NA' (no --list_genes provided)"),
+                Default = 'NA' (no --list_genes are provided)"),
   #
   make_option(c("-a", "--opacity"), default="0.1",
-              help="If using a --list_genes, this parameter provides a value for the minimal opacity of gene expression. Use a value between 0 and 1
-                Default = 'y'"),
+              help="Provides a value for the minimal opacity of dots for plots generated by parameters -c and -g. Use a value between 0 and 1
+                Default = '0.1'"),
   #
   make_option(c("-d", "--pca_dimensions"), default="10",
               help="Max value of PCA dimensions to use for clustering and t-SNE functions
@@ -204,7 +212,12 @@ option_list <- list(
               help="Indicates the sub-version of Seurat to use:
                 '1' to use the default version (likely v3.1.1)
                 '2' to use v3.0.3.923
-                Default = '1'")
+                Default = '1'"),
+  #
+  make_option(c("-b", "--max_global_variables"), default="4000",
+              help="Indicates maximum allowed total size (in bytes) of global variables identified.
+                 Used by library(future) to prevent too large exports
+                 Default = '4000' for 4000 MiB")
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -224,8 +237,7 @@ NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
 SeuratVersion           <- as.numeric(opt$seurat_version)
-
-Tempdir        <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
 
 ####################################
 ### Load Seurat and earlycross
@@ -267,6 +279,8 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Outdir)
   Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Tempdir)
+  Outdir<-gsub("/+", "/", Outdir, perl = T)
+  Tempdir<-gsub("/+", "/", Tempdir, perl = T)
   Outdir<-gsub("/$", "", Outdir)
   Tempdir<-gsub("/$", "", Tempdir)
   #
@@ -291,8 +305,8 @@ cat("Using ", NumbCoresToUse, "cores")
 plan(strategy = "multicore", workers = NumbCoresToUse)
 
 ### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
-### allocate 4Gb of RAM (4000*1024^2), use:
-options(future.globals.maxSize = 4000 * 1024^2)
+### allocate 4Gb of RAM (4000*1024^2), use: `options(future.globals.maxSize = 4000 * 1024^2)`
+options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 
 ####################################
 ### Define default parameters
@@ -318,6 +332,7 @@ DefaultParameters <- list(
   BaseSizeSinglePlotPng  = 480,
   BaseSizeMultiplePlotPdfWidth  = 3.7,
   BaseSizeMultiplePlotPdfHeight = 3,
+  MaxNumbLabelsPerRowInLegend   = 5,
   
   ### Parameters for datasets integration
   IntegrationNFeatures = 3000
@@ -376,7 +391,7 @@ writeLines("\n*** Load --inputs_list ***\n")
 
 InputsList<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), InputsList)
 InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","FractMito","NGenes")
+colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MitoFrac","RiboFrac","NGenes","NReads")
 
 ####################################
 ### Load scRNA-seq data
@@ -388,10 +403,14 @@ DatasetIds           <-list()
 list_DatasetToType   <-list()
 list_TypeToDatasets  <-list()
 list_DatasetToFormat <-list()
-list_MinFracMito     <-list()
-list_MaxFracMito     <-list()
+list_MinMitoFrac     <-list()
+list_MaxMitoFrac     <-list()
+list_MinRiboFrac     <-list()
+list_MaxRiboFrac     <-list()
 list_MinNGenes       <-list()
 list_MaxNGenes       <-list()
+list_MinNReads       <-list()
+list_MaxNReads       <-list()
 
 NumberOfDatasets <- 0
 for (dataset in rownames(InputsTable)) {
@@ -402,8 +421,10 @@ for (dataset in rownames(InputsTable)) {
   PathToDataset <- InputsTable[dataset,"PathToDataset"]
   DatasetType   <- InputsTable[dataset,"DatasetType"]
   DatasetFormat <- InputsTable[dataset,"DatasetFormat"]
-  ListMitoFrac  <- InputsTable[dataset,"FractMito"]
+  ListMitoFrac  <- InputsTable[dataset,"MitoFrac"]
+  ListRiboFrac  <- InputsTable[dataset,"RiboFrac"]
   ListNGenes    <- InputsTable[dataset,"NGenes"]
+  ListNReads    <- InputsTable[dataset,"NReads"]
   
   PathToDataset <- gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), PathToDataset)
   #
@@ -411,17 +432,29 @@ for (dataset in rownames(InputsTable)) {
   MinMitoFrac  = as.numeric(ListMitoFrac[1])
   MaxMitoFrac  = as.numeric(ListMitoFrac[2])
   #
+  ListRiboFrac = unlist(strsplit(ListRiboFrac,  ","))
+  MinRiboFrac  = as.numeric(ListRiboFrac[1])
+  MaxRiboFrac  = as.numeric(ListRiboFrac[2])
+  #
   ListNGenes = unlist(strsplit(ListNGenes, ","))
-  MinGenes   = as.numeric(ListNGenes[1])
-  MaxGenes   = as.numeric(ListNGenes[2])
+  MinNGenes  = as.numeric(ListNGenes[1])
+  MaxNGenes  = as.numeric(ListNGenes[2])
+  #
+  ListNReads = unlist(strsplit(ListNReads, ","))
+  MinNReads  = as.numeric(ListNReads[1])
+  MaxNReads  = as.numeric(ListNReads[2])
   
   list_DatasetToType[[dataset]]      <- DatasetType
   list_DatasetToFormat[[dataset]]    <- DatasetFormat
   list_TypeToDatasets[[DatasetType]] <- append(list_TypeToDatasets[[DatasetType]], dataset)
-  list_MinFracMito[[dataset]]        <- MinMitoFrac
-  list_MaxFracMito[[dataset]]        <- MaxMitoFrac
-  list_MinNGenes[[dataset]]          <- MinGenes
-  list_MaxNGenes[[dataset]]          <- MaxGenes
+  list_MinMitoFrac[[dataset]]        <- MinMitoFrac
+  list_MaxMitoFrac[[dataset]]        <- MaxMitoFrac
+  list_MinRiboFrac[[dataset]]        <- MinRiboFrac
+  list_MaxRiboFrac[[dataset]]        <- MaxRiboFrac
+  list_MinNGenes[[dataset]]          <- MinNGenes
+  list_MaxNGenes[[dataset]]          <- MaxNGenes
+  list_MinNReads[[dataset]]          <- MinNReads
+  list_MaxNReads[[dataset]]          <- MaxNReads
   
   if (regexpr("^MTX$|^DGE$", DatasetFormat, ignore.case = T, perl = T)[1] == 1) {
 
@@ -518,20 +551,51 @@ for (dataset in rownames(InputsTable)) {
     StopWatchEnd$GetRiboGenes$dataset  <- Sys.time()
     
     ####################################
-    ### Filter cells based gene counts and mitochondrial representation
+    ### Filter cells based gene counts, number of reads, ribosomal and mitochondrial representation
     ####################################
-    writeLines(paste("\n*** Filter cells based gene counts and mitochondrial representation for ", dataset, " ***\n", sep = "", collapse = ""))
+    writeLines(paste("\n*** Filter cells based gene counts, number of reads, ribosomal and mitochondrial representation for ", dataset, " ***\n", sep = "", collapse = ""))
     
     StopWatchStart$FilterCells$dataset  <- Sys.time()
     
     if (length(mito.features)[[1]] > 0) {
-      seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA > list_MinNGenes[[dataset]]  & nFeature_RNA < list_MaxNGenes[[dataset]] & mito.fraction > list_MinFracMito[[dataset]] & mito.fraction < list_MaxFracMito[[dataset]])
+      seurat.object.f<-subset(x = seurat.object.u, subset = 
+                                nFeature_RNA >= list_MinNGenes[[dataset]]
+                              & nFeature_RNA <= list_MaxNGenes[[dataset]] 
+                              & nCount_RNA   >= list_MinNReads[[dataset]]
+                              & nCount_RNA   <= list_MaxNReads[[dataset]]
+                              & mito.fraction >= list_MinMitoFrac[[dataset]]
+                              & mito.fraction <= list_MaxMitoFrac[[dataset]]
+                              & ribo.fraction >= list_MinRiboFrac[[dataset]]
+                              & ribo.fraction <= list_MaxRiboFrac[[dataset]])
+
+      ### Get list of barcodes excluded by nFeature_RNA, nCount_RNA, mito.fraction or ribo.fraction
+      BarcodesExcludedByNFeature        <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA  >= list_MinNGenes[[dataset]] & nFeature_RNA <= list_MaxNGenes[[dataset]])))
+      BarcodesExcludedByNReads          <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nCount_RNA    >= list_MinNReads[[dataset]] & nCount_RNA   <= list_MaxNReads[[dataset]])))
+      BarcodesExcludedByMito            <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = mito.fraction >= list_MinMitoFrac[[dataset]] & mito.fraction <= list_MaxMitoFrac[[dataset]])))
+      BarcodesExcludedByRibo            <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = ribo.fraction >= list_MinRiboFrac[[dataset]] & ribo.fraction <= list_MaxRiboFrac[[dataset]])))
+
     }else{
-      seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA > list_MinNGenes[[dataset]]  & nFeature_RNA < list_MaxNGenes[[dataset]])
+      seurat.object.f<-subset(x = seurat.object.u, subset = 
+                                nFeature_RNA >= list_MinNGenes[[dataset]]
+                              & nFeature_RNA <= list_MaxNGenes[[dataset]] 
+                              & nCount_RNA   >= list_MinNReads[[dataset]]
+                              & nCount_RNA   <= list_MaxNReads[[dataset]]
+                              & ribo.fraction >= list_MinRiboFrac[[dataset]]
+                              & ribo.fraction <= list_MaxRiboFrac[[dataset]])
+      
+      ### Get list of barcodes excluded by nFeature_RNA, nCount_RNA, mito.fraction or ribo.fraction
+      BarcodesExcludedByNFeature        <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA  >= list_MinNGenes[[dataset]] & nFeature_RNA <= list_MaxNGenes[[dataset]])))
+      BarcodesExcludedByNReads          <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nCount_RNA    >= list_MinNReads[[dataset]] & nCount_RNA   <= list_MaxNReads[[dataset]])))
+      BarcodesExcludedByMito            <- 0
+      BarcodesExcludedByRibo            <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = ribo.fraction >= list_MinRiboFrac[[dataset]] & ribo.fraction <= list_MaxRiboFrac[[dataset]])))
     }
-    
+    NumberOfBarcodesExcludedByNFeature <- length(BarcodesExcludedByNFeature)
+    NumberOfBarcodesExcludedByNReads   <- length(BarcodesExcludedByNReads)
+    NumberOfBarcodesExcludedByMito     <- length(BarcodesExcludedByMito)
+    NumberOfBarcodesExcludedByRibo     <- length(BarcodesExcludedByRibo)
+
     StopWatchEnd$FilterCells$dataset  <- Sys.time()
-    
+       
     ### Just reporting the summary of the UNfiltered and filtered objects
     seurat.object.u
     seurat.object.f
@@ -572,8 +636,10 @@ for (dataset in rownames(InputsTable)) {
     ribo.fraction.m.df  <-data.frame(rbind(ribo.fraction.u.df,ribo.fraction.f.df))
     LabelUnfiltered    <-paste("Before filters: No. of cells = ", nrow(seurat.object.u@meta.data), sep ="", collapse = "")
     LabelFiltered      <-paste("After filters:  No. of cells = ", nrow(seurat.object.f@meta.data), sep ="", collapse = "")
-    #LabelFilters       <-paste("Filters: No. of genes per cell = ", ListNGenes, "Fraction mitochondrial protein genes per cell = ", ListPMito), sep ="", collapse = "")
-    
+    NumberOfCells<- list()
+    NumberOfCells[["unfiltered"]] <- nrow(seurat.object.u@meta.data)
+    NumberOfCells[["filtered"]]   <- nrow(seurat.object.f@meta.data)
+
     ### Commands for violin ggplot's
     DataForHeader.df<-data.frame(forx = c(0.4,0.4), fory = c(0.09,0.03), label = c(LabelFiltered,LabelUnfiltered))
     Headers.plot<-ggplot(data=DataForHeader.df, aes(x = forx, y = fory)) + theme_void() + 
@@ -585,7 +651,7 @@ for (dataset in rownames(InputsTable)) {
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
             axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
       scale_fill_manual(values = ColoursQCViolinPlots) +
-      labs(x="No. of genes") +
+      labs(x=paste("No. of genes", "\n", "Filter: ", "min=", list_MinNGenes[[dataset]], " max=", list_MaxNGenes[[dataset]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByNFeature, sep = "", collapse = "")) +
       annotate("text", x = 1 , y = max(nFeature_RNA.m.df$Expression_level)*1.1, label = nFeature_RNAStats.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(nFeature_RNA.m.df$Expression_level)*1.1, label = nFeature_RNAStats.f, col = ColoursQCViolinPlots[[2]])
     
@@ -594,16 +660,17 @@ for (dataset in rownames(InputsTable)) {
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
             axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
       scale_fill_manual(values = ColoursQCViolinPlots) +
-      labs(x="No. of reads") +
+      labs(x=paste("No. of reads", "\n", "Filter: ", "min=", list_MinNReads[[dataset]], " max=", list_MaxNReads[[dataset]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByNReads, sep = "", collapse = "")) +
       annotate("text", x = 1 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.f, col = ColoursQCViolinPlots[[2]])
-    
+
     mito.fraction.plot<-ggplot(data=mito.fraction.m.df, aes(x = factor(mito.fraction), y = Expression_level)) +
       geom_violin(aes(fill = factor(mito.fraction))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
             axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
       scale_fill_manual(values = ColoursQCViolinPlots) +
       labs(x="Mitochondrial genes (fraction)") +
+      labs(x=paste("Mitochondrial genes", "\n", "Filter: ", "min=", list_MinMitoFrac[[dataset]], " max=", list_MaxMitoFrac[[dataset]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByMito, sep = "", collapse = "")) +
       annotate("text", x = 1 , y = max(mito.fraction.m.df$Expression_level)*1.1, label = mito.fraction.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(mito.fraction.m.df$Expression_level)*1.1, label = mito.fraction.f, col = ColoursQCViolinPlots[[2]])
     
@@ -612,16 +679,16 @@ for (dataset in rownames(InputsTable)) {
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
             axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
       scale_fill_manual(values = ColoursQCViolinPlots) +
-      labs(x="Ribosomal protein genes (fraction)") +
+      labs(x=paste("Ribosomal protein genes (fraction)", "\n", "Filter: ", "min=", list_MinRiboFrac[[dataset]], " max=", list_MaxRiboFrac[[dataset]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByRibo, sep = "", collapse = "")) +
       annotate("text", x = 1 , y = max(ribo.fraction.m.df$Expression_level)*1.1, label = ribo.fraction.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(ribo.fraction.m.df$Expression_level)*1.1, label = ribo.fraction.f, col = ColoursQCViolinPlots[[2]])
-    
+
     bottom_row<-plot_grid(nFeature_RNA.plot, nCount_RNA.plot, mito.fraction.plot, ribo.fraction.plot, ncol = 4)
     
     ### Create a *pdf file with the violin ggplot's
     
     VlnPlotPdf<-paste(Tempdir, "/" , PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_QC_VlnPlot.pdf", sep="", collapse = )
-    pdf(file=VlnPlotPdf, width = 12, height = 7)
+    pdf(file=VlnPlotPdf, width = DefaultParameters$BaseSizeSinglePlotPdf * 1.7, height = DefaultParameters$BaseSizeSinglePlotPdf)
     print(plot_grid(Headers.plot, bottom_row, ncol = 1, rel_heights = c(0.2,1)))
     dev.off()
     
@@ -678,6 +745,22 @@ for (dataset in rownames(InputsTable)) {
   }else{
     stop(paste("Unexpected type of input: ", DatasetType, "\n\nFor help type:\n\nRscript integrates_datasets_with_seurat.R -h\n\n", sep=""))
   }
+}
+
+####################################
+### Get's number of rows for the legend of dimension reduction plots
+####################################
+if (NumberOfDatasets <= DefaultParameters$MaxNumbLabelsPerRowInLegend) {
+  NumbRowsForLegendPerSample <- 1
+}else{
+  NumbRowsForLegendPerSample <- round((NumberOfDatasets / DefaultParameters$MaxNumbLabelsPerRowInLegend), digits = 0)
+}
+
+NumberOfDatasetsTypes <- length(unique(names(list_TypeToDatasets)))
+if (NumberOfDatasetsTypes <= DefaultParameters$MaxNumbLabelsPerRowInLegend) {
+  NumbRowsForLegendPerSampleType <- 1
+}else{
+  NumbRowsForLegendPerSampleType <- round((NumberOfDatasetsTypes / DefaultParameters$MaxNumbLabelsPerRowInLegend), digits = 0)
 }
 
 ####################################
@@ -777,9 +860,16 @@ writeLines("\n*** Integrating datasets ***\n")
 
 StopWatchStart$Integration  <- Sys.time()
 
+writeLines("\n*** Run SelectIntegrationFeatures() ***\n")
 seurat.object.integratedfeatures <- SelectIntegrationFeatures(object.list = seurat.object.list, nfeatures = DefaultParameters$IntegrationNFeatures)
+
+writeLines("\n*** Run PrepSCTIntegration() ***\n")
 seurat.object.list <- PrepSCTIntegration(object.list = seurat.object.list, anchor.features = seurat.object.integratedfeatures, verbose = T)
+
+writeLines("\n*** Run FindIntegrationAnchors() ***\n")
 seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, verbose = T)
+
+writeLines("\n*** Run IntegrateData() ***\n")
 seurat.object.integrated <- IntegrateData(anchorset = seurat.object.anchors, normalization.method = "SCT", verbose = T)
 
 StopWatchEnd$Integration  <- Sys.time()
@@ -943,6 +1033,28 @@ StopWatchEnd$AverageGeneExpression  <- Sys.time()
 ####################################
 
 ####################################
+### Saving the R object
+####################################
+
+if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
+  
+  writeLines("\n*** Saving the R object ***\n")
+  
+  StopWatchStart$SaveRDS  <- Sys.time()
+  
+  OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_integrated_object_lite.rds", sep="")
+  saveRDS(seurat.object.integrated, file = OutfileRDS)
+  
+  StopWatchEnd$SaveRDS  <- Sys.time()
+  
+}else{
+  
+  writeLines("\n*** Not saving R object ***\n")
+  
+}
+
+
+####################################
 ### Finding differentially expressed genes for each global cell cluster vs. rest of cells
 ####################################
 
@@ -1006,7 +1118,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   StopWatchStart$DimRedPlotsByDataset$dim_red_method  <- Sys.time()
   
   plots <- DimPlot(seurat.object.integrated, group.by = c("sample"), combine = F, reduction = dim_red_method)
-  plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 2, byrow = T, override.aes = list(size = 3))))
+  plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = NumbRowsForLegendPerSample, byrow = T, override.aes = list(size = 3))))
   IntegratedDimRedPlotPdf<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByDataset.pdf", sep="")
   pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
   print(CombinePlots(plots))
@@ -1489,7 +1601,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   StopWatchStart$DimRedOPlotColourBySampleType$dim_red_method  <- Sys.time()
   
   plots <- DimPlot(seurat.object.integrated, group.by = c("sample_type"), combine = F, reduction = dim_red_method, label = F, label.size = 10)
-  plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 2, byrow = T, override.aes = list(size = 3))))
+  plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = NumbRowsForLegendPerSampleType, byrow = T, override.aes = list(size = 3))))
   IntegratedDimRedPlotPdf<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySampleType.pdf", sep="")
   pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
   print(CombinePlots(plots))
@@ -1807,7 +1919,7 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
   StopWatchStart$SaveRDS  <- Sys.time()
   
-  OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_integrated_object.rds", sep="")
+  OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_integrated_object_full.rds", sep="")
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDS  <- Sys.time()
@@ -1848,6 +1960,8 @@ StopWatchEnd$Overall  <- Sys.time()
 
 OutfileCPUusage<-paste(Tempdir, "/" , PrefixOutfiles, ".", ProgramOutdir, "_CPUusage.txt", sep="")
 write(file = OutfileCPUusage, x = paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
+write(file = OutfileCPUusage, x = paste("MaxGlobalVariables", MaxGlobalVariables, sep = "\t", collapse = ""))
+
 Headers<-paste("Step", "Time(minutes)", sep="\t")
 write.table(Headers,file = OutfileCPUusage, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 
