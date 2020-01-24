@@ -241,6 +241,13 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   PrefixOutfiles  <- opt$prefix_outfiles
   Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F) ## Note Tempdir will be the final out-directory as well
+  dir.create(file.path(paste0(Tempdir,"/normalized")), showWarnings = F) ## Note Tempdir will be the final out-directory as well
+  dir.create(file.path(paste0(Tempdir,"/coordinates")), showWarnings = F) ## Note Tempdir will be the final out-directory as well
+  dir.create(file.path(paste0(Tempdir,"/raw")), showWarnings = F) ## Note Tempdir will be the final out-directory as well
+  dir.create(file.path(paste0(Tempdir,"/metadata")), showWarnings = F) ## Note Tempdir will be the final out-directory as well
+  dir.create(file.path(paste0(Tempdir,"/markers")), showWarnings = F) ## Note Tempdir will be the final out-directory as well
+  dir.create(file.path(paste0(Tempdir,"/qc")), showWarnings = F) ## Note Tempdir will be the final out-directory as well
+
 }else{
   PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
   ## Using `Tempdir` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
@@ -622,6 +629,17 @@ for (filter_status in names(QCStats)) {
 
 StopWatchEnd$QCsummarytable  <- Sys.time()
 
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  # unfiltered
+  interactive_qc_plot_u  <-data.frame(Barcodes = row.names(seurat.object.u@meta.data), Number_of_Genes = seurat.object.u@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.u@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.u@meta.data$percent.mito, Ribosomal_Protein_Genes_Fraction = seurat.object.u@meta.data$percent.ribo)
+  colnames(interactive_qc_plot_u) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Fraction","Ribosomal Protein Genes Fraction")
+  write.table(interactive_qc_plot_u, paste(Tempdir,"/","qc/","BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+
+  # filtered
+  interactive_qc_plot_f  <-data.frame(Barcodes = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.f@meta.data$percent.mito, Ribosomal_Protein_Genes_Fraction = seurat.object.f@meta.data$percent.ribo )
+  colnames(interactive_qc_plot_f) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Fraction","Ribosomal Protein Genes Fraction")
+  write.table(interactive_qc_plot_f, paste(Tempdir,"/","qc/","AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+} 
 
 ####################################
 ### Feature-vs-feature scatter plot
@@ -693,6 +711,23 @@ if (NormalizeAndScale == 1) {
 } else {
   stop(paste("Unexpected option -b", NormalizeAndScale, ". Only options '1', '2', or '3' are allowed. \n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n", sep=""))
 }
+
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  suppressPackageStartupMessages(library(loomR)) 
+
+  # output the normalized count matrix for violin plots
+  writeLines("\n*** Outputting normalized count matrix as loom ***\n")
+
+  normalized_count_matrix <- as.matrix(seurat.object.f@assays[["RNA"]]@data)
+  
+  features_tsv <- as.data.frame(rownames(normalized_count_matrix))
+  write.table(features_tsv, file=paste(Tempdir,"/","raw/","features.tsv", sep=""), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
+
+  loom_file <- paste(Tempdir,"/","normalized/","normalized_counts.loom", sep="")
+  create(loom_file, normalized_count_matrix)
+
+}
+
 
 ####################################
 ### Detect, save list and plot variable genes
@@ -795,10 +830,14 @@ StopWatchStart$CellClusterTables  <- Sys.time()
 
 CellNames<-rownames(seurat.object.f@meta.data)
 ClusterIdent<-seurat.object.f@meta.data$seurat_clusters
-Headers<-paste("Cell_barcode", paste("seurat_cluster_r", Resolution, sep = "", collapse = "") ,sep="\t")
+Headers<-paste("Cell_barcode", paste("seurat_cluster_resolution", Resolution, sep = "", collapse = "") ,sep="\t")
 clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
 #
-OutfileClusters<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_CellClusters.tsv", sep="")
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  OutfileClusters<-paste(Tempdir,"/","groups.tsv", sep="")
+ } else {
+  OutfileClusters<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_CellClusters.tsv", sep="")
+}
 write.table(Headers,file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(clusters_data),file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 #
@@ -867,7 +906,12 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   
   StopWatchStart$DimensionReductionWriteCoords$dim_red_method  <- Sys.time()
   
-  OutfileCoordinates<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv", sep="", collapse = "")
+  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    OutfileCoordinates<-paste(Tempdir,"/","coordinates/",DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv", sep="", collapse = "")
+  } else {
+    OutfileCoordinates<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv", sep="", collapse = "")
+  }
+  
   Headers<-paste("Barcode",paste(colnames(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings),sep="",collapse="\t"),sep="\t",collapse = "\t")
   write.table(Headers,file = OutfileCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
@@ -973,6 +1017,11 @@ top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% 
 NumberOfClusters<-length(unique(seurat.object.markers[["cluster"]]))
 
 StopWatchEnd$FindDiffMarkers  <- Sys.time()
+
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  markers_file <- top_genes_by_cluster_for_tsne[,c("gene","cluster","p_val","avg_logFC")]
+  write.table(markers_file, paste(Tempdir,"/","markers/","TopTwoMarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
+} 
 
 ####################################
 ### Saving the R object
