@@ -12,7 +12,7 @@
 ###    By picking the number of clusters based on differentially expressed genes. See https://f1000research.com/articles/7-1522/v1
 ### 4) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
 ###    Need to do it for both Human and Mouse
-### 5) To implement a flag to see if inputted dataset matches expected percent.mito
+### 5) To implement a flag to see if inputted dataset matches expected mito.fraction
 ###    In particular, if imputting a whole cell sample and using `-m 0,0.05` likely will filterout most cells
 ###    and the script may crash at step 'Perform linear dimensional reduction by PCA'
 ###    because the filtered matrix will be too sparse and small to get the gene PC's
@@ -134,6 +134,14 @@ option_list <- list(
               help="Indicates if input is either a 'MTX' directory or a 'DGE' file
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
+  make_option(c("-j", "--inputs_remove_barcodes"), default="NA",
+              help="Path/name to a <tab> delimited list of barcodes to be removed from analysis, like:
+                dataset1_id  AAACCTGAGCTCCCAG
+                dataset2_id  AAACCTGTCACCATAG
+                dataset3_id  AAACCTGTCAGCTTAG
+                Or type 'NA' to include all barcodes
+                Default = 'NA'"),
+  #
   make_option(c("-b", "--normalize_and_scale_sample"), default="2",
               help="Indicates one of three options:
                 '1' --input contains raw counts (e.g. from cellranger) and this script should use Seurat's NormalizeData() function
@@ -178,14 +186,23 @@ option_list <- list(
                 Default = '10'"),
   #
   make_option(c("-m", "--percent_mito"), default="0,0.05",
-              help="<comma> delimited min,max fraction of gene counts of mitochondrial originin a cell to be included in normalization and clustering analyses
+              help="<comma> delimited min,max fraction of gene counts of mitochondrial origin a cell to be included in normalization and clustering analyses
                 For example, for whole cell scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
                 For negative values (e.g. if using TPM in log scale refer negative values with an 'n', like this 'n1,0.5')
                 Default = '0,0.05'"),
   #
+  make_option(c("-q", "--percent_ribo"), default="0,0.75",
+              help="<comma> delimited min,max fraction of gene counts of ribosomal proteins to be included in normalization and clustering analyses
+                For negative values (e.g. if using TPM in log scale refer negative values with an 'n', like this 'n1,0.5')
+                Default = '0,0.75'"),
+  #
   make_option(c("-n", "--n_genes"), default="50,8000",
               help="<comma> delimited min,max number of unique genes measured in a cell to be included in normalization and clustering analyses
                 Default = '50,8000'"),
+  #
+  make_option(c("-v", "--n_reads"), default="1,80000",
+              help="<comma> delimited min,max number of reads measured in a cell to be included in normalization and clustering analyses
+                Default = '1,80000'"),
   #
   make_option(c("-e", "--return_threshold"), default="0.01",
               help="For each cluster only return markers that have a p-value < return_thresh
@@ -210,6 +227,7 @@ opt <- parse_args(OptionParser(option_list=option_list))
 
 Input                   <- opt$input
 InputType               <- opt$input_type
+InfileRemoveBarcodes    <- opt$inputs_remove_barcodes
 NormalizeAndScale       <- as.numeric(opt$normalize_and_scale_sample)
 Resolution              <- as.numeric(opt$resolution) ## using as.numeric avoids FindClusters() to crash by inputting it as.character [default from parse_args()]
 Outdir                  <- opt$outdir
@@ -220,13 +238,12 @@ Opacity                 <- as.numeric(opt$opacity)
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
 ListPMito               <- opt$percent_mito
 ListNGenes              <- opt$n_genes
+ListPRibo               <- opt$percent_ribo
+ListNReads              <- opt$n_reads
 ThreshReturn            <- as.numeric(opt$return_threshold)
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
-
-### To be able to take negative values for ListPMito entered using optparse (e.g. -m m1,1 means mito.percentage from -1 to 1)
-ListPMito <- gsub("m","-",ListPMito, ignore.case = T)
 
 ####################################
 ### Define outdirs and CWL parameters
@@ -247,7 +264,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   dir.create(file.path(paste0(Tempdir,"/metadata")), showWarnings = F) ## Note Tempdir will be the final out-directory as well
   dir.create(file.path(paste0(Tempdir,"/markers")), showWarnings = F) ## Note Tempdir will be the final out-directory as well
   dir.create(file.path(paste0(Tempdir,"/qc")), showWarnings = F) ## Note Tempdir will be the final out-directory as well
-
+  
 }else{
   PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
   ## Using `Tempdir` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
@@ -259,6 +276,8 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Outdir)
   Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Tempdir)
+  Outdir<-gsub("/+", "/", Outdir, perl = T)
+  Tempdir<-gsub("/+", "/", Tempdir, perl = T)
   Outdir<-gsub("/$", "", Outdir)
   Tempdir<-gsub("/$", "", Tempdir)
   #
@@ -292,6 +311,10 @@ options(future.globals.maxSize = 4000 * 1024^2)
 ### Some of these default parameters are provided by Seurat developers,
 ### others are tailored according to clusters/t-SNE granularity
 
+### To be able to take negative values for ListPMito entered using optparse (e.g. -m m1,1 means mito.percentage from -1 to 1)
+ListPMito <- gsub("m","-",ListPMito, ignore.case = T)
+ListPRibo <- gsub("m","-",ListPRibo, ignore.case = T)
+
 ListNGenes = unlist(strsplit(ListNGenes, ","))
 MinGenes   = as.numeric(ListNGenes[1])
 MaxGenes   = as.numeric(ListNGenes[2])
@@ -299,15 +322,27 @@ MaxGenes   = as.numeric(ListNGenes[2])
 ListPMito  = unlist(strsplit(ListPMito,  ","))
 MinPMito   = as.numeric(ListPMito[1])
 MaxPMito   = as.numeric(ListPMito[2])
+#
+ListNReads = unlist(strsplit(ListNReads, ","))
+MinReads   = as.numeric(ListNReads[1])
+MaxReads   = as.numeric(ListNReads[2])
+#
+ListPRibo  = unlist(strsplit(ListPRibo,  ","))
+MinPRibo   = as.numeric(ListPRibo[1])
+MaxPRibo   = as.numeric(ListPRibo[2])
 
 DefaultParameters <- list(
   
   ### Parameters for Seurat filters
   MinCells = 3,
-  MinGenes = MinGenes,
+  MinReads = MinReads,
   MaxGenes = MaxGenes,
+  MinGenes = MinGenes,
+  MaxReads = MaxReads,
   MinPMito = MinPMito,
   MaxPMito = MaxPMito,
+  MinPRibo = MinPRibo,
+  MaxPRibo = MaxPRibo,
   
   ### Parameters for Seurat normalization
   ScaleFactor = 1000000, ### Using 1000000 to set scale.factor as counts per million (CPM)
@@ -415,6 +450,8 @@ writeLines("\n*** Create a Seurat object ***\n")
 
 StopWatchStart$CreateSeuratObject  <- Sys.time()
 
+seurat.object.u   <- CreateSeuratObject(counts = input.matrix, project = PrefixOutfiles)
+
 seurat.object.u  <- CreateSeuratObject(counts = input.matrix, min.cells = DefaultParameters$MinCells, min.features = DefaultParameters$MinGenes, project = PrefixOutfiles)
 nCellsInOriginalMatrix<-length(seurat.object.u@meta.data$orig.ident)
 
@@ -431,11 +468,11 @@ mitoRegExpressions<- paste(c("^MT-"),collapse = "|")
 mito.features <- grep(pattern = mitoRegExpressions, ignore.case = T, x = rownames(x = seurat.object.u), value = T)
 
 if (length(mito.features)[[1]] > 0) {
-  percent.mito <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[mito.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
-  seurat.object.u[['percent.mito']] <- percent.mito
+  mito.fraction <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[mito.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
+  seurat.object.u[['mito.fraction']] <- mito.fraction
 }else{
-  percent.mito <- 0 / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
-  seurat.object.u[['percent.mito']] <- percent.mito
+  mito.fraction <- 0 / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
+  seurat.object.u[['mito.fraction']] <- mito.fraction
 }
 
 StopWatchEnd$GetMitoGenes  <- Sys.time()
@@ -451,44 +488,60 @@ riboRegExpressions<- paste(c("^MRPL", "^MRPS", "^RPL", "^RPS"),collapse = "|")
 ribo.features <- grep(pattern = riboRegExpressions, ignore.case = T, x = rownames(x = seurat.object.u), value = T)
 
 if (length(ribo.features)[[1]] > 0) {
-  percent.ribo <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[ribo.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
-  seurat.object.u[['percent.ribo']] <- percent.ribo
+  ribo.fraction <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[ribo.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
+  seurat.object.u[['ribo.fraction']] <- ribo.fraction
 }else{
-  percent.ribo <- 0 / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
-  seurat.object.u[['percent.ribo']] <- percent.ribo
+  ribo.fraction <- 0 / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
+  seurat.object.u[['ribo.fraction']] <- ribo.fraction
 }
 
 StopWatchEnd$GetRiboGenes  <- Sys.time()
 
 ####################################
-### Filter cells based gene counts and mitochondrial representation
+### Filter cells based gene counts, number of reads, ribosomal and mitochondrial representation
 ####################################
-writeLines("\n*** Filter cells based gene counts and mitochondrial representation ***\n")
+writeLines("\n*** Filter cells based gene counts, number of reads, ribosomal and mitochondrial representation ***\n")
 
 StopWatchStart$FilterCells  <- Sys.time()
 
 rm(seurat.object.f)
 
 if (length(mito.features)[[1]] > 0) {
-  seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes & percent.mito >= DefaultParameters$MinPMito & percent.mito <= DefaultParameters$MaxPMito)
-  
-  ### Get list of barcodes excluded by mito and/or nFeature_RNA
-  BarcodesExcludedByMito            <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = percent.mito >= DefaultParameters$MinPMito & percent.mito <= DefaultParameters$MaxPMito)))
-  BarcodesExcludedByNFeature        <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)))
-  BarcodesExcludedByMitoAndNFeature <- intersect(BarcodesExcludedByMito, BarcodesExcludedByNFeature)
+  seurat.object.f<-subset(x = seurat.object.u, subset = 
+                            nFeature_RNA >= DefaultParameters$MinGenes
+                          & nFeature_RNA <= DefaultParameters$MaxGenes 
+                          & nCount_RNA   >= DefaultParameters$MinReads
+                          & nCount_RNA   <= DefaultParameters$MaxReads 
+                          & mito.fraction >= DefaultParameters$MinPMito
+                          & mito.fraction <= DefaultParameters$MaxPMito
+                          & ribo.fraction >= DefaultParameters$MinPRibo
+                          & ribo.fraction <= DefaultParameters$MaxPRibo)
+
+  ### Get list of barcodes excluded by nFeature_RNA, nCount_RNA, mito.fraction or ribo.fraction
+  BarcodesExcludedByNFeature <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)))
+  BarcodesExcludedByNReads   <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nCount_RNA   >= DefaultParameters$MinReads & nCount_RNA   <= DefaultParameters$MaxReads)))
+  BarcodesExcludedByMito     <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = mito.fraction >= DefaultParameters$MinPMito & mito.fraction <= DefaultParameters$MaxPMito)))
+  BarcodesExcludedByRibo     <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = ribo.fraction >= DefaultParameters$MinPRibo & ribo.fraction <= DefaultParameters$MaxPRibo)))
 
 }else{
-  seurat.object.f<-subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)
-
-  ### Get list of barcodes excluded by nFeature_RNA
-  BarcodesExcludedByMito            <- NULL
-  BarcodesExcludedByNFeature        <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)))
-  BarcodesExcludedByMitoAndNFeature <- NULL
-
+  seurat.object.f<-subset(x = seurat.object.u, subset = 
+                            nFeature_RNA >= DefaultParameters$MinGenes
+                          & nFeature_RNA <= DefaultParameters$MaxGenes 
+                          & nCount_RNA   >= DefaultParameters$MinReads
+                          & nCount_RNA   <= DefaultParameters$MaxReads 
+                          & ribo.fraction >= DefaultParameters$MinPRibo
+                          & ribo.fraction <= DefaultParameters$MaxPRibo)
+  
+  ### Get list of barcodes excluded by nFeature_RNA, nCount_RNA or ribo.fraction
+  BarcodesExcludedByNFeature <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)))
+  BarcodesExcludedByNReads   <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nCount_RNA   >= DefaultParameters$MinReads & nCount_RNA   <= DefaultParameters$MaxReads)))
+  BarcodesExcludedByMito     <- 0
+  BarcodesExcludedByRibo     <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = ribo.fraction >= DefaultParameters$MinPRibo & ribo.fraction <= DefaultParameters$MaxPRibo)))
 }
-NumberOfBarcodesExcludedByMito            <- length(BarcodesExcludedByMito)
-NumberOfBarcodesExcludedByNFeature        <- length(BarcodesExcludedByNFeature)
-NumberOfBarcodesExcludedByMitoAndNFeature <- length(BarcodesExcludedByMitoAndNFeature)
+NumberOfBarcodesExcludedByNFeature <- length(BarcodesExcludedByNFeature)
+NumberOfBarcodesExcludedByNReads   <- length(BarcodesExcludedByNReads)
+NumberOfBarcodesExcludedByMito     <- length(BarcodesExcludedByMito)
+NumberOfBarcodesExcludedByRibo     <- length(BarcodesExcludedByRibo)
 
 StopWatchEnd$FilterCells  <- Sys.time()
 
@@ -508,47 +561,47 @@ QCStats$unfiltered$mean$nFeature_RNA<-round(mean(seurat.object.u@meta.data[,"nFe
 QCStats$unfiltered$median$nFeature_RNA<-round(median(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
 QCStats$unfiltered$mean$nCount_RNA<-round(mean(seurat.object.u@meta.data[,"nCount_RNA"]),0)
 QCStats$unfiltered$median$nCount_RNA<-round(median(seurat.object.u@meta.data[,"nCount_RNA"]),0)
-QCStats$unfiltered$mean$percent.mito<-round(mean(seurat.object.u@meta.data[,"percent.mito"]),3)
-QCStats$unfiltered$median$percent.mito<-round(median(seurat.object.u@meta.data[,"percent.mito"]),3)
-QCStats$unfiltered$mean$percent.ribo<-round(mean(seurat.object.u@meta.data[,"percent.ribo"]),3)
-QCStats$unfiltered$median$percent.ribo<-round(median(seurat.object.u@meta.data[,"percent.ribo"]),3)
+QCStats$unfiltered$mean$mito.fraction<-round(mean(seurat.object.u@meta.data[,"mito.fraction"]),3)
+QCStats$unfiltered$median$mito.fraction<-round(median(seurat.object.u@meta.data[,"mito.fraction"]),3)
+QCStats$unfiltered$mean$ribo.fraction<-round(mean(seurat.object.u@meta.data[,"ribo.fraction"]),3)
+QCStats$unfiltered$median$ribo.fraction<-round(median(seurat.object.u@meta.data[,"ribo.fraction"]),3)
 #
 QCStats$filtered$mean$nFeature_RNA<-round(mean(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
 QCStats$filtered$median$nFeature_RNA<-round(median(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
 QCStats$filtered$mean$nCount_RNA<-round(mean(seurat.object.u@meta.data[,"nCount_RNA"]),0)
 QCStats$filtered$median$nCount_RNA<-round(median(seurat.object.u@meta.data[,"nCount_RNA"]),0)
-QCStats$filtered$mean$percent.mito<-round(mean(seurat.object.u@meta.data[,"percent.mito"]),3)
-QCStats$filtered$median$percent.mito<-round(median(seurat.object.u@meta.data[,"percent.mito"]),3)
-QCStats$filtered$mean$percent.ribo<-round(mean(seurat.object.u@meta.data[,"percent.ribo"]),3)
-QCStats$filtered$median$percent.ribo<-round(median(seurat.object.u@meta.data[,"percent.ribo"]),3)
+QCStats$filtered$mean$mito.fraction<-round(mean(seurat.object.u@meta.data[,"mito.fraction"]),3)
+QCStats$filtered$median$mito.fraction<-round(median(seurat.object.u@meta.data[,"mito.fraction"]),3)
+QCStats$filtered$mean$ribo.fraction<-round(mean(seurat.object.u@meta.data[,"ribo.fraction"]),3)
+QCStats$filtered$median$ribo.fraction<-round(median(seurat.object.u@meta.data[,"ribo.fraction"]),3)
 
 ### Get unfiltered data QC statistics
 nFeature_RNA.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$nFeature_RNA, nGenes = 1)
 nCount_RNA.u.df    <-data.frame(Expression_level = seurat.object.u@meta.data$nCount_RNA,   nCount_RNA = 1)
-percent.mito.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$percent.mito, percent.mito = 1)
-percent.ribo.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$percent.ribo, percent.ribo = 1)
+mito.fraction.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$mito.fraction, mito.fraction = 1)
+ribo.fraction.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$ribo.fraction, ribo.fraction = 1)
 #
 nFeature_RNAStats.u<-paste(c(" mean = ", QCStats$unfiltered$mean$nFeature_RNA,"\n", "median = ", QCStats$unfiltered$median$nFeature_RNA), sep = "", collapse="")
 nCount_RNAStats.u  <-paste(c(" mean = ", QCStats$unfiltered$mean$nCount_RNA,  "\n", "median = ", QCStats$unfiltered$median$nCount_RNA),   sep = "", collapse="")
-percent.mito.u     <-paste(c(" mean = ", QCStats$unfiltered$mean$percent.mito,"\n", "median = ", QCStats$unfiltered$median$percent.mito), sep = "", collapse="")
-percent.ribo.u     <-paste(c(" mean = ", QCStats$unfiltered$mean$percent.ribo,"\n", "median = ", QCStats$unfiltered$median$percent.ribo), sep = "", collapse="")
+mito.fraction.u     <-paste(c(" mean = ", QCStats$unfiltered$mean$mito.fraction,"\n", "median = ", QCStats$unfiltered$median$mito.fraction), sep = "", collapse="")
+ribo.fraction.u     <-paste(c(" mean = ", QCStats$unfiltered$mean$ribo.fraction,"\n", "median = ", QCStats$unfiltered$median$ribo.fraction), sep = "", collapse="")
 
 ### Get filtered data QC statistics
 nFeature_RNA.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$nFeature_RNA, nGenes = 2)
 nCount_RNA.f.df    <-data.frame(Expression_level = seurat.object.f@meta.data$nCount_RNA,   nCount_RNA = 2)
-percent.mito.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$percent.mito, percent.mito = 2)
-percent.ribo.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$percent.ribo, percent.ribo = 2)
+mito.fraction.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$mito.fraction, mito.fraction = 2)
+ribo.fraction.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$ribo.fraction, ribo.fraction = 2)
 #
 nFeature_RNAStats.f<-paste(c(" mean = ", QCStats$filtered$mean$nFeature_RNA,"\n", "median = ", QCStats$filtered$median$nFeature_RNA), sep = "", collapse="")
 nCount_RNAStats.f  <-paste(c(" mean = ", QCStats$filtered$mean$nCount_RNA,  "\n", "median = ", QCStats$filtered$median$nCount_RNA),   sep = "", collapse="")
-percent.mito.f     <-paste(c(" mean = ", QCStats$filtered$mean$percent.mito,"\n", "median = ", QCStats$filtered$median$percent.mito), sep = "", collapse="")
-percent.ribo.f     <-paste(c(" mean = ", QCStats$filtered$mean$percent.ribo,"\n", "median = ", QCStats$filtered$median$percent.ribo), sep = "", collapse="")
+mito.fraction.f     <-paste(c(" mean = ", QCStats$filtered$mean$mito.fraction,"\n", "median = ", QCStats$filtered$median$mito.fraction), sep = "", collapse="")
+ribo.fraction.f     <-paste(c(" mean = ", QCStats$filtered$mean$ribo.fraction,"\n", "median = ", QCStats$filtered$median$ribo.fraction), sep = "", collapse="")
 
 ### Put QC statistics together
 nFeature_RNA.m.df  <-data.frame(rbind(nFeature_RNA.u.df,nFeature_RNA.f.df))
 nCount_RNA.m.df    <-data.frame(rbind(nCount_RNA.u.df,nCount_RNA.f.df))
-percent.mito.m.df  <-data.frame(rbind(percent.mito.u.df,percent.mito.f.df))
-percent.ribo.m.df  <-data.frame(rbind(percent.ribo.u.df,percent.ribo.f.df))
+mito.fraction.m.df  <-data.frame(rbind(mito.fraction.u.df,mito.fraction.f.df))
+ribo.fraction.m.df  <-data.frame(rbind(ribo.fraction.u.df,ribo.fraction.f.df))
 LabelUnfiltered    <-paste("Before filters: No. of cells = ", nrow(seurat.object.u@meta.data), sep ="", collapse = "")
 LabelFiltered      <-paste("After filters:  No. of cells = ", nrow(seurat.object.f@meta.data), sep ="", collapse = "")
 NumberOfCells<- list()
@@ -566,7 +619,6 @@ nFeature_RNA.plot<-ggplot(data=nFeature_RNA.m.df, aes(x = factor(nGenes), y = Ex
   theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
         axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
   scale_fill_manual(values = ColoursQCViolinPlots) +
-  # labs(x="No. of genes") +
   labs(x=paste("No. of genes", "\n", "Filter: ", "min=", ListNGenes[[1]], " max=", ListNGenes[[2]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByNFeature, sep = "", collapse = "")) +
   annotate("text", x = 1 , y = max(nFeature_RNA.m.df$Expression_level)*1.1, label = nFeature_RNAStats.u, col = ColoursQCViolinPlots[[1]]) +
   annotate("text", x = 2 , y = max(nFeature_RNA.m.df$Expression_level)*1.1, label = nFeature_RNAStats.f, col = ColoursQCViolinPlots[[2]])
@@ -576,30 +628,30 @@ nCount_RNA.plot<-ggplot(data=nCount_RNA.m.df, aes(x = factor(nCount_RNA), y = Ex
   theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
         axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
   scale_fill_manual(values = ColoursQCViolinPlots) +
-  labs(x=paste("No. of reads", "\n", "no filter was used", "\n", sep = "", collapse = "")) +
+  labs(x=paste("No. of reads", "\n", "Filter: ", "min=", ListNReads[[1]], " max=", ListNReads[[2]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByNReads, sep = "", collapse = "")) +
   annotate("text", x = 1 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.u, col = ColoursQCViolinPlots[[1]]) +
   annotate("text", x = 2 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.f, col = ColoursQCViolinPlots[[2]])
 
-percent.mito.plot<-ggplot(data=percent.mito.m.df, aes(x = factor(percent.mito), y = Expression_level)) +
-  geom_violin(aes(fill = factor(percent.mito))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
+mito.fraction.plot<-ggplot(data=mito.fraction.m.df, aes(x = factor(mito.fraction), y = Expression_level)) +
+  geom_violin(aes(fill = factor(mito.fraction))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
   theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
         axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
   scale_fill_manual(values = ColoursQCViolinPlots) +
   labs(x="Mitochondrial genes (fraction)") +
   labs(x=paste("Mitochondrial genes", "\n", "Filter: ", "min=", ListPMito[[1]], " max=", ListPMito[[2]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByMito, sep = "", collapse = "")) +
-  annotate("text", x = 1 , y = max(percent.mito.m.df$Expression_level)*1.1, label = percent.mito.u, col = ColoursQCViolinPlots[[1]]) +
-  annotate("text", x = 2 , y = max(percent.mito.m.df$Expression_level)*1.1, label = percent.mito.f, col = ColoursQCViolinPlots[[2]])
+  annotate("text", x = 1 , y = max(mito.fraction.m.df$Expression_level)*1.1, label = mito.fraction.u, col = ColoursQCViolinPlots[[1]]) +
+  annotate("text", x = 2 , y = max(mito.fraction.m.df$Expression_level)*1.1, label = mito.fraction.f, col = ColoursQCViolinPlots[[2]])
 
-percent.ribo.plot<-ggplot(data=percent.ribo.m.df, aes(x = factor(percent.ribo), y = Expression_level)) +
-  geom_violin(aes(fill = factor(percent.ribo))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
+ribo.fraction.plot<-ggplot(data=ribo.fraction.m.df, aes(x = factor(ribo.fraction), y = Expression_level)) +
+  geom_violin(aes(fill = factor(ribo.fraction))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
   theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
         axis.line = element_line(colour = ColourDefinitions["medium_grey"][[1]]), axis.text.x = element_blank(), axis.ticks.x = element_blank(), legend.position = "none") +
   scale_fill_manual(values = ColoursQCViolinPlots) +
-  labs(x=paste("Ribosomal protein genes (fraction)", "\n", "no filter was used", "\n", sep = "", collapse = "")) +
-  annotate("text", x = 1 , y = max(percent.ribo.m.df$Expression_level)*1.1, label = percent.ribo.u, col = ColoursQCViolinPlots[[1]]) +
-  annotate("text", x = 2 , y = max(percent.ribo.m.df$Expression_level)*1.1, label = percent.ribo.f, col = ColoursQCViolinPlots[[2]])
+  labs(x=paste("Ribosomal protein genes (fraction)", "\n", "Filter: ", "min=", ListPRibo[[1]], " max=", ListPRibo[[2]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByRibo, sep = "", collapse = "")) +
+  annotate("text", x = 1 , y = max(ribo.fraction.m.df$Expression_level)*1.1, label = ribo.fraction.u, col = ColoursQCViolinPlots[[1]]) +
+  annotate("text", x = 2 , y = max(ribo.fraction.m.df$Expression_level)*1.1, label = ribo.fraction.f, col = ColoursQCViolinPlots[[2]])
 
-bottom_row<-plot_grid(nFeature_RNA.plot, nCount_RNA.plot, percent.mito.plot, percent.ribo.plot, ncol = 4)
+bottom_row<-plot_grid(nFeature_RNA.plot, nCount_RNA.plot, mito.fraction.plot, ribo.fraction.plot, ncol = 4)
 
 ### Create a *pdf file with the violin ggplot's
 VlnPlotPdf<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_QC_VlnPlot.pdf", sep="")
@@ -634,7 +686,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   interactive_qc_plot_u  <-data.frame(Barcodes = row.names(seurat.object.u@meta.data), Number_of_Genes = seurat.object.u@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.u@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.u@meta.data$percent.mito, Ribosomal_Protein_Genes_Fraction = seurat.object.u@meta.data$percent.ribo)
   colnames(interactive_qc_plot_u) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Fraction","Ribosomal Protein Genes Fraction")
   write.table(interactive_qc_plot_u, paste(Tempdir,"/","qc/","BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
-
+  
   # filtered
   interactive_qc_plot_f  <-data.frame(Barcodes = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.f@meta.data$percent.mito, Ribosomal_Protein_Genes_Fraction = seurat.object.f@meta.data$percent.ribo )
   colnames(interactive_qc_plot_f) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Fraction","Ribosomal Protein Genes Fraction")
@@ -650,7 +702,7 @@ StopWatchStart$FeatureVsFeatureplot  <- Sys.time()
 
 UnfilteredData.df<-data.frame(nCount_RNA = seurat.object.u@meta.data$nCount_RNA,
                               nGene = seurat.object.u@meta.data$nFeature_RNA,
-                              percent.mito = seurat.object.u@meta.data$percent.mito,
+                              mito.fraction = seurat.object.u@meta.data$mito.fraction,
                               filtered_out = colnames(seurat.object.u) %in% colnames(seurat.object.f))
 UnfilteredData.df$DotColour<-gsub(x=UnfilteredData.df$filtered_out, pattern = T, replacement = ColoursQCViolinPlots[[1]])
 UnfilteredData.df$DotColour<-gsub(x=UnfilteredData.df$DotColour,    pattern = F, replacement = ColoursQCViolinPlots[[2]])
@@ -661,7 +713,7 @@ FeatureVsFeaturePlotPdf<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "
 pdf(file=FeatureVsFeaturePlotPdf, width = DefaultParameters$BaseSizeSinglePlotPdf * 2, height = DefaultParameters$BaseSizeSinglePlotPdf)
 par(mfrow=c(1,2))
 ## No. of reads vs. Mitochond. %
-plot(x = UnfilteredData.df$nCount_RNA, UnfilteredData.df$percent.mito, col = UnfilteredData.df$DotColour, pch = as.integer(UnfilteredData.df$DotPch),
+plot(x = UnfilteredData.df$nCount_RNA, UnfilteredData.df$mito.fraction, col = UnfilteredData.df$DotColour, pch = as.integer(UnfilteredData.df$DotPch),
      xlab ="No. of reads", ylab = "Mitochond. %")
 legend("topright", legend = c("No", "Yes"), title = "Filtered cells", col = ColoursQCViolinPlots, pch = c(4,16))
 
@@ -674,12 +726,41 @@ dev.off()
 StopWatchEnd$FeatureVsFeatureplot  <- Sys.time()
 
 ####################################
-### Remove the Unfiltered seurat object
+### Remove barcodes by parameter -j (if applicable)
 ####################################
-writeLines("\n*** Remove the Unfiltered seurat object ***\n")
+
+if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
+  
+  writeLines("\n*** Ignoring option -j ***\n")
+
+}else{
+  
+  StopWatchStart$RemoveBarcodes <- Sys.time()
+  
+  writeLines("\n*** Removing barcodes by parameter -j ***\n")
+  
+  InfileAllBarcodesToRemove<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), InfileRemoveBarcodes)
+  AllBarcodesToRemove.tab<-read.table(InfileAllBarcodesToRemove, header = F, row.names = NULL, stringsAsFactors = FALSE)
+  colnames(AllBarcodesToRemove.tab) <- c("Barcode")
+  
+  seurat.object.full    <- seurat.object.f
+  seurat.object.subset  <- subset(seurat.object.full, cells = colnames(seurat.object.full[,AllBarcodesToRemove.tab[,"Barcode"]]))
+  print(paste(paste("Before:", ncol(seurat.object.full), sep = "", collapse =""), paste("After:", ncol(seurat.object.subset), sep = "", collapse =""), sep = "  ", collapse = "\n"))
+  seurat.object.f       <- seurat.object.subset
+
+  StopWatchEnd$RemoveBarcodes <- Sys.time()
+  
+}
+
+####################################
+### Remove the temporal Seurat objects
+####################################
+writeLines("\n*** Remove the temporal Seurat objects ***\n")
 
 rm(seurat.object.u)
 rm(UnfilteredData.df)
+rm(seurat.object.full)
+rm(seurat.object.subset)
 
 ####################################
 ### Normalize data (if applicable)
@@ -714,18 +795,18 @@ if (NormalizeAndScale == 1) {
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   suppressPackageStartupMessages(library(loomR)) 
-
+  
   # output the normalized count matrix for violin plots
   writeLines("\n*** Outputting normalized count matrix as loom ***\n")
-
+  
   normalized_count_matrix <- as.matrix(seurat.object.f@assays[["RNA"]]@data)
   
   features_tsv <- as.data.frame(rownames(normalized_count_matrix))
   write.table(features_tsv, file=paste(Tempdir,"/","raw/","features.tsv", sep=""), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
-
+  
   loom_file <- paste(Tempdir,"/","normalized/","normalized_counts.loom", sep="")
   create(loom_file, normalized_count_matrix)
-
+  
 }
 
 
@@ -759,7 +840,7 @@ writeLines("\n*** Scale data and remove unwanted sources of variation ***\n")
 
 StopWatchStart$ScaleData  <- Sys.time()
 
-seurat.object.f <- ScaleData(object = seurat.object.f, vars.to.regress = c("nCount_RNA", "percent.mito"), features = rownames(x = seurat.object.f), verbose = T)
+seurat.object.f <- ScaleData(object = seurat.object.f, vars.to.regress = c("nCount_RNA", "mito.fraction"), features = rownames(x = seurat.object.f), verbose = T)
 
 StopWatchEnd$ScaleData  <- Sys.time()
 
@@ -835,7 +916,7 @@ clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
 #
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   OutfileClusters<-paste(Tempdir,"/","groups.tsv", sep="")
- } else {
+} else {
   OutfileClusters<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_CellClusters.tsv", sep="")
 }
 write.table(Headers,file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F)
@@ -919,13 +1000,13 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   StopWatchEnd$DimensionReductionWriteCoords$dim_red_method  <- Sys.time()
   
   ####################################
-  ### Colour dimension reduction plots by nFeature_RNA, nCount_RNA, percent.mito and percent.ribo
+  ### Colour dimension reduction plots by nFeature_RNA, nCount_RNA, mito.fraction and ribo.fraction
   ####################################
-  writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by nFeature_RNA, nCount_RNA, percent.mito and percent.ribo ***\n", sep = "", collapse = ""))
+  writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by nFeature_RNA, nCount_RNA, mito.fraction and ribo.fraction ***\n", sep = "", collapse = ""))
   
   StopWatchStart$QCDimRedPlots$dim_red_method  <- Sys.time()
   
-  CellPropertiesToColour<-c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo")
+  CellPropertiesToColour<-c("nFeature_RNA", "nCount_RNA", "mito.fraction", "ribo.fraction")
   pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_QC.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf * 1.5, height = DefaultParameters$BaseSizeSinglePlotPdf * 1.5)
   print(FeaturePlot(object = seurat.object.f, label = T, order = T, features = CellPropertiesToColour, cols = c("lightgrey", "blue"), reduction = dim_red_method, ncol = 2, pt.size = 1.5))
   dev.off()
@@ -1145,9 +1226,7 @@ writeLines("\n*** Transform select *pdf files into *png ***\n")
 
 StopWatchStart$TransformPdfToPng  <- Sys.time()
 
-ListOfPdfFilesToPng<-c(paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_PCElbowPlot.pdf", sep = "", collapse = ""),
-                        paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_QC_VlnPlot.pdf",  sep = "", collapse = ""),
-                        paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_TSNEPlot_EachTopGene.pdf",  sep = "", collapse = "")
+ListOfPdfFilesToPng<-c(paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_PCElbowPlot.pdf", sep = "", collapse = "")
 )
 
 sapply(ListOfPdfFilesToPng,FUN=function(eachFile) {
