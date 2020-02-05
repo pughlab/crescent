@@ -1093,7 +1093,7 @@ seurat.object.markers <- FindAllMarkers(object = seurat.object.f, only.pos = T, 
 SimplifiedDiffExprGenes.df <- seurat.object.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
 write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_MarkersPerCluster.tsv",sep=""), row.names = F, sep="\t", quote = F)
 
-### Get top-2 genes sorted by cluster, then by p-value
+### Get top-2 genes sorted by cluster, then by avg_logFC
 top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% top_n(DefaultParameters$NumberOfGenesPerClusterToPlotTsne, avg_logFC))
 NumberOfClusters<-length(unique(seurat.object.markers[["cluster"]]))
 
