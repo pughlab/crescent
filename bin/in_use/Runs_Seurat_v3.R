@@ -329,6 +329,9 @@ MaxPRibo   = as.numeric(ListPRibo[2])
 
 DefaultParameters <- list(
   
+  ### Parameters for QC plots
+  CellPropertiesToQC = c("nFeature_RNA", "nCount_RNA", "mito.fraction", "ribo.fraction"),
+
   ### Parameters for Seurat filters
   MinCells = 3,
   MinReads = MinReads,
@@ -738,6 +741,27 @@ write.table(paste("Number_of_cells_before_filters", NumberOfCells[["unfiltered"]
 write.table(paste("Number_of_cells_after_filters", NumberOfCells[["filtered"]],    sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 
 StopWatchEnd$OutTablesFilterDetailsAndFilteredCells  <- Sys.time()
+
+####################################
+### Write out QC data
+####################################
+writeLines("\n*** Write out QC data ***\n")
+
+StopWatchStart$WriteOutQCData  <- Sys.time()
+
+Headers<-paste("Cell_barcode", paste(DefaultParameters$CellPropertiesToQC, sep = "", collapse = "\t") ,sep="\t")
+
+BarcodeIdsBeforeFilters <- unlist(x = colnames(seurat.object.u))
+OutfileQCMetadataBeforeFilters<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", "Before_filters_QC_metadata.tsv", sep = "", collapse = "")
+write.table(Headers, file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(data.frame(BarcodeIdsBeforeFilters, seurat.object.u@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
+BarcodeIdsAfterFilters <- unlist(x = colnames(seurat.object.f))
+OutfileQCMetadataAfterFilters<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", "After_filters_QC_metadata.tsv", sep = "", collapse = "")
+write.table(Headers, file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(data.frame(BarcodeIdsAfterFilters, seurat.object.f@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
+StopWatchEnd$WriteOutQCData  <- Sys.time()
 
 ####################################
 ### Remove barcodes by parameter -j (if applicable)
