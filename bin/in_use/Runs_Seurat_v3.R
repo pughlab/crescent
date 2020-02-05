@@ -19,6 +19,7 @@
 ### 6) To compare SCTransform() vs. [NormalizeData(), ScaleData(), and FindVariableFeatures()]
 ###    Do they produce similar results? Maybe use Circos plot to evaluate
 ###    Implement variants with option -b
+### 7) Make *MarkersPerCluster.tsv and *TopTwoMarkersPerCluster.tsv a single file
 ###
 ### THINGS NICE TO HAVE:
 ### 1) Assigning cell type identity to clusters (needs supervised annotations, maybe based on GSVA)
@@ -174,10 +175,6 @@ option_list <- list(
               help="A <comma> delimited list of gene identifiers whose expression will be mapped into the t-SNE plots
                 Default = 'NA' (no --list_genes provided)"),
   #
-  make_option(c("-a", "--opacity"), default="0.2",
-              help="If using a --list_genes, this parameter provides a value for the minimal opacity of gene expression. Use a value between 0 and 1
-                Default = '0.2'"),
-  #
   make_option(c("-d", "--pca_dimensions"), default="10",
               help="Number of PCA dimensions to use for clustering and dimension reduction functions
                 FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
@@ -234,7 +231,6 @@ Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
 InfileColourDimRedPlots <- opt$infile_colour_dim_red_plots
 ListGenes               <- opt$list_genes
-Opacity                 <- as.numeric(opt$opacity)
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
 ListPMito               <- opt$percent_mito
 ListNGenes              <- opt$n_genes
@@ -504,8 +500,6 @@ writeLines("\n*** Filter cells based gene counts, number of reads, ribosomal and
 
 StopWatchStart$FilterCells  <- Sys.time()
 
-rm(seurat.object.f)
-
 if (length(mito.features)[[1]] > 0) {
   seurat.object.f<-subset(x = seurat.object.u, subset = 
                             nFeature_RNA >= DefaultParameters$MinGenes
@@ -662,24 +656,9 @@ dev.off()
 StopWatchEnd$QCviolinplots  <- Sys.time()
 
 ####################################
-### QC summary table
+### CWL interactive qc plots
 ####################################
-writeLines("\n*** QC summary table ***\n")
-
-StopWatchStart$QCsummarytable  <- Sys.time()
-
-Headers<-paste("Run_prefix","Filter_status", "Number_of_cells", "Metric", "Measurement", "Value", sep = "\t", collapse = "")
-write.table(Headers,paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_QC_summary.tsv",sep=""), row.names = F, sep="", quote = F, col.names = F)
-
-for (filter_status in names(QCStats)) {
-  for (metric in names(QCStats[[filter_status]])) {
-    for (measurement in names(QCStats[[filter_status]][[metric]])) {
-      write.table(paste(PrefixOutfiles, filter_status, NumberOfCells[[filter_status]], metric, measurement, QCStats[[filter_status]][[metric]][[measurement]],  sep = "\t", collapse = ""), paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_QC_summary.tsv",sep=""), row.names = F, sep="\t", quote = F, col.names = F, append = T)
-    }
-  }
-}
-
-StopWatchEnd$QCsummarytable  <- Sys.time()
+writeLines("\n*** CWL interactive qc plots ***\n")
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   # unfiltered
@@ -709,7 +688,7 @@ UnfilteredData.df$DotColour<-gsub(x=UnfilteredData.df$DotColour,    pattern = F,
 UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$filtered_out, pattern = T, replacement = 4)
 UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$DotPch,       pattern = F, replacement = 16)
 
-FeatureVsFeaturePlotPdf<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_NumbReadsVsNumbGenesAndMito_VlnPlot.pdf", sep="")
+FeatureVsFeaturePlotPdf<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_NumbReadsVsNumbGenesAndMito_ScatterPlot.pdf", sep="")
 pdf(file=FeatureVsFeaturePlotPdf, width = DefaultParameters$BaseSizeSinglePlotPdf * 2, height = DefaultParameters$BaseSizeSinglePlotPdf)
 par(mfrow=c(1,2))
 ## No. of reads vs. Mitochond. %
@@ -724,6 +703,41 @@ legend("topleft", legend = c("No", "Yes"), title = "Filtered cells", col = Colou
 dev.off()
 
 StopWatchEnd$FeatureVsFeatureplot  <- Sys.time()
+
+####################################
+### Write out filter details and number of filtered cells
+####################################
+writeLines(paste("\n*** Write out filter details and number of filtered cells ***\n", sep = "", collapse = ""))
+
+StopWatchStart$OutTablesFilterDetailsAndFilteredCells  <- Sys.time()
+
+OutTableFilterDetails<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_FilterDetails.tsv", sep="", collapse = "")
+Headers<-paste("Step", "Filter_min", "Filter_max", "Mean_before_filter", "Median_before_filter", "Mean_after_filter", "Median_after_filter", "Excluded_cells", sep = "\t", collapse = "")
+write.table(Headers, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F)
+
+FilterDetails.nFeature_RNA  <- paste("nFeature_RNA", ListNGenes[[1]], ListNGenes[[2]],
+                                     QCStats$unfiltered$mean$nFeature_RNA,  QCStats$unfiltered$median$nFeature_RNA,  QCStats$filtered$mean$nFeature_RNA,  QCStats$filtered$median$nFeature_RNA, 
+                                     NumberOfBarcodesExcludedByNFeature, sep = "\t", collapse = "")
+FilterDetails.nCount_RNA    <- paste("nCount_RNA", ListNReads[[1]], ListNReads[[2]], 
+                                     QCStats$unfiltered$mean$nCount_RNA,    QCStats$unfiltered$median$nCount_RNA,    QCStats$filtered$mean$nCount_RNA,    QCStats$filtered$median$nCount_RNA, 
+                                     NumberOfBarcodesExcludedByNReads, sep = "\t", collapse = "")
+FilterDetails.mito.fraction <- paste("mito.fraction", ListPMito[[1]], ListPMito[[2]],
+                                     QCStats$unfiltered$mean$mito.fraction, QCStats$unfiltered$median$mito.fraction, QCStats$filtered$mean$mito.fraction, QCStats$filtered$median$mito.fraction, 
+                                     NumberOfBarcodesExcludedByMito, sep = "\t", collapse = "")
+FilterDetails.ribo.fraction <- paste("ribo.fraction", ListPRibo[[1]], ListPRibo[[2]],
+                                     QCStats$unfiltered$mean$ribo.fraction, QCStats$unfiltered$median$ribo.fraction, QCStats$filtered$mean$ribo.fraction, QCStats$filtered$median$ribo.fraction, 
+                                     NumberOfBarcodesExcludedByRibo, sep = "\t", collapse = "")
+
+write.table(FilterDetails.nFeature_RNA,  file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+write.table(FilterDetails.nCount_RNA,    file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+write.table(FilterDetails.mito.fraction, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+write.table(FilterDetails.ribo.fraction, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
+OutTableFilteredCells<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_NumberOfFilteredCells.tsv", sep="", collapse = "")
+write.table(paste("Number_of_cells_before_filters", NumberOfCells[["unfiltered"]], sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(paste("Number_of_cells_after_filters", NumberOfCells[["filtered"]],    sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
+StopWatchEnd$OutTablesFilterDetailsAndFilteredCells  <- Sys.time()
 
 ####################################
 ### Remove barcodes by parameter -j (if applicable)
@@ -1083,6 +1097,8 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 ### Finding differentially expressed genes for each cell cluster
 ####################################
 writeLines("\n*** Finding differentially expressed genes for each cell cluster ***\n")
+
+print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
 
 StopWatchStart$FindDiffMarkers  <- Sys.time()
 
