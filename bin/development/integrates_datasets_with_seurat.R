@@ -393,19 +393,20 @@ colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MitoFrac
 ####################################
 writeLines("\n*** Load scRNA-seq data ***\n")
 
-SeuratObjects        <-list()
-DatasetIds           <-list()
-list_DatasetToType   <-list()
-list_TypeToDatasets  <-list()
-list_DatasetToFormat <-list()
-list_MinMitoFrac     <-list()
-list_MaxMitoFrac     <-list()
-list_MinRiboFrac     <-list()
-list_MaxRiboFrac     <-list()
-list_MinNGenes       <-list()
-list_MaxNGenes       <-list()
-list_MinNReads       <-list()
-list_MaxNReads       <-list()
+SeuratObjectsFiltered   <-list()
+SeuratObjectsUnfiltered <-list()
+DatasetIds              <-list()
+list_DatasetToType      <-list()
+list_TypeToDatasets     <-list()
+list_DatasetToFormat    <-list()
+list_MinMitoFrac        <-list()
+list_MaxMitoFrac        <-list()
+list_MinRiboFrac        <-list()
+list_MaxRiboFrac        <-list()
+list_MinNGenes          <-list()
+list_MaxNGenes          <-list()
+list_MinNReads          <-list()
+list_MaxNReads          <-list()
 
 NumberOfDatasets <- 0
 for (dataset in rownames(InputsTable)) {
@@ -605,37 +606,55 @@ for (dataset in rownames(InputsTable)) {
     StopWatchStart$QCviolinplots$dataset  <- Sys.time()
     
     ### Get unfiltered data QC statistics
-    nFeature_RNA.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$nFeature_RNA, nGenes = 1)
-    nCount_RNA.u.df    <-data.frame(Expression_level = seurat.object.u@meta.data$nCount_RNA,   nCount_RNA = 1)
+    nFeature_RNA.u.df   <-data.frame(Expression_level = seurat.object.u@meta.data$nFeature_RNA, nGenes = 1)
+    nCount_RNA.u.df     <-data.frame(Expression_level = seurat.object.u@meta.data$nCount_RNA,   nCount_RNA = 1)
     mito.fraction.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$mito.fraction, mito.fraction = 1)
     ribo.fraction.u.df  <-data.frame(Expression_level = seurat.object.u@meta.data$ribo.fraction, ribo.fraction = 1)
     #
-    nFeature_RNAStats.u<-paste(c(" mean = ",round(mean(seurat.object.u@meta.data[,"nFeature_RNA"]),0),"\n", "median = ",round(median(seurat.object.u@meta.data[,"nFeature_RNA"]),0)), sep = "", collapse="")
-    nCount_RNAStats.u  <-paste(c( "mean = ",round(mean(seurat.object.u@meta.data[,"nCount_RNA"]),0),  "\n", "median = ",round(median(seurat.object.u@meta.data[,"nCount_RNA"]),0)),   sep = "", collapse="")
-    mito.fraction.u     <-paste(c(" mean = ",round(mean(seurat.object.u@meta.data[,"mito.fraction"]),3),"\n", "median = ",round(median(seurat.object.u@meta.data[,"mito.fraction"]),3)), sep = "", collapse="")
-    ribo.fraction.u     <-paste(c(" mean = ",round(mean(seurat.object.u@meta.data[,"ribo.fraction"]),3),"\n", "median = ",round(median(seurat.object.u@meta.data[,"ribo.fraction"]),3)), sep = "", collapse="")
+    mean_nFeature_RNAStats.u   <- round(mean(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
+    median_nFeature_RNAStats.u <- round(median(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
+    mean_nCount_RNAStats.u     <- round(mean(seurat.object.u@meta.data[,"nCount_RNA"]),0)
+    median_nCount_RNAStats.u   <- round(median(seurat.object.u@meta.data[,"nCount_RNA"]),0)
+    mean_mito.fraction.u       <- round(mean(seurat.object.u@meta.data[,"mito.fraction"]),3)
+    median_mito.fraction.u     <- round(median(seurat.object.u@meta.data[,"mito.fraction"]),3)
+    mean_ribo.fraction.u       <- round(mean(seurat.object.u@meta.data[,"ribo.fraction"]),3)
+    median_ribo.fraction.u     <- round(median(seurat.object.u@meta.data[,"ribo.fraction"]),3)
+    #
+    nFeature_RNAStats.u <-paste(c("mean = ", mean_nFeature_RNAStats.u, "\n", "median = ", median_nFeature_RNAStats.u), sep = "", collapse="")
+    nCount_RNAStats.u   <-paste(c("mean = ", mean_nCount_RNAStats.u,   "\n", "median = ", median_nCount_RNAStats.u),   sep = "", collapse="")
+    mito.fraction.u     <-paste(c("mean = ", mean_mito.fraction.u,     "\n", "median = ", median_mito.fraction.u),     sep = "", collapse="")
+    ribo.fraction.u     <-paste(c("mean = ", mean_ribo.fraction.u,     "\n", "median = ", median_ribo.fraction.u),     sep = "", collapse="")
     
     ### Get filtered data QC statistics
-    nFeature_RNA.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$nFeature_RNA, nGenes = 2)
-    nCount_RNA.f.df    <-data.frame(Expression_level = seurat.object.f@meta.data$nCount_RNA,   nCount_RNA = 2)
+    nFeature_RNA.f.df   <-data.frame(Expression_level = seurat.object.f@meta.data$nFeature_RNA, nGenes = 2)
+    nCount_RNA.f.df     <-data.frame(Expression_level = seurat.object.f@meta.data$nCount_RNA,   nCount_RNA = 2)
     mito.fraction.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$mito.fraction, mito.fraction = 2)
     ribo.fraction.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$ribo.fraction, ribo.fraction = 2)
     #
-    nFeature_RNAStats.f<-paste(c(" mean = ",round(mean(seurat.object.f@meta.data[,"nFeature_RNA"]),0),"\n", "median = ",round(median(seurat.object.f@meta.data[,"nFeature_RNA"]),0)), sep = "", collapse="")
-    nCount_RNAStats.f  <-paste(c(" mean = ",round(mean(seurat.object.f@meta.data[,"nCount_RNA"]),0),  "\n", "median = ",round(median(seurat.object.f@meta.data[,"nCount_RNA"]),0)),   sep = "", collapse="")
-    mito.fraction.f     <-paste(c(" mean = ",round(mean(seurat.object.f@meta.data[,"mito.fraction"]),3),"\n", "median = ",round(median(seurat.object.f@meta.data[,"mito.fraction"]),3)), sep = "", collapse="")
-    ribo.fraction.f     <-paste(c(" mean = ",round(mean(seurat.object.f@meta.data[,"ribo.fraction"]),3),"\n", "median = ",round(median(seurat.object.f@meta.data[,"ribo.fraction"]),3)), sep = "", collapse="")
+    mean_nFeature_RNAStats.f   <- round(mean(seurat.object.f@meta.data[,"nFeature_RNA"]),0)
+    median_nFeature_RNAStats.f <- round(median(seurat.object.f@meta.data[,"nFeature_RNA"]),0)
+    mean_nCount_RNAStats.f     <- round(mean(seurat.object.f@meta.data[,"nCount_RNA"]),0)
+    median_nCount_RNAStats.f   <- round(median(seurat.object.f@meta.data[,"nCount_RNA"]),0)
+    mean_mito.fraction.f       <- round(mean(seurat.object.f@meta.data[,"mito.fraction"]),3)
+    median_mito.fraction.f     <- round(median(seurat.object.f@meta.data[,"mito.fraction"]),3)
+    mean_ribo.fraction.f       <- round(mean(seurat.object.f@meta.data[,"ribo.fraction"]),3)
+    median_ribo.fraction.f     <- round(median(seurat.object.f@meta.data[,"ribo.fraction"]),3)
+    #
+    nFeature_RNAStats.f <-paste(c("mean = ", mean_nFeature_RNAStats.f, "\n", "median = ", median_nFeature_RNAStats.f), sep = "", collapse="")
+    nCount_RNAStats.f   <-paste(c("mean = ", mean_nCount_RNAStats.f,   "\n", "median = ", median_nCount_RNAStats.f),   sep = "", collapse="")
+    mito.fraction.f     <-paste(c("mean = ", mean_mito.fraction.f,     "\n", "median = ", median_mito.fraction.f),     sep = "", collapse="")
+    ribo.fraction.f     <-paste(c("mean = ", mean_ribo.fraction.f,     "\n", "median = ", median_ribo.fraction.f),     sep = "", collapse="")
     
     ### Put QC statistics together
     nFeature_RNA.m.df  <-data.frame(rbind(nFeature_RNA.u.df,nFeature_RNA.f.df))
     nCount_RNA.m.df    <-data.frame(rbind(nCount_RNA.u.df,nCount_RNA.f.df))
     mito.fraction.m.df  <-data.frame(rbind(mito.fraction.u.df,mito.fraction.f.df))
     ribo.fraction.m.df  <-data.frame(rbind(ribo.fraction.u.df,ribo.fraction.f.df))
-    LabelUnfiltered    <-paste("Before filters: No. of cells = ", nrow(seurat.object.u@meta.data), sep ="", collapse = "")
-    LabelFiltered      <-paste("After filters:  No. of cells = ", nrow(seurat.object.f@meta.data), sep ="", collapse = "")
     NumberOfCells<- list()
     NumberOfCells[["unfiltered"]] <- nrow(seurat.object.u@meta.data)
     NumberOfCells[["filtered"]]   <- nrow(seurat.object.f@meta.data)
+    LabelUnfiltered    <-paste("Before filters: No. of cells = ", NumberOfCells[["unfiltered"]], sep ="", collapse = "")
+    LabelFiltered      <-paste("After filters:  No. of cells = ", NumberOfCells[["filtered"]],   sep ="", collapse = "")
 
     ### Commands for violin ggplot's
     DataForHeader.df<-data.frame(forx = c(0.4,0.4), fory = c(0.09,0.03), label = c(LabelFiltered,LabelUnfiltered))
@@ -724,21 +743,82 @@ for (dataset in rownames(InputsTable)) {
     StopWatchEnd$FeatureVsFeatureplot$dataset  <- Sys.time()
     
     ####################################
+    ### Write out filter details and number of filtered cells
+    ####################################
+    writeLines(paste("\n*** Write out filter details and number of filtered cells for ", dataset, " ***\n", sep = "", collapse = ""))
+    
+    StopWatchStart$OutTablesFilterDetailsAndFilteredCells$dataset  <- Sys.time()
+    
+    OutTableFilterDetails<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_FilterDetails.tsv", sep="", collapse = "")
+    Headers<-paste("Step", "Filter_min", "Filter_max", "Mean_before_filter", "Median_before_filter", "Mean_after_filter", "Median_after_filter", "Excluded_cells", sep = "\t", collapse = "")
+    write.table(Headers, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F)
+    
+    FilterDetails.nFeature_RNA  <- paste("nFeature_RNA", list_MinNGenes[[dataset]], list_MaxNGenes[[dataset]],
+                                      mean_nFeature_RNAStats.u, median_nFeature_RNAStats.u, mean_nFeature_RNAStats.f, median_nFeature_RNAStats.f, 
+                                      NumberOfBarcodesExcludedByNFeature, sep = "\t", collapse = "")
+    FilterDetails.nCount_RNA    <- paste("nCount_RNA", list_MinNReads[[dataset]], list_MaxNReads[[dataset]], 
+                                      mean_nCount_RNAStats.u, median_nCount_RNAStats.u, mean_nCount_RNAStats.f, median_nCount_RNAStats.f, 
+                                      NumberOfBarcodesExcludedByNReads, sep = "\t", collapse = "")
+    FilterDetails.mito.fraction <- paste("mito.fraction", list_MinMitoFrac[[dataset]], list_MaxMitoFrac[[dataset]],
+                                      mean_mito.fraction.u, median_mito.fraction.u, mean_mito.fraction.f, median_mito.fraction.f, 
+                                      NumberOfBarcodesExcludedByMito, sep = "\t", collapse = "")
+    FilterDetails.ribo.fraction <- paste("ribo.fraction", list_MinRiboFrac[[dataset]], list_MaxRiboFrac[[dataset]],
+                                      mean_ribo.fraction.u, median_ribo.fraction.u, mean_ribo.fraction.f, median_ribo.fraction.f, 
+                                      NumberOfBarcodesExcludedByRibo, sep = "\t", collapse = "")
+    
+    write.table(FilterDetails.nFeature_RNA,  file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    write.table(FilterDetails.nCount_RNA,    file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    write.table(FilterDetails.mito.fraction, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    write.table(FilterDetails.ribo.fraction, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    
+    OutTableFilteredCells<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_NumberOfFilteredCells.tsv", sep="", collapse = "")
+    write.table(paste("Number_of_cells_before_filters", NumberOfCells[["unfiltered"]], sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(paste("Number_of_cells_after_filters", NumberOfCells[["filtered"]],    sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
+    StopWatchEnd$OutTablesFilterDetailsAndFilteredCells$dataset  <- Sys.time()
+
+    ####################################
+    ### Assign data to Datasets lists
+    ####################################
+    writeLines(paste("\n*** Assign data to Datasets lists: ", dataset, " ***\n", sep = "", collapse = ""))
+    
+    StopWatchStart$AssignDataToDatasets  <- Sys.time()
+    
+    SeuratObjectsUnfiltered[[as.character(NumberOfDatasets)]]  <- seurat.object.u
+    SeuratObjectsFiltered[[as.character(NumberOfDatasets)]]    <- seurat.object.f
+    DatasetIds[[as.character(NumberOfDatasets)]]               <- dataset
+
+    StopWatchEnd$AssignDataToDatasets  <- Sys.time()
+
+    ####################################
+    ### Write out QC data for each sample
+    ####################################
+    writeLines("\n*** Write out QC data for each sample ***\n")
+    
+    StopWatchStart$WriteOutQCData  <- Sys.time()
+    
+    Headers<-paste("Cell_barcode", paste(DefaultParameters$CellPropertiesToQC, sep = "", collapse = "\t") ,sep="\t")
+    
+    BarcodeIdsWithDatasetBeforeFilters <- unlist(x = strsplit(x = paste(dataset, colnames(SeuratObjectsUnfiltered[[NumberOfDatasets]]), sep = "_", collapse = "\n"), split = "\n"))
+    OutfileQCMetadataBeforeFilters<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "Before_filters_QC_metadata.tsv", sep = "", collapse = "")
+    write.table(Headers, file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(data.frame(BarcodeIdsWithDatasetBeforeFilters, SeuratObjectsUnfiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
+    BarcodeIdsWithDatasetAfterFilters <- unlist(x = strsplit(x = paste(dataset, colnames(SeuratObjectsFiltered[[NumberOfDatasets]]), sep = "_", collapse = "\n"), split = "\n"))
+    OutfileQCMetadataAfterFilters<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "After_filters_QC_metadata.tsv", sep = "", collapse = "")
+    write.table(Headers, file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(data.frame(BarcodeIdsWithDatasetAfterFilters, SeuratObjectsFiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    
+    StopWatchEnd$WriteOutQCData  <- Sys.time()
+    
+    ####################################
     ### Remove the Unfiltered seurat object
     ####################################
     writeLines(paste("\n*** Remove the Unfiltered seurat object for ", dataset, " ***\n", sep = "", collapse = ""))
     
     rm(seurat.object.u)
     rm(UnfilteredData.df)
-    
-    ####################################
-    ### Assign data to Datasets lists
-    ####################################
-    writeLines(paste("\n*** Assign data to Datasets lists: ", dataset, " ***\n", sep = "", collapse = ""))
-    
-    SeuratObjects[[as.character(NumberOfDatasets)]]  <- seurat.object.f
-    DatasetIds[[as.character(NumberOfDatasets)]]     <- dataset
-    
+  
   }else{
     stop(paste("Unexpected type of input: ", DatasetType, "\n\nFor help type:\n\nRscript integrates_datasets_with_seurat.R -h\n\n", sep=""))
   }
@@ -779,12 +859,12 @@ if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
   colnames(AllBarcodesToRemove.tab) <- c("Dataset","Barcode")
   
   for (SeuratObjNumb in c(1:NumberOfDatasets)) {
-    seurat.object.full <- SeuratObjects[[SeuratObjNumb]]
+    seurat.object.full <- SeuratObjectsFiltered[[SeuratObjNumb]]
     DatasetId          <- DatasetIds[[SeuratObjNumb]]
     ThisDatasetBarcodesToRemove    <- subset(x=AllBarcodesToRemove.tab, subset = Dataset == DatasetId)[,"Barcode"]
     ThisDatasetBarcodesToKeep.log  <- !colnames(seurat.object.full) %in% ThisDatasetBarcodesToRemove
     seurat.object.subset           <- subset(seurat.object.full, cells = colnames(seurat.object.full[,ThisDatasetBarcodesToKeep.log]))
-    SeuratObjects[[SeuratObjNumb]] <- seurat.object.subset
+    SeuratObjectsFiltered[[SeuratObjNumb]] <- seurat.object.subset
     print(paste(DatasetId, paste("Before:", ncol(seurat.object.full), sep = "", collapse =""), paste("After:", ncol(seurat.object.subset), sep = "", collapse =""), sep = "  ", collapse = "\n"))
   }
   
@@ -793,39 +873,18 @@ if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
 }
 
 ####################################
-### Write out QC data for each sample
-####################################
-writeLines("\n*** Write out QC data for each sample ***\n")
-
-StopWatchStart$WriteOutQCData  <- Sys.time()
-
-Headers<-paste("Cell_barcode", paste(DefaultParameters$CellPropertiesToQC, sep = "", collapse = "\t") ,sep="\t")
-
-NumberOfDatasets <- 0
-for (dataset in rownames(InputsTable)) {
-  NumberOfDatasets <- NumberOfDatasets + 1
-  SeuratObject     <- SeuratObjects[[NumberOfDatasets]]
-  BarcodeIdsWithDataset <- unlist(x = strsplit(x = paste(dataset, colnames(SeuratObject), sep = "_", collapse = "\n"), split = "\n"))
-  OutfileQCMetadata<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", "QC_metadata.tsv", sep = "", collapse = "")
-  write.table(Headers, file = OutfileQCMetadata, row.names = F, col.names = F, sep="\t", quote = F)
-  write.table(data.frame(BarcodeIdsWithDataset, SeuratObject@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadata, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-}
-
-StopWatchEnd$WriteOutQCData  <- Sys.time()
-
-####################################
 ### Merge Seurat objects
 ####################################
 writeLines("\n*** Merge Seurat objects ***\n")
 
-StopWatchStart$MergeSeuratObjects  <- Sys.time()
+StopWatchStart$MergeSeuratObjectsFiltered  <- Sys.time()
 
-FirstSeuratObject   <- SeuratObjects[[1]]
+FirstSeuratObject   <- SeuratObjectsFiltered[[1]]
 FirstSampleId       <- DatasetIds[[1]]
-RestOfSeuratObjects <- SeuratObjects[c(2:NumberOfDatasets)]
+RestOfSeuratObjectsFiltered <- SeuratObjectsFiltered[c(2:NumberOfDatasets)]
 RestOfSamplesIds    <- unlist(DatasetIds[c(2:NumberOfDatasets)])
 
-seurat.object.merged <- merge(FirstSeuratObject, y = RestOfSeuratObjects, 
+seurat.object.merged <- merge(FirstSeuratObject, y = RestOfSeuratObjectsFiltered, 
                               add.cell.ids = DatasetIds,
                               project = PrefixOutfiles)
 
@@ -835,7 +894,7 @@ rownames(dataset.label.metadata)<-colnames(seurat.object.merged)
 seurat.object.merged.withmetadata <- CreateSeuratObject(seurat.object.merged@assays$RNA@counts, meta.data = dataset.label.metadata)
 seurat.object.list <- SplitObject(seurat.object.merged.withmetadata, split.by = "sample")
 
-StopWatchEnd$MergeSeuratObjects  <- Sys.time()
+StopWatchEnd$MergeSeuratObjectsFiltered  <- Sys.time()
 
 ####################################
 ### Running SCTransform
@@ -1059,6 +1118,8 @@ if (1 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes for each global cell cluster vs. rest of cells ***\n")
   
+  print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
+  
   StopWatchStart$FindDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
   
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
@@ -1263,7 +1324,9 @@ write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAverage
 if (2 %in% RequestedDiffGeneExprComparisons == T) {
   
   writeLines("\n*** Finding differentially expressed genes between global clusters at sample level ***\n")
-
+  
+  print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
+  
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
   
   OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerSampleEquivalentClusters.tsv", sep="")
@@ -1514,6 +1577,8 @@ for (dataset in rownames(InputsTable)) {
   ####################################
   writeLines("\n*** Finding differentially expressed genes for each sample re-clustered cell clusters ***\n")
   
+  print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
+  
   StopWatchStart$FindDiffMarkersReclusteredVsRestOfCells$dataset  <- Sys.time()
   
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample@meta.data))
@@ -1680,6 +1745,10 @@ if (3 %in% RequestedDiffGeneExprComparisons == T) {
   
   writeLines("\n*** Finding differentially expressed genes between global clusters at sample type level ***\n")
   
+  NumberOfClusters <- length(unique(seurat.object.integrated$seurat_clusters))
+  
+  print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
+  
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
   
   OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerSampleTypeEquivalentClusters.tsv", sep="")
@@ -1751,6 +1820,10 @@ for (sample_type in SampleTypes) {
   ####################################
   writeLines("\n*** Finding differentially expressed genes for each sample type using global cell clusters ***\n")
   
+  NumberOfClusters <- length(unique(seurat.object.each_sample_type$seurat_clusters))
+  
+  print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
+
   Idents(object = seurat.object.each_sample_type) <- seurat.object.each_sample_type@meta.data$EachSampleTypeGlobalCellClusters
 
   StopWatchStart$FindDiffMarkersGlobalClustersVsRestOfCells$sample_type  <- Sys.time()
@@ -1820,6 +1893,8 @@ for (sample_type in SampleTypes) {
   ####################################
   writeLines("\n*** Finding differentially expressed genes for each sample type re-clustered cell clusters ***\n")
   
+  print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
+
   StopWatchStart$FindDiffMarkersReclusteredVsRestOfCells$sample_type  <- Sys.time()
   
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample_type@meta.data))
