@@ -1020,8 +1020,9 @@ for (dataset in rownames(InputsTable)) {
   
   ### Note: need to AddMetaData() mito.fraction and ribo.fraction from OutfileQCMetadata to generate FeaturePlot()
   ### because they are not inherited in seurat.object.integrated by IntegrateData()
-  InfileQCMetadata<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", "QC_metadata.tsv", sep = "", collapse = "")
-  QCMetadata <- data.frame(read.table(InfileQCMetadata, header = T, row.names = 1))
+  InfileQCMetadataAfterFilters<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "After_filters_QC_metadata.tsv", sep = "", collapse = "")
+  
+  QCMetadata <- data.frame(read.table(InfileQCMetadataAfterFilters, header = T, row.names = 1))
   seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = QCMetadata)
   
   NumberOfDatasets <- NumberOfDatasets + 1
