@@ -4,6 +4,18 @@
 ###
 ### THINGS TO DO:
 ### 1) See Run_Seurat_v3.R for a list of functions to be implemented
+### 2) Clean up outfiles, keep only those needed for front end and publication style plots
+###    For example, saving the `seurat.object.integrated.sa` may not be necessary because the general `seurat.object.integrated.sa` includes the same info
+### 3) In:
+###    `for (dataset in rownames(InputsTable)) {
+###       seurat.object.integrated$sample_type<-mapply(gsub, pattern = dataset, replacement = list_DatasetToType[[dataset]], seurat.object.integrated$sample_type)
+###     }`
+###   Need to avoid that the gsub replaces partial strings, for example 'SMTR03' will be replaced by list_DatasetToType[[SMTR03]] in both
+###   'SMTR03' iself and in 'SMTR03t1_NonRad'. The second case is undesired.
+###   Generating files like:
+###   SMTR_res1.SEURAT_GlobalClustering_Rad_unknownt1_NonRad_TSNEPlot_ColourByCellClusters.pdf
+###   When it should be:
+###   SMTR_res1.SEURAT_GlobalClustering_Rad_unknown_TSNEPlot_ColourByCellClusters.pdf
 ####################################
 
 ####################################
@@ -185,9 +197,13 @@ option_list <- list(
   #
   make_option(c("-f", "--diff_gene_expr_comparisons"), default="1",
               help="One or more of the following options. If more than one, pass the choice <comma> delimited, e.g. '1,2,3'
+                '0' = no differentially expressed genes are computed
                 '1' = using global cell clusers, compares each cell cluster vs. the rest of cells
                 '2' = using global cell clusers, compares each cell cluster from one sample vs. the same cluster from other samples
-                '3' = using global cell clusers, compares each cell cluster from one sample type vs. the same cluster from other sample types
+                '3' = using global cell clusers, for each sample type, compares each cell cluster vs. the rest of cells
+                '4' = using global cell clusers, for each sample type, compares each cell cluster vs. the same cluster from other sample types
+                '5' = using each sample re-clustered, compares each cell cluster vs. the rest of cells
+                '6' = using each sample type re-clustered, compares each cell cluster vs. the rest of cells
                 Default = '1'"),
   #
   make_option(c("-u", "--number_cores"), default="MAX",
@@ -856,14 +872,21 @@ if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
   
   InfileAllBarcodesToRemove<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), InfileRemoveBarcodes)
   AllBarcodesToRemove.tab<-read.table(InfileAllBarcodesToRemove, header = F, row.names = NULL, stringsAsFactors = FALSE)
-  colnames(AllBarcodesToRemove.tab) <- c("Dataset","Barcode")
+  if (ncol(AllBarcodesToRemove.tab) == 2) {
+    colnames(AllBarcodesToRemove.tab) <- c("Dataset","Barcode")
+  }else{
+    stop(paste("Unexpected format in file:\n", InfileAllBarcodesToRemove, "\nfor parameter -j, 2 columns were expected but found ", ncol(AllBarcodesToRemove.tab), sep = "", collapse = ""))
+  }
   
   for (SeuratObjNumb in c(1:NumberOfDatasets)) {
+    print(paste("Removing cells from:", DatasetIds[[SeuratObjNumb]] , sep = "", collapse = ""))
     seurat.object.full <- SeuratObjectsFiltered[[SeuratObjNumb]]
+    seurat.object.full
     DatasetId          <- DatasetIds[[SeuratObjNumb]]
     ThisDatasetBarcodesToRemove    <- subset(x=AllBarcodesToRemove.tab, subset = Dataset == DatasetId)[,"Barcode"]
     ThisDatasetBarcodesToKeep.log  <- !colnames(seurat.object.full) %in% ThisDatasetBarcodesToRemove
     seurat.object.subset           <- subset(seurat.object.full, cells = colnames(seurat.object.full[,ThisDatasetBarcodesToKeep.log]))
+    seurat.object.subset
     SeuratObjectsFiltered[[SeuratObjNumb]] <- seurat.object.subset
     print(paste(DatasetId, paste("Before:", ncol(seurat.object.full), sep = "", collapse =""), paste("After:", ncol(seurat.object.subset), sep = "", collapse =""), sep = "  ", collapse = "\n"))
   }
@@ -930,31 +953,24 @@ seurat.object.integrated <- IntegrateData(anchorset = seurat.object.anchors, nor
 
 StopWatchEnd$Integration  <- Sys.time()
 
-
 ####################################
-####################################
-### A break for crescent.cloud could go here
-####################################
-####################################
-
-####################################
-### Saving the R object
+### Saving the R object up to dataset integration
 ####################################
 
 if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
-  writeLines("\n*** Saving the R object ***\n")
+  writeLines("\n*** Saving the R object up to dataset integration ***\n")
   
   StopWatchStart$SaveRDS  <- Sys.time()
   
-  OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_integrated_object_incl_merged_datasets.rds", sep="")
+  OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_integrated_object_incl_integrated_datasets.rds", sep="")
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDS  <- Sys.time()
   
 }else{
   
-  writeLines("\n*** Not saving R object ***\n")
+  writeLines("\n*** Saving the R object up to dataset integration ***\n")
   
 }
 
@@ -1112,12 +1128,12 @@ write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAverage
 StopWatchEnd$AverageGeneExpression  <- Sys.time()
 
 ####################################
-### Finding differentially expressed genes for each global cell cluster vs. rest of cells
+### Finding differentially expressed genes: using global cell clusers, compares each cell cluster vs. the rest of cells
 ####################################
 
 if (1 %in% RequestedDiffGeneExprComparisons == T) {
 
-  writeLines("\n*** Finding differentially expressed genes for each global cell cluster vs. rest of cells ***\n")
+  writeLines("\n*** Finding differentially expressed genes: using global cell clusers, compares each cell cluster vs. the rest of cells ***\n")
   
   print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
   
@@ -1272,6 +1288,20 @@ for (dim_red_method in names(DimensionReductionMethods)) {
                       reduction = dim_red_method, order = T, slot = "data", pt.size = 1.5, min.cutoff = "q0.1", max.cutoff = "q90"))
     dev.off()
     
+    #### This object is mainly for the front end
+    if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
+      
+      writeLines("\n*** Saving the R object with only RNA data ***\n")
+      
+      StopWatchStart$SaveRDSOnlyRNA$DimensionReductionMethods[[dim_red_method]][["name"]]  <- Sys.time()
+      
+      OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "_integrated_object_sa_assays_RNA_data.rds", sep="")
+      saveRDS(seurat.object.integrated.sa, file = OutfileRDS)
+      
+      StopWatchEnd$SaveRDSOnlyRNA$DimensionReductionMethods[[dim_red_method]][["name"]]  <- Sys.time()
+      
+    }
+
     rm(seurat.object.integrated.sa)
     
     StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
@@ -1285,16 +1315,16 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 ####################################
 writeLines("\n*** FOR EACH SAMPLE merge sample_id and GLOBAL CLUSTER to make sample-specific identities. Then get DGE and colour dimension reduction plots  ***\n")
 
-EachSampleGlobalClusteredCellClusters <- unlist(x = strsplit(x = paste(seurat.object.integrated$sample, seurat.object.integrated$seurat_clusters, sep = "_c", collapse = "\n"), split = "\n"))
-seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = EachSampleGlobalClusteredCellClusters, col.name = "EachSampleGlobalClusteredCellClusters")
+EachSampleGlobalCellClusters <- unlist(x = strsplit(x = paste(seurat.object.integrated$sample, seurat.object.integrated$seurat_clusters, sep = "_c", collapse = "\n"), split = "\n"))
+seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = EachSampleGlobalCellClusters, col.name = "EachSampleGlobalCellClusters")
 
 # switch the identity class of all cells to reflect sample-specific identities
-Idents(object = seurat.object.integrated) <- seurat.object.integrated$EachSampleGlobalClusteredCellClusters
+Idents(object = seurat.object.integrated) <- seurat.object.integrated$EachSampleGlobalCellClusters
 
 OutfileNumbCellsPerClusterPerSample<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerSample.tsv", sep="")
 Headers<-paste("Cluster", "Number_of_cells" ,sep="\t", collapse = "")
 write.table(Headers, file = OutfileNumbCellsPerClusterPerSample, row.names = F, col.names = F, sep="\t", quote = F)
-write.table(table(seurat.object.integrated$EachSampleGlobalClusteredCellClusters),file = OutfileNumbCellsPerClusterPerSample, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+write.table(table(seurat.object.integrated$EachSampleGlobalCellClusters),file = OutfileNumbCellsPerClusterPerSample, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
 ### Get average gene expression for each sample based on global clusters
@@ -1319,12 +1349,12 @@ write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names =
 write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
-### Finding differentially expressed genes between global clusters at sample level 
+### Finding differentially expressed genes: using global cell clusers, compares each cell cluster from one sample vs. the same cluster from other samples
 ####################################
 
 if (2 %in% RequestedDiffGeneExprComparisons == T) {
   
-  writeLines("\n*** Finding differentially expressed genes between global clusters at sample level ***\n")
+  writeLines("\n*** Finding differentially expressed genes: using global cell clusers, compares each cell cluster from one sample vs. the same cluster from other samples ***\n")
   
   print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
   
@@ -1341,13 +1371,15 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
         Cluster2 <- paste(dataset2, cluster, sep = "_c")
         if (Cluster1 == Cluster2) {
         ### Skip
-        }else if ((sum(seurat.object.integrated$EachSampleGlobalClusteredCellClusters == Cluster1) >= 3) & ((sum(seurat.object.integrated$EachSampleGlobalClusteredCellClusters == Cluster2) >= 3))) {
+        }else if ((sum(seurat.object.integrated$EachSampleGlobalCellClusters == Cluster1) >= 3) & ((sum(seurat.object.integrated$EachSampleGlobalCellClusters == Cluster2) >= 3))) {
           print (paste(Cluster1, " vs. ", Cluster2, sep = "", collapse = ""))
           seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, only.pos = F, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
           seurat.object.integrated.each_equivalent_cluster.markers$cluster1 <- Cluster1
           seurat.object.integrated.each_equivalent_cluster.markers$cluster2 <- Cluster2
           seurat.object.integrated.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.integrated.each_equivalent_cluster.markers)
           write.table(seurat.object.integrated.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = OutfileDiffGeneExpression, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+        }else{
+          print(paste("Skip cluster ", Cluster1, " vs.", Cluster2, "because there were not >= 3 cells in at least one of them", sep = "", collapse = ""))
         }
       }
     }
@@ -1573,21 +1605,25 @@ for (dataset in rownames(InputsTable)) {
 
   StopWatchEnd$WriteClustersEachSampleCellClusterTables$dataset <- Sys.time()
   
-  ####################################
-  ### Finding differentially expressed genes for each sample re-clustered cell clusters
-  ####################################
-  writeLines("\n*** Finding differentially expressed genes for each sample re-clustered cell clusters ***\n")
+  if (5 %in% RequestedDiffGeneExprComparisons == T) {
+    
+    ####################################
+    ### Finding differentially expressed genes: using each sample re-clustered, compares each cell cluster vs. the rest of cells
+    ####################################
+    writeLines("\n*** Finding differentially expressed genes: using each sample re-clustered, compares each cell cluster vs. the rest of cells ***\n")
+    
+    print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
+    
+    StopWatchStart$FindDiffMarkersReclusteredVsRestOfCells$dataset  <- Sys.time()
+    
+    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample@meta.data))
+    seurat.object.each_sample.markers <- FindAllMarkers(object = seurat.object.each_sample, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+    SimplifiedDiffExprGenes.df <- seurat.object.each_sample.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
+    write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleReclustered_", dataset, "_MarkersPerCluster.tsv", sep=""), row.names = F, sep="\t", quote = F)
   
-  print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
+    StopWatchEnd$FindDiffMarkersReclusteredVsRestOfCells$dataset  <- Sys.time()
   
-  StopWatchStart$FindDiffMarkersReclusteredVsRestOfCells$dataset  <- Sys.time()
-  
-  FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample@meta.data))
-  seurat.object.each_sample.markers <- FindAllMarkers(object = seurat.object.each_sample, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-  SimplifiedDiffExprGenes.df <- seurat.object.each_sample.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
-  write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleReclustered_", dataset, "_MarkersPerCluster.tsv", sep=""), row.names = F, sep="\t", quote = F)
-
-  StopWatchEnd$FindDiffMarkersReclusteredVsRestOfCells$dataset  <- Sys.time()
+  }
   
   ####################################
   ### Colour dimension reduction plots for each sample re-clustered cells
@@ -1739,12 +1775,12 @@ write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names =
 write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
-### Finding differentially expressed genes between global clusters at sample type level 
+### Finding differentially expressed genes: using global cell clusers, for each sample type, compares each cell cluster vs. the same cluster from other sample types
 ####################################
 
-if (3 %in% RequestedDiffGeneExprComparisons == T) {
+if (4 %in% RequestedDiffGeneExprComparisons == T) {
   
-  writeLines("\n*** Finding differentially expressed genes between global clusters at sample type level ***\n")
+  writeLines("\n*** Finding differentially expressed genes: using global cell clusers, for each sample type, compares each cell cluster vs. the same cluster from other sample types ***\n")
   
   NumberOfClusters <- length(unique(seurat.object.integrated$seurat_clusters))
   
@@ -1763,7 +1799,7 @@ if (3 %in% RequestedDiffGeneExprComparisons == T) {
         Cluster2 <- paste(dataset_type2, cluster, sep = "_c")
         if (Cluster1 == Cluster2) {
           ### Skip
-        }else{
+        }else if ((sum(seurat.object.integrated$EachSampleTypeGlobalCellClusters == Cluster1) >= 3) & ((sum(seurat.object.integrated$EachSampleTypeGlobalCellClusters == Cluster2) >= 3))) {
           print (paste(Cluster1, " vs. ", Cluster2, sep = "", collapse = ""))
           seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, only.pos = F, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
           seurat.object.integrated.each_equivalent_cluster.markers$cluster1 <- Cluster1
@@ -1771,6 +1807,8 @@ if (3 %in% RequestedDiffGeneExprComparisons == T) {
           seurat.object.integrated.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.integrated.each_equivalent_cluster.markers)
           write.table(seurat.object.integrated.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = OutfileDiffGeneExpression, row.names = F, col.names = F, sep="\t", quote = F, append = T)
           rm(seurat.object.integrated.each_equivalent_cluster.markers)
+        }else{
+          print(paste("Skip cluster ", Cluster1, " vs.", Cluster2, "because there were not >= 3 cells in at least one of them", sep = "", collapse = ""))
         }
       }
     }
@@ -1816,25 +1854,28 @@ for (sample_type in SampleTypes) {
 
   }
 
-  ####################################
-  ### Finding differentially expressed genes for each sample type using global cell clusters
-  ####################################
-  writeLines("\n*** Finding differentially expressed genes for each sample type using global cell clusters ***\n")
+  if (3 %in% RequestedDiffGeneExprComparisons == T) {
+    
+    ####################################
+    ### Finding differentially expressed genes: using global cell clusers, for each sample type, compares each cell cluster vs. the rest of cells
+    ####################################
+    writeLines("\n*** Finding differentially expressed genes: using global cell clusers, for each sample type, compares each cell cluster vs. the rest of cells ***\n")
+    
+    NumberOfClusters <- length(unique(seurat.object.each_sample_type$seurat_clusters))
+    
+    print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
   
-  NumberOfClusters <- length(unique(seurat.object.each_sample_type$seurat_clusters))
+    Idents(object = seurat.object.each_sample_type) <- seurat.object.each_sample_type@meta.data$EachSampleTypeGlobalCellClusters
   
-  print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
-
-  Idents(object = seurat.object.each_sample_type) <- seurat.object.each_sample_type@meta.data$EachSampleTypeGlobalCellClusters
-
-  StopWatchStart$FindDiffMarkersGlobalClustersVsRestOfCells$sample_type  <- Sys.time()
+    StopWatchStart$FindDiffMarkersGlobalClustersVsRestOfCells$sample_type  <- Sys.time()
+    
+    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample_type@meta.data))
+    seurat.object.each_sample_type.markers <- FindAllMarkers(object = seurat.object.each_sample_type, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+    SimplifiedDiffExprGenes.df <- seurat.object.each_sample_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
+    write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_" , sample_type, "_MarkersPerCluster.tsv", sep=""), row.names = F, sep="\t", quote = F)
   
-  FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample_type@meta.data))
-  seurat.object.each_sample_type.markers <- FindAllMarkers(object = seurat.object.each_sample_type, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-  SimplifiedDiffExprGenes.df <- seurat.object.each_sample_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
-  write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_" , sample_type, "_MarkersPerCluster.tsv", sep=""), row.names = F, sep="\t", quote = F)
-
-  StopWatchEnd$FindDiffMarkersGlobalClustersVsRestOfCells$sample_type  <- Sys.time()
+    StopWatchEnd$FindDiffMarkersGlobalClustersVsRestOfCells$sample_type  <- Sys.time()
+  }
 }
 
 ####################################
@@ -1889,21 +1930,25 @@ for (sample_type in SampleTypes) {
   
   StopWatchEnd$WriteClustersEachSampleTypeCellClusterTables$sample_type <- Sys.time()
   
-  ####################################
-  ### Finding differentially expressed genes for each sample type re-clustered cell clusters
-  ####################################
-  writeLines("\n*** Finding differentially expressed genes for each sample type re-clustered cell clusters ***\n")
+  if (6 %in% RequestedDiffGeneExprComparisons == T) {
+    
+    ####################################
+    ### Finding differentially expressed genes: using each sample type re-clustered, compares each cell cluster vs. the rest of cells
+    ####################################
+    writeLines("\n*** Finding differentially expressed genes: using each sample type re-clustered, compares each cell cluster vs. the rest of cells ***\n")
+    
+    print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
   
-  print(paste("NumberOfClusters=", NumberOfClusters, sep = "", collapse = ""))
-
-  StopWatchStart$FindDiffMarkersReclusteredVsRestOfCells$sample_type  <- Sys.time()
+    StopWatchStart$FindDiffMarkersReclusteredVsRestOfCells$sample_type  <- Sys.time()
+    
+    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample_type@meta.data))
+    seurat.object.each_sample_type.markers <- FindAllMarkers(object = seurat.object.each_sample_type, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+    SimplifiedDiffExprGenes.df <- seurat.object.each_sample_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
+    write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleTypeReclustered_", sample_type, "_MarkersPerCluster.tsv", sep=""), row.names = F, sep="\t", quote = F)
   
-  FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_sample_type@meta.data))
-  seurat.object.each_sample_type.markers <- FindAllMarkers(object = seurat.object.each_sample_type, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-  SimplifiedDiffExprGenes.df <- seurat.object.each_sample_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
-  write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachSampleTypeReclustered_", sample_type, "_MarkersPerCluster.tsv", sep=""), row.names = F, sep="\t", quote = F)
-
-  StopWatchEnd$FindDiffMarkersReclusteredVsRestOfCells$sample_type  <- Sys.time()
+    StopWatchEnd$FindDiffMarkersReclusteredVsRestOfCells$sample_type  <- Sys.time()
+  
+  }
   
   ####################################
   ### Colour dimension reduction plots by each sample type re-clustered cells
@@ -1995,12 +2040,12 @@ write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names =
 write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
-### Saving the R object
+### Saving the full R object
 ####################################
 
 if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
 
-  writeLines("\n*** Saving the R object ***\n")
+  writeLines("\n*** Saving the full R object ***\n")
   
   StopWatchStart$SaveRDS  <- Sys.time()
   
@@ -2011,7 +2056,7 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
 
 }else{
   
-  writeLines("\n*** Not saving R object ***\n")
+  writeLines("\n*** Not saving the full R object ***\n")
   
 }
 
