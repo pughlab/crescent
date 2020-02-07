@@ -150,64 +150,62 @@ seurat.object.u
 StopWatchEnd$CreateSeuratObject  <- Sys.time()
 
 ####################################
-### Determine barcodes to subsample
+### Determine barcodes to subsample and subsamples Seurat object
 ####################################
-writeLines("\n*** Determine barcodes to subsample ***\n")
+writeLines("\n*** Determine barcodes to subsample and subsamples Seurat object ***\n")
 
-StopWatchStart$DetermineBarcodesToSubsample  <- Sys.time()
+StopWatchStart$DetermineBarcodesToSubsampleAndSubsample  <- Sys.time()
 
 if ((grepl(pattern = "^[0-9]+$", x = SelectBarcodes)) == TRUE) {
-  stop("Subsetting barcodes by number needs to be implemented")
+  stop("Subsetting barcodes by number of reads needs to be implemented")
 }else if ((grepl(pattern = "^ALL$", x = SelectBarcodes)) == TRUE) {
-  stop("Including ALL barcodes needs to be implemented")
+  seurat.object.subsampled.barcodes <- seurat.object.u
 }else{
-  sampled.barcodes <- data.frame(read.table(SelectBarcodes, header = F, row.names = NULL))
+  sampled.barcodes <- data.frame(read.table(SelectBarcodes, header = F, row.names = NULL, check.names = FALSE))
   if ((grepl(pattern = "^barcode", ignore.case = T, x = sampled.barcodes[1,"V1"])) == TRUE) {
     sampled.barcodes <- sampled.barcodes[-1,]
     sampled.barcodes<-gsub("-1$", "", sampled.barcodes)
   }else{
     sampled.barcodes<-gsub("-1$", "", as.factor(sampled.barcodes[,1]))
   }
+  
+  seurat.object.subsampled.barcodes <- SubsetData(object = seurat.object.u, cells = as.vector(sampled.barcodes))
+  seurat.object.subsampled.barcodes
 }
 
-StopWatchEnd$DetermineBarcodesToSubsample  <- Sys.time()
+StopWatchEnd$DetermineBarcodesToSubsampleAndSubsample  <- Sys.time()
 
 ####################################
-### Determine genes to subsample
+### Determine genes to subsample and subsample Seurat object
 ####################################
-writeLines("\n*** Determine genes to subsample ***\n")
+writeLines("\n*** Determine genes to subsample and subsample Seurat object ***\n")
 
-StopWatchStart$DetermineGenesToSubsample  <- Sys.time()
+StopWatchStart$DetermineGenesToSubsampleAndSubsample  <- Sys.time()
 
 if ((grepl(pattern = "^[0-9]+$", x = SelectGenes)) == TRUE) {
-  stop("Subsetting genes needs to be implemented")
+  stop("Subsetting genes by number of reads needs to be implemented")
 }else if ((grepl(pattern = "^ALL$", x = SelectGenes)) == TRUE) {
-  print("Using all genes")
+  seurat.object.subsampled.barcodes.genes <- seurat.object.subsampled.barcodes
 }else{
-  stop("Subsetting genes needs to be implemented")
+  sampled.genes <- data.frame(read.table(SelectGenes, header = F, row.names = NULL, check.names = FALSE))
+  sampled.genes <- as.character(sampled.genes[,1])
+  sampled.genes <- gsub(x=sampled.genes, pattern = "_", replacement = "-") ## Because CreateSeuratObject() will do the same
+  
+  seurat.object.subsampled.barcodes.genes <- CreateSeuratObject(counts = seurat.object.subsampled.barcodes@assays$RNA@counts[sampled.genes,], project = PrefixOutfiles)
+  seurat.object.subsampled.barcodes.genes
+
 }
 
-StopWatchEnd$DetermineGenesToSubsample  <- Sys.time()
+StopWatchEnd$DetermineGenesToSubsampleAndSubsample  <- Sys.time()
 
 ####################################
-### Get subset of barcodes and genes from Seurat object
+### Write subsampled matrix
 ####################################
-writeLines("\n*** Get subset of barcodes and genes from Seurat object ***\n")
-
-StopWatchStart$SubsampleMatrix  <- Sys.time()
-
-seurat.object.subsampled <- SubsetData(object = seurat.object.u, cells = as.vector(sampled.barcodes))
-
-StopWatchEnd$SubsampleMatrix  <- Sys.time()
-
-####################################
-### Write downsubsampled matrix
-####################################
-writeLines("\n*** Write downsubsampled matrix ***\n")
+writeLines("\n*** Write subsampled matrix ***\n")
 
 StopWatchStart$WriteSubsampledMatrix  <- Sys.time()
 
-write10xCounts(path = OutdirFinal, x = seurat.object.subsampled@assays[["RNA"]]@data, gene.type="Gene Expression", overwrite=T, type="sparse", version="3")
+write10xCounts(path = OutdirFinal, x = seurat.object.subsampled.barcodes.genes@assays[["RNA"]]@data, gene.type="Gene Expression", overwrite=T, type="sparse", version="3")
 
 StopWatchEnd$WriteSubsampledMatrix  <- Sys.time()
 
