@@ -53,6 +53,16 @@
 ####################################
 
 ####################################
+### COMMENTS ON USING REFERENCE DATASETS VS. ALL PAIRWISE COMPARISONS TO FIND ANCHORS
+### Using 4 datasets with 3K to 5K compared runs using either `-k NA` or `-k 1,2`
+### The main cimputing time was in step IntegrateData(). Whereas FindIntegrationAnchors() was similar:
+### Step/time(minutes)      Using_-k_NA   Using_-k_1,2
+### FindIntegrationAnchors	3.336035	    3.118804
+### IntegrateData           2.968116	    1.666707
+### In both cases used `-u MAX -b 10000` in a 3.1-GHz Intel Core i5 CPU with 2 cores and 16 GB RAM
+####################################
+
+####################################
 ### Required libraries
 ####################################
 ### Package 'Seurat' version 3 is needed to run QC, differential gene expression and clustering analyses
@@ -85,6 +95,7 @@ suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables qu
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
+suppressPackageStartupMessages(library(cluster))      # (CRAN) to cluster/sort the sample correlations
 ####################################
 
 ####################################
@@ -148,7 +159,14 @@ option_list <- list(
                 1) cluster cells from each dataset
                 2) integrate cells by 'dataset_type' (column 3) and cluster them
                 3) integrate cells from all datasets and cluster them"),
-                
+  
+  #
+  make_option(c("-k", "--reference_datasets"), default="NA",
+              help="<comma> delimited number of row(s) in --inputs_list of datasets to be used as reference(s) for integration
+                Or type 'NA' to run all-vs-all dataset pairwise comparisons (this is more time and memory consuming than using references).
+                If references are used, then references will be integrated and anchors identified between non-reference and reference datasets,
+                but not anchors will be identified between non-reference datasets (this saves time and memory)
+                Default = 'NA'"),
   #
   make_option(c("-j", "--inputs_remove_barcodes"), default="NA",
               help="Path/name to a <tab> delimited list of barcodes to be removed from analysis, like:
@@ -235,6 +253,7 @@ option_list <- list(
 opt <- parse_args(OptionParser(option_list=option_list))
 
 InputsList              <- opt$inputs_list
+ReferenceDatasets       <- opt$reference_datasets
 InfileRemoveBarcodes    <- opt$inputs_remove_barcodes
 Resolution              <- as.numeric(opt$resolution) ## using as.numeric avoids FindClusters() to crash by inputting it as.character [default from parse_args()]
 Outdir                  <- opt$outdir
@@ -937,21 +956,60 @@ StopWatchEnd$SCTransform  <- Sys.time()
 ####################################
 writeLines("\n*** Integrating datasets ***\n")
 
-StopWatchStart$Integration  <- Sys.time()
+StopWatchStart$SelectIntegrationFeatures  <- Sys.time()
 
 writeLines("\n*** Run SelectIntegrationFeatures() ***\n")
 seurat.object.integratedfeatures <- SelectIntegrationFeatures(object.list = seurat.object.list, nfeatures = DefaultParameters$IntegrationNFeatures)
 
+StopWatchEnd$SelectIntegrationFeatures  <- Sys.time()
+
+StopWatchStart$PrepSCTIntegration  <- Sys.time()
+
 writeLines("\n*** Run PrepSCTIntegration() ***\n")
 seurat.object.list <- PrepSCTIntegration(object.list = seurat.object.list, anchor.features = seurat.object.integratedfeatures, verbose = T)
 
+StopWatchEnd$PrepSCTIntegration  <- Sys.time()
+
+StopWatchStart$FindIntegrationAnchors  <- Sys.time()
+
 writeLines("\n*** Run FindIntegrationAnchors() ***\n")
-seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, verbose = T)
+if (regexpr("^NA$", ReferenceDatasets , ignore.case = T)[1] == 1) {
+  writeLines("\n*** No reference datasets will be used. Finding anchors in all-vs-all dataset pairwise comparisons ***\n")
+  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, verbose = T)
+
+}else if (regexpr("[0-9]", ReferenceDatasets , ignore.case = T, perl = T)[1] == 1) {
+  writeLines(paste("\n*** Dataset number(s): ", ReferenceDatasets, " will be used as reference(s) ***\n", sep = "", collapse = ""))
+  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, reference = c(as.numeric(unlist(strsplit(ReferenceDatasets, ",")))), verbose = T)
+
+}else{
+  stop(paste("Unexpected format in --reference_datasets ", ReferenceDatasets, sep = "", collapse = ""))
+}
+
+StopWatchEnd$FindIntegrationAnchors  <- Sys.time()
+
+StopWatchStart$IntegrateData  <- Sys.time()
 
 writeLines("\n*** Run IntegrateData() ***\n")
 seurat.object.integrated <- IntegrateData(anchorset = seurat.object.anchors, normalization.method = "SCT", verbose = T)
 
-StopWatchEnd$Integration  <- Sys.time()
+StopWatchEnd$IntegrateData  <- Sys.time()
+
+####################################
+### Generate a matrix with each gene (rows) marginals of SCTransform values from all cells for each dataset (columns)
+####################################
+writeLines("\n*** Generate a matrix with each gene (rows) marginals of SCTransform values from all cells for each dataset (columns) ***\n")
+
+seurat.object.integrated.list <- SplitObject(seurat.object.integrated, split.by = "sample")
+
+mat_for_correl_all_cells.df <- data.frame(row.names = rownames(seurat.object.integrated.list[[1]]@assays$SCT))
+for (dataset in rownames(InputsTable)) {
+  mat_for_correl_all_cells.df[[dataset]] <- rowSums(as.matrix(seurat.object.integrated.list[[dataset]]@assays$SCT[,]))
+}
+
+OutfileSCTransform <- paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_SCTransform_SamplesInColumns.tsv", sep = "", collapse = "")
+Headers<-paste("SCTransform", paste(colnames(mat_for_correl_all_cells.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
+write.table(Headers, file = OutfileSCTransform, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(mat_for_correl_all_cells.df,  file = OutfileSCTransform, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
 ### Saving the R object up to dataset integration
@@ -1100,6 +1158,40 @@ StopWatchEnd$AllCellClusterTables  <- Sys.time()
 writeLines("\n*** Saving global cell cluster identities ***\n")
 
 seurat.object.integrated$GlobalCellClusterIdentities <- Idents(object = seurat.object.integrated)
+
+####################################
+### Generate a matrix with each gene (rows) marginals of SCTransform values from all cells for each dataset cluster (columns)
+####################################
+writeLines("\n*** Generate a matrix with each gene (rows) marginals of SCTransform values from all cells for each dataset cluster (columns) ***\n")
+
+seurat.object.integrated.list <- SplitObject(seurat.object.integrated, split.by = "sample")
+
+mat_for_correl_each_cluster.df <- data.frame(row.names = rownames(seurat.object.integrated.list[[1]]@assays$SCT))
+for (dataset in rownames(InputsTable)) {
+  if (exists(x = "seurat.object.each_sample") == T) {
+    rm(seurat.object.each_sample)
+  }
+  seurat.object.each_sample <- subset(x = seurat.object.integrated, subset = sample == dataset)
+  
+  for (cluster_number in sort(unique(seurat.object.integrated$GlobalCellClusterIdentities))) {
+    dataset_cluster <- (paste(dataset, cluster_number, sep = "_c", collapse = ""))
+    res <- try(subset(x = seurat.object.each_sample, subset = seurat_clusters == cluster_number), silent = TRUE)
+    if (class(res) == "try-error") {
+      # mat_for_correl_each_cluster.df[[dataset_cluster]] <- NA
+      }else{
+      if (exists(x = "seurat.object.each_sample.each_cluster") == T) {
+        rm(seurat.object.each_sample.each_cluster)
+      }
+      seurat.object.each_sample.each_cluster <- subset(x = seurat.object.each_sample, subset = seurat_clusters == cluster_number)
+      mat_for_correl_each_cluster.df[[dataset_cluster]] <- rowSums(as.matrix(seurat.object.each_sample.each_cluster@assays$SCT[,]))
+    }
+  }
+}
+
+OutfileSCTransform <- paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_SCTransform_SampleClustersInColumns.tsv", sep = "", collapse = "")
+Headers<-paste("SCTransform", paste(colnames(mat_for_correl_each_cluster.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
+write.table(Headers, file = OutfileSCTransform, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(mat_for_correl_each_cluster.df,  file = OutfileSCTransform, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
 ### Get average gene expression for each global cluster
