@@ -82,12 +82,6 @@
 ### `packageVersion("Seurat")`
 ### ### should return:
 ### [1] ‘3.0.3.9023’
-### 
-### Package 'earlycross' is needed to handle reading and writing mtx files
-### Note: it needs to be loaded after Seurat to avoid version issues
-### 'earlycross' can be installed like:
-### install.packages('devtools')
-### devtools::install_github("daskelly/earlycross")
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be t-SNE plotted
@@ -143,7 +137,7 @@ option_list <- list(
 
                 (4)    
                 Column 6 indicates the min,max cutoff values for the fraction of ribosomal protein gene counts in each cell.
-                For example: '1,0.75'
+                For example: '0,0.75'
                 c) for negative value counts (e.g. if using TPM in log scale) refer negative values with an 'n', like 'n1,0.5'
                 
                 (5)
@@ -270,17 +264,15 @@ SeuratVersion           <- as.numeric(opt$seurat_version)
 MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
 
 ####################################
-### Load Seurat and earlycross
+### Load Seurat
 ####################################
 writeLines("\n*** Create outdirs ***\n")
 
 if (SeuratVersion == 1) {
   suppressPackageStartupMessages(library("Seurat"))
-  suppressPackageStartupMessages(library(earlycross))
 } else if (SeuratVersion == 2) {
   PathForV3_0_3_9023Libs<-paste(.libPaths(), "/Seurat_V3_0_3_9023", sep = "", collapse = "") ### PathForV3_0_3_9023Libs must be the path of the sub-version installation
   suppressPackageStartupMessages(library("Seurat", lib.loc = PathForV3_0_3_9023Libs)) 
-  suppressPackageStartupMessages(library(earlycross))
 }else{
   stop("Couldn't determine Seurat version to use")
 }
@@ -761,7 +753,7 @@ for (dataset in rownames(InputsTable)) {
     UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$filtered_out, pattern = T, replacement = 4)
     UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$DotPch,       pattern = F, replacement = 16)
     
-    FeatureVsFeaturePlotPdf<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_NumbReadsVsNumbGenesAndMito_VlnPlot.pdf", sep="", collapse = "")
+    FeatureVsFeaturePlotPdf<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_NumbReadsVsNumbGenesAndMito_ScatterPlot.pdf", sep="", collapse = "")
     pdf(file=FeatureVsFeaturePlotPdf, width = 10, height = 5)
     par(mfrow=c(1,2))
     ## No. of reads vs. Mitochond. %
@@ -1413,10 +1405,37 @@ seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metad
 # switch the identity class of all cells to reflect sample-specific identities
 Idents(object = seurat.object.integrated) <- seurat.object.integrated$EachSampleGlobalCellClusters
 
+####################################
+### Write out number and fraction of cells per cluster, per sample
+####################################
+writeLines("\n*** Write out number and fraction of cells per cluster, per sample  ***\n")
+
 OutfileNumbCellsPerClusterPerSample<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerSample.tsv", sep="")
-Headers<-paste("Cluster", "Number_of_cells" ,sep="\t", collapse = "")
+OutfileFracCellsPerClusterPerSample<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "FracCellsPerClusterPerSample.tsv", sep="")
+
+seurat.object.integrated_EachSampleGlobalCellClusters.df <- as.data.frame(table(seurat.object.integrated$EachSampleGlobalCellClusters))
+rownames(seurat.object.integrated_EachSampleGlobalCellClusters.df) <- seurat.object.integrated_EachSampleGlobalCellClusters.df[,1]
+
+freq_mat <- sapply(rownames(InputsTable), function(dataset) {
+  freq_clust <- sapply(sort(unique(seurat.object.integrated$seurat_clusters)), function(cluster) {
+    dataset_cluster <- paste(dataset, "_c", cluster, sep = "", collapse = "")
+    if ((dataset_cluster %in% row.names(seurat.object.integrated_EachSampleGlobalCellClusters.df)) == TRUE)  {
+      freq <- seurat.object.integrated_EachSampleGlobalCellClusters.df[dataset_cluster,"Freq"]
+    }else{
+      freq <- 0
+    }
+    freq ## returns freq for the second sapply loop
+  })
+  freq_clust ## returns freq_clust for the first sapply loop
+})
+
+Headers<-paste("cluster", paste(rownames(InputsTable) , sep="", collapse = "\t"), sep = "\t", collapse = "\t")
+
 write.table(Headers, file = OutfileNumbCellsPerClusterPerSample, row.names = F, col.names = F, sep="\t", quote = F)
-write.table(table(seurat.object.integrated$EachSampleGlobalCellClusters),file = OutfileNumbCellsPerClusterPerSample, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+write.table(freq_mat, file = OutfileNumbCellsPerClusterPerSample, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+
+write.table(Headers, file = OutfileFracCellsPerClusterPerSample, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(round((freq_mat / colSums(freq_mat)), 4) , file = OutfileFracCellsPerClusterPerSample, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 ####################################
 ### Get average gene expression for each sample based on global clusters
