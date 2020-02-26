@@ -13,13 +13,10 @@
 ### 4) Add a lists of ENSEMBL Ids for mitochondrial genes instead of just MT- and mt- (at gene names)
 ###    Need to do it for both Human and Mouse
 ### 5) To implement a flag to see if inputted dataset matches expected mito.fraction
-###    In particular, if imputting a whole cell sample and using `-m 0,0.05` likely will filterout most cells
+###    In particular, if inputting a whole cell sample and using `-m 0,0.05` likely will filterout most cells
 ###    and the script may crash at step 'Perform linear dimensional reduction by PCA'
 ###    because the filtered matrix will be too sparse and small to get the gene PC's
-### 6) To compare SCTransform() vs. [NormalizeData(), ScaleData(), and FindVariableFeatures()]
-###    Do they produce similar results? Maybe use Circos plot to evaluate
-###    Implement variants with option -b
-### 7) Make *MarkersPerCluster.tsv and *TopTwoMarkersPerCluster.tsv a single file
+### 6) Make *MarkersPerCluster.tsv and *TopTwoMarkersPerCluster.tsv a single file
 ###
 ### THINGS NICE TO HAVE:
 ### 1) Assigning cell type identity to clusters (needs supervised annotations, maybe based on GSVA)
@@ -71,7 +68,6 @@
 ####################################
 ### Required libraries
 ####################################
-suppressPackageStartupMessages(library(Seurat))       # (CRAN) to run QC, differential gene expression and clustering analyses
 ### Package 'Seurat' version 3 is needed - tested using v3.1.1
 ### Seurat's latest stable version can be installed like:
 ### install.packages('Seurat')
@@ -89,7 +85,7 @@ suppressPackageStartupMessages(library(Seurat))       # (CRAN) to run QC, differ
 ### `packageVersion("Seurat")`
 ### ### should return:
 ### [1] ‘3.0.3.9023’
-
+suppressPackageStartupMessages(library(Seurat))       # (CRAN) to run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be t-SNE plotted
@@ -110,6 +106,19 @@ suppressPackageStartupMessages(library(staplr))       # (CRAN) to merge pdf file
 ###           https://www.pdflabs.com/tools/pdftk-the-pdf-toolkit/
 ### 'convert' to transofrm *pdf files into *png
 ###           it's part of ImageMagic (https://imagemagick.org/index.php)
+### 'umap'    to get the UMAP plots
+###           the front-end web version of CReSCENT needs version 0.4dev or higher to avoid an issue with CWL in older versions
+###           It can be downloaded with:
+###           `wget https://github.com/lmcinnes/umap/archive/0.4dev.zip`
+###           Then installed with:
+###           `unzip 0.4dev.zip`
+###           `cd umap-0.4dev`
+###           `pip3 install -r requirements.txt` ### Note this needs Python v3 or higher
+###           `python3 setup.py install`
+###           To check if version 0.4 is being used, type:
+###           `python3`
+###           `import umap`
+###           `print(umap.__version__)`
 ####################################
 
 ####################################
@@ -226,7 +235,7 @@ Input                   <- opt$input
 InputType               <- opt$input_type
 InfileRemoveBarcodes    <- opt$inputs_remove_barcodes
 NormalizeAndScale       <- as.numeric(opt$normalize_and_scale_sample)
-Resolution              <- as.numeric(opt$resolution) ## using as.numeric avoids FindClusters() to crash by inputting it as.character [default from parse_args()]
+Resolution              <- as.numeric(opt$resolution)
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
 InfileColourDimRedPlots <- opt$infile_colour_dim_red_plots
@@ -441,6 +450,8 @@ if (regexpr("^MTX$", InputType, ignore.case = T)[1] == 1) {
 dim(input.matrix)
 
 StopWatchEnd$LoadScRNAseqData  <- Sys.time()
+
+
 
 ####################################
 ### Create a Seurat object
@@ -815,7 +826,7 @@ if (NormalizeAndScale == 1) {
   
 }else if (NormalizeAndScale == 2) {
     
-    writeLines("\n*** Normalize data using NormalizeData() ***\n")
+    writeLines("\n*** Normalize data using SCTransform() ***\n")
     
     StopWatchStart$SCTransform  <- Sys.time()
     
@@ -1352,7 +1363,6 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     file.remove(paste(Tempdir,"/",eachFile,sep=""))
   })
 }
-
 
 ####################################
 ### Turning warnings on
