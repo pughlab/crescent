@@ -676,14 +676,21 @@ writeLines("\n*** CWL interactive qc plots ***\n")
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   # unfiltered
-  interactive_qc_plot_u  <-data.frame(Barcodes = row.names(seurat.object.u@meta.data), Number_of_Genes = seurat.object.u@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.u@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.u@meta.data$percent.mito, Ribosomal_Protein_Genes_Fraction = seurat.object.u@meta.data$percent.ribo)
+  interactive_qc_plot_u  <-data.frame(Barcodes = row.names(seurat.object.u@meta.data), Number_of_Genes = seurat.object.u@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.u@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.u@meta.data$mito.fraction, Ribosomal_Protein_Genes_Fraction = seurat.object.u@meta.data$ribo.fraction)
   colnames(interactive_qc_plot_u) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Fraction","Ribosomal Protein Genes Fraction")
   write.table(interactive_qc_plot_u, paste(Tempdir,"/","qc/","BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
   
   # filtered
-  interactive_qc_plot_f  <-data.frame(Barcodes = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.f@meta.data$percent.mito, Ribosomal_Protein_Genes_Fraction = seurat.object.f@meta.data$percent.ribo )
+  interactive_qc_plot_f  <-data.frame(Barcodes = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Fraction = seurat.object.f@meta.data$ribo.fraction)
   colnames(interactive_qc_plot_f) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Fraction","Ribosomal Protein Genes Fraction")
   write.table(interactive_qc_plot_f, paste(Tempdir,"/","qc/","AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+
+  qc_tsv <- data.frame(NAME = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Fraction = seurat.object.f@meta.data$ribo.fraction)
+  qc_tsv_string <- sapply(qc_tsv, as.character)
+  qc_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", Number_of_Genes = "numeric", Number_of_Reads = "numeric", Mitochondrial_Genes_Fraction = "numeric", Ribosomal_Protein_Genes_Fraction = "numeric"), qc_tsv_string)
+
+  qc_outfile <-paste(Tempdir,"/","qc/","qc_data.tsv", sep="")
+  write.table(data.frame(qc_tsv_string_TYPE),file = qc_outfile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
 } 
 
 ####################################
@@ -958,22 +965,27 @@ StopWatchEnd$ClusterCells  <- Sys.time()
 
 StopWatchStart$CellClusterTables  <- Sys.time()
 
-CellNames<-rownames(seurat.object.f@meta.data)
 ClusterIdent<-seurat.object.f@meta.data$seurat_clusters
-Headers<-paste("Cell_barcode", paste("seurat_cluster_resolution", Resolution, sep = "", collapse = "") ,sep="\t")
-clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
-#
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  OutfileClusters<-paste(Tempdir,"/","groups.tsv", sep="")
-} else {
-  OutfileClusters<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_CellClusters.tsv", sep="")
-}
-write.table(Headers,file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F)
-write.table(data.frame(clusters_data),file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-#
 NumberOfClusters<-length(unique(ClusterIdent))
-OutfileNumbClusters<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_NumbCellClusters", ".tsv", sep="")
-write(x=NumberOfClusters,file = OutfileNumbClusters)
+
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  metadata_tsv  <-data.frame(NAME = row.names(seurat.object.f@meta.data), seurat_clusters = seurat.object.f@meta.data$seurat_clusters)
+  metadata_tsv_string <- sapply(metadata_tsv, as.character)
+  metadata_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", seurat_clusters = "group"), metadata_tsv_string)
+  colnames(metadata_tsv_string_TYPE) <- c("NAME", paste("Seurat_Clusters_Resolution", Resolution, sep = "", collapse = ""))
+  OutfileClusters<-paste(Tempdir,"/","groups.tsv", sep="")
+  write.table(data.frame(metadata_tsv_string_TYPE),file = OutfileClusters, row.names = F, col.names = T, sep="\t", quote = F, append = T)
+
+ } else {
+  CellNames<-rownames(seurat.object.f@meta.data)
+  Headers<-paste("Cell_barcode", paste("seurat_cluster_resolution", Resolution, sep = "", collapse = "") ,sep="\t")
+  clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
+  OutfileClusters<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_CellClusters.tsv", sep="")
+  write.table(Headers,file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F)
+  write.table(data.frame(clusters_data),file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+  OutfileNumbClusters<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_NumbCellClusters", ".tsv", sep="")
+  write(x=NumberOfClusters,file = OutfileNumbClusters)
+}
 
 StopWatchEnd$CellClusterTables  <- Sys.time()
 
@@ -1151,7 +1163,8 @@ NumberOfClusters<-length(unique(seurat.object.markers[["cluster"]]))
 StopWatchEnd$FindDiffMarkers  <- Sys.time()
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  markers_file <- top_genes_by_cluster_for_tsne[,c("gene","cluster","p_val","avg_logFC")]
+  top_6_genes_by_cluster<-(seurat.object.markers %>% group_by(cluster) %>% top_n(6, avg_logFC))
+  markers_file <- top_6_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
   write.table(markers_file, paste(Tempdir,"/","markers/","TopTwoMarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
 } 
 
