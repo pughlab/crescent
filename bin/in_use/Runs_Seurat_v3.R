@@ -296,7 +296,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
 
 if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
   NumbCoresToUse <- availableCores()[[1]]
-}else if (is.numeric(NumbCores) == T) {
+}else if (regexpr("^[0-9]+$", NumbCores, ignore.case = T)[1] == 1) {
   NumbCoresToUse <- as.numeric(NumbCores)
 }else{
   stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript Runs_Seurat_v3.R -h\n\n", sep=""))
