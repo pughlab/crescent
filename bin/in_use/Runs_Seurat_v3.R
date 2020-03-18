@@ -226,7 +226,12 @@ option_list <- list(
   make_option(c("-w", "--run_cwl"), default="N",
               help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME' . Type 'y/Y' or 'n/N'.
                 Note, if using 'y/Y' this supersedes option -o
-                Default = 'N'")
+                Default = 'N'"),
+  #
+  make_option(c("-a", "--max_global_variables"), default="4000",
+              help="Indicates maximum allowed total size (in bytes) of global variables identified.
+                Used by library(future) to prevent too large exports
+                Default = '4000' for 4000 MiB")
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -249,6 +254,7 @@ ThreshReturn            <- as.numeric(opt$return_threshold)
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
+MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
 
 ####################################
 ### Define outdirs and CWL parameters
@@ -308,7 +314,7 @@ plan(strategy = "multicore", workers = NumbCoresToUse)
 
 ### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
 ### allocate 4Gb of RAM (4000*1024^2), use:
-options(future.globals.maxSize = 4000 * 1024^2)
+options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 
 ####################################
 ### Define default parameters
@@ -340,7 +346,7 @@ DefaultParameters <- list(
   
   ### Parameters for QC plots
   CellPropertiesToQC = c("nFeature_RNA", "nCount_RNA", "mito.fraction", "ribo.fraction"),
-
+  
   ### Parameters for Seurat filters
   MinCells = 3,
   MinReads = MinReads,
@@ -524,13 +530,13 @@ if (length(mito.features)[[1]] > 0) {
                           & mito.fraction <= DefaultParameters$MaxPMito
                           & ribo.fraction >= DefaultParameters$MinPRibo
                           & ribo.fraction <= DefaultParameters$MaxPRibo)
-
+  
   ### Get list of barcodes excluded by nFeature_RNA, nCount_RNA, mito.fraction or ribo.fraction
   BarcodesExcludedByNFeature <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)))
   BarcodesExcludedByNReads   <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nCount_RNA   >= DefaultParameters$MinReads & nCount_RNA   <= DefaultParameters$MaxReads)))
   BarcodesExcludedByMito     <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = mito.fraction >= DefaultParameters$MinPMito & mito.fraction <= DefaultParameters$MaxPMito)))
   BarcodesExcludedByRibo     <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = ribo.fraction >= DefaultParameters$MinPRibo & ribo.fraction <= DefaultParameters$MaxPRibo)))
-
+  
 }else{
   seurat.object.f<-subset(x = seurat.object.u, subset = 
                             nFeature_RNA >= DefaultParameters$MinGenes
@@ -684,11 +690,11 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   interactive_qc_plot_f  <-data.frame(Barcodes = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Fraction = seurat.object.f@meta.data$ribo.fraction)
   colnames(interactive_qc_plot_f) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Fraction","Ribosomal Protein Genes Fraction")
   write.table(interactive_qc_plot_f, paste(Tempdir,"/","qc/","AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
-
+  
   qc_tsv <- data.frame(NAME = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Fraction = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Fraction = seurat.object.f@meta.data$ribo.fraction)
   qc_tsv_string <- sapply(qc_tsv, as.character)
   qc_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", Number_of_Genes = "numeric", Number_of_Reads = "numeric", Mitochondrial_Genes_Fraction = "numeric", Ribosomal_Protein_Genes_Fraction = "numeric"), qc_tsv_string)
-
+  
   qc_outfile <-paste(Tempdir,"/","qc/","qc_data.tsv", sep="")
   write.table(data.frame(qc_tsv_string_TYPE),file = qc_outfile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
 } 
@@ -788,7 +794,7 @@ StopWatchEnd$WriteOutQCData  <- Sys.time()
 if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
   
   writeLines("\n*** Ignoring option -j ***\n")
-
+  
 }else{
   
   StopWatchStart$RemoveBarcodes <- Sys.time()
@@ -803,7 +809,7 @@ if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
   seurat.object.subset  <- subset(seurat.object.full, cells = colnames(seurat.object.full[,AllBarcodesToRemove.tab[,"Barcode"]]))
   print(paste(paste("Before:", ncol(seurat.object.full), sep = "", collapse =""), paste("After:", ncol(seurat.object.subset), sep = "", collapse =""), sep = "  ", collapse = "\n"))
   seurat.object.f       <- seurat.object.subset
-
+  
   StopWatchEnd$RemoveBarcodes <- Sys.time()
   
 }
@@ -832,15 +838,15 @@ if (NormalizeAndScale == 1) {
   StopWatchEnd$NormalizeData  <- Sys.time()
   
 }else if (NormalizeAndScale == 2) {
-    
-    writeLines("\n*** Normalize data using SCTransform() ***\n")
-    
-    StopWatchStart$SCTransform  <- Sys.time()
-    
-    seurat.object.f <- SCTransform(object = seurat.object.f, verbose = T)
-    
-    StopWatchEnd$SCTransform  <- Sys.time()
-    
+  
+  writeLines("\n*** Normalize data using SCTransform() ***\n")
+  
+  StopWatchStart$SCTransform  <- Sys.time()
+  
+  seurat.object.f <- SCTransform(object = seurat.object.f, verbose = T)
+  
+  StopWatchEnd$SCTransform  <- Sys.time()
+  
 }else if (NormalizeAndScale == 3) {
   
   writeLines("\n*** Data assumed to be already normalized ***\n")
@@ -975,8 +981,8 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   colnames(metadata_tsv_string_TYPE) <- c("NAME", paste("Seurat_Clusters_Resolution", Resolution, sep = "", collapse = ""))
   OutfileClusters<-paste(Tempdir,"/","groups.tsv", sep="")
   write.table(data.frame(metadata_tsv_string_TYPE),file = OutfileClusters, row.names = F, col.names = T, sep="\t", quote = F, append = T)
-
- } else {
+  
+} else {
   CellNames<-rownames(seurat.object.f@meta.data)
   Headers<-paste("Cell_barcode", paste("seurat_cluster_resolution", Resolution, sep = "", collapse = "") ,sep="\t")
   clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
@@ -1015,7 +1021,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   ### Run non-linear dimensional reductions
   ####################################
   writeLines(paste("\n*** Run ", DimensionReductionMethods[[dim_red_method]][["name"]], " ***\n", sep = "", collapse = ""))
-
+  
   StopWatchStart$DimensionReduction$dim_red_method  <- Sys.time()
   
   ### NOTES:
@@ -1030,15 +1036,15 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   }else{
     seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse)
   }
-
+  
   StopWatchEnd$DimensionReduction$dim_red_method  <- Sys.time()
-
+  
   StopWatchStart$DimensionReductionPlot$dim_red_method  <- Sys.time()
   
   pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot.pdf", sep="", collapse = ""))
   print(DimPlot(object = seurat.object.f, reduction = dim_red_method, group.by = 'ident', label = T, label.size=10))
   dev.off()
-
+  
   StopWatchEnd$DimensionReductionPlot$dim_red_method  <- Sys.time()
   
   ####################################
@@ -1057,7 +1063,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   Headers<-paste("Barcode",paste(colnames(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings),sep="",collapse="\t"),sep="\t",collapse = "\t")
   write.table(Headers,file = OutfileCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
-
+  
   StopWatchEnd$DimensionReductionWriteCoords$dim_red_method  <- Sys.time()
   
   ####################################
@@ -1071,14 +1077,14 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_QC.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf * 1.5, height = DefaultParameters$BaseSizeSinglePlotPdf * 1.5)
   print(FeaturePlot(object = seurat.object.f, label = T, order = T, features = CellPropertiesToColour, cols = c("lightgrey", "blue"), reduction = dim_red_method, ncol = 2, pt.size = 1.5))
   dev.off()
-
+  
   StopWatchEnd$QCDimRedPlots$dim_red_method  <- Sys.time()
   
   ####################################
   ### Colour dimension reduction plots by -infile_colour_dim_red_plots
   ####################################
   writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by -infile_colour_dim_red_plots ***\n", sep = "", collapse = ""))
-
+  
   if (regexpr("^NA$", InfileColourDimRedPlots, ignore.case = T)[1] == 1) {
     print("No extra barcode-attributes will be used for dimension reduction plots")
   }else{
@@ -1103,7 +1109,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
       print(DimPlot(object = seurat.object.f, reduction = dim_red_method, group.by = property, combine = T, legend = "none") + ggtitle(property))
     }
     dev.off()
-
+    
     StopWatchEnd$DimRedPlotsColuredByOptC$dim_red_method  <- Sys.time()
     
   }
@@ -1117,9 +1123,9 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
     print("No selected genes for dimension reduction plots")
   }else{
-
+    
     StopWatchStart$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
-
+    
     ListOfGenesForDimRedPlots<-unlist(strsplit(ListGenes, ","))
     if (length(ListOfGenesForDimRedPlots) <= 4) {
       pdfWidth  <- (length(ListOfGenesForDimRedPlots) * DefaultParameters$BaseSizeMultiplePlotPdfWidth)
@@ -1134,9 +1140,9 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_SelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
     print(FeaturePlot(object = seurat.object.f, ncol = nColFeaturePlot, features = c(ListOfGenesForDimRedPlots), cols = c("lightgrey", "blue"), reduction = dim_red_method, order = T))
     dev.off()
-
+    
     StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
-
+    
   }
 }
 
