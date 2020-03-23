@@ -343,7 +343,7 @@ DefaultParameters <- list(
   MaxPRibo = MaxPRibo,
 
   ### Parameters to assign number of cores
-  NumbCoresSmall = 6,
+  NumbCoresSmall = 4,
   NumbCoresMedOrLarge = 10,
   MaxNumbCellsSmallForNumbCores = 30000,
 
