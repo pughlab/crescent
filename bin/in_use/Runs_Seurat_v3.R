@@ -154,9 +154,9 @@ option_list <- list(
   #
   make_option(c("-b", "--normalize_and_scale_sample"), default="2",
               help="Indicates one of three options:
-                '1' --input contains raw counts (e.g. from cellranger) and this script should use Seurat's NormalizeData() function
-                '2' --input contains raw counts (e.g. from cellranger) and this script should use Seurat's SCTransform() function
-                '3' --input contains pre-normalized counts (e.g. transcripts per million counts [TPMs]) and the normalization step should be skipped
+                a) Type '1' if --input contains raw counts (e.g. from cellranger) and this script should use Seurat's NormalizeData() function
+                b) Type '2' if --input contains raw counts (e.g. from cellranger) and this script should use Seurat's SCTransform() function
+                c) Type '3' if --input contains pre-normalized counts (e.g. transcripts per million counts [TPMs]) and the normalization step should be skipped
                 Default = '2'"),
   #
   make_option(c("-r", "--resolution"), default="1",
@@ -214,9 +214,12 @@ option_list <- list(
               help="For each cluster only return markers that have a p-value < return_thresh
                 Default = '0.01'"),
   #
-  make_option(c("-u", "--number_cores"), default="MAX",
-              help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
-                Default = 'MAX'"),
+  make_option(c("-u", "--number_cores"), default="AUTO",
+              help="Indicates one of three options:
+                a) Type the number of cores to use for parellelization (e.g. '4')
+                b) Type 'AUTO' to detect the number of cells in the sample and assign a pre-established number of cores based on that
+                c) Type 'MAX' to determine and use all available cores in the system
+                Default = 'AUTO'"),
   #
   make_option(c("-s", "--save_r_object"), default="N",
               help="Indicates if a R object with the data and analyzes from the run should be saved
@@ -228,10 +231,11 @@ option_list <- list(
                 Note, if using 'y/Y' this supersedes option -o
                 Default = 'N'"),
   #
-  make_option(c("-a", "--max_global_variables"), default="4000",
-              help="Indicates maximum allowed total size (in bytes) of global variables identified.
-                Used by library(future) to prevent too large exports
-                Default = '4000' for 4000 MiB")
+  make_option(c("-a", "--max_global_variables"), default="AUTO",
+              help="Indicates one of two options:
+                a) Type the maximum allowed total size (in bytes) of global variables identified for library(future) (e.g. '4000')
+                b) Type 'AUTO' to detect the number of cells in the sample and assign a pre-established size of global variables
+                Default = 'AUTO'")
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -254,7 +258,7 @@ ThreshReturn            <- as.numeric(opt$return_threshold)
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
-MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
+MaxGlobalVariables      <- opt$max_global_variables
 
 ####################################
 ### Define outdirs and CWL parameters
@@ -297,26 +301,6 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
 }
 
 ####################################
-### Define number of cores and RAM for parallelization
-####################################
-
-if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
-  NumbCoresToUse <- availableCores()[[1]]
-}else if (regexpr("^[0-9]+$", NumbCores, ignore.case = T)[1] == 1) {
-  NumbCoresToUse <- as.numeric(NumbCores)
-}else{
-  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript Runs_Seurat_v3.R -h\n\n", sep=""))
-}
-
-cat("Using ", NumbCoresToUse, "cores")
-
-plan(strategy = "multicore", workers = NumbCoresToUse)
-
-### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
-### allocate 4Gb of RAM (4000*1024^2), use:
-options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
-
-####################################
 ### Define default parameters
 ####################################
 ### Some of these default parameters are provided by Seurat developers,
@@ -357,7 +341,17 @@ DefaultParameters <- list(
   MaxPMito = MaxPMito,
   MinPRibo = MinPRibo,
   MaxPRibo = MaxPRibo,
-  
+
+  ### Parameters to assign number of cores
+  NumbCoresSmall = 6,
+  NumbCoresMedOrLarge = 10,
+  MaxNumbCellsSmallForNumbCores = 30000,
+
+  ### Parameters to assign size of global variables
+  NumbGlobVarsSmall = 4000,
+  NumbGlobVarsMedOrLarge = 16000,
+  MaxNumbCellsSmallForGlobVars = 30000,
+
   ### Parameters for Seurat normalization
   ScaleFactor = 1000000, ### Using 1000000 to set scale.factor as counts per million (CPM)
   NormalizationMethod = "LogNormalize",
@@ -457,7 +451,70 @@ dim(input.matrix)
 
 StopWatchEnd$LoadScRNAseqData  <- Sys.time()
 
+####################################
+### Define number of cores for parallelization
+### Note: this must run after loading scRNA-seq data to get the number of barcodes (if using `-u AUTO`)
+####################################
+writeLines("\n*** Define number of cores for parallelization ***\n")
 
+NumbCoresAvailable <- as.numeric(availableCores()[[1]]) ## Number of cores available in the system
+NumberOfBarcodes <- ncol(input.matrix)
+
+### Get number of cores requested
+if (regexpr("^AUTO$", NumbCores, ignore.case = T)[1] == 1) {
+    if (NumberOfBarcodes <= DefaultParameters$MaxNumbCellsSmallForNumbCores) {
+      NumbCoresRequested <-DefaultParameters$NumbCoresSmall
+    }else if (NumbCoresAvailable < DefaultParameters$NumbCoresMedOrLarge) {
+      NumbCoresRequested <-DefaultParameters$NumbCoresMedOrLarge
+    }
+}else if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
+  NumbCoresRequested <- NumbCoresAvailable
+}else if (regexpr("^[0-9]+$", NumbCores, ignore.case = T)[1] == 1) {
+  NumbCoresRequested <- as.numeric(NumbCores)
+}else{
+  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript Runs_Seurat_v3.R -h\n\n", sep=""))
+}
+
+### Check if number of cores requested is not larger than number of cores available
+if (NumbCoresAvailable < NumbCoresRequested) {
+  print(paste("WARNING: Parameter `-u` requested ", NumbCoresRequested, " cores to process ", NumberOfBarcodes, " cells. But only ", NumbCoresAvailable, " cores are available and they will be used instead"))
+  NumbCoresToUse <- NumbCoresAvailable
+}else{
+  NumbCoresToUse <- NumbCoresRequested
+}
+
+writeLines(paste("\nUsing ", NumbCoresToUse, " cores\n", sep = "", collapse = ""))
+
+####################################
+### Define library(future) strategy for parallelization
+### Note: this must run after:
+###       a) loading scRNA-seq data to get the number of barcodes (if using `-a AUTO`)
+###       b) defining `NumbCoresToUse`
+####################################
+writeLines("\n*** Define library(future) strategy for parallelization ***\n")
+
+NumberOfBarcodes <- ncol(input.matrix)
+
+if (regexpr("^AUTO$", MaxGlobalVariables, ignore.case = T)[1] == 1) {
+  if (NumberOfBarcodes <= DefaultParameters$MaxNumbCellsSmallForGlobVars) {
+    MaxGlobalVariablesToUse <- DefaultParameters$NumbGlobVarsSmall
+  }else{
+    MaxGlobalVariablesToUse <- DefaultParameters$NumbGlobVarsMedOrLarge
+  }
+}else if (regexpr("^[0-9]+$", MaxGlobalVariables, ignore.case = T)[1] == 1) {
+  MaxGlobalVariablesToUse <- as.numeric(MaxGlobalVariables)
+}else{
+  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript Runs_Seurat_v3.R -h\n\n", sep=""))
+}
+
+### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
+### allocate 4Gb of RAM (4000*1024^2), use:
+
+writeLines(paste("\nUsing ", MaxGlobalVariablesToUse, " global variables\n", sep = "", collapse = ""))
+
+options(future.globals.maxSize = MaxGlobalVariablesToUse * 1024^2)
+
+plan(strategy = "multicore", workers = NumbCoresToUse)
 
 ####################################
 ### Create a Seurat object
@@ -1136,7 +1193,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
       pdfHeight <- (as.integer(length(ListOfGenesForDimRedPlots) / 4) + 1) * DefaultParameters$BaseSizeMultiplePlotPdfHeight
       nColFeaturePlot <- 4
     }
-    
+
     pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_SelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
     print(FeaturePlot(object = seurat.object.f, ncol = nColFeaturePlot, features = c(ListOfGenesForDimRedPlots), cols = c("lightgrey", "blue"), reduction = dim_red_method, order = T))
     dev.off()
