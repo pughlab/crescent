@@ -4,14 +4,14 @@ Script name
 
 Description
 ================
-Runs Seurat version 3 scRNA-seq data normalization, dimension reduction and cell clustering of
-Cell Ranger Matrix Market files or a Digital Expression Matrix (see *Inputs Description* below)
+Runs Seurat version 3 scRNA-seq data normalization, dimension reduction and cell clustering. The input is either a matrix in MTX format (matrix.mtx.gz) and its barcode and gene/feature indices (barcode.tsv.gz and features.tsv.gz) or a Digital Expression Matrix file (DGE, with genes (rows) vs. barcodes (columns). See *Inputs Description* below). The MTX files are typical outputs from a 10X Cell Ranger, and can also be generated from a DGE file using script `bin/development/obtains_mtx_files_from_gene_x_barcode_matrix.R`.
+
 
 The clustering procedure is based on this Seurat tutorial https://satijalab.org/seurat/pbmc3k_tutorial_v3.html
 
-It allows the user provide parameters as one-line commands.
+It allows the user provide parameters as one-line commands via R library(optparse).
 
-Other parameters are set as defults based on the Seurat tutorial or from empirical observations and can be changed in list(DefaultParameters).<br />
+Default parameters are set as defults based on the Seurat tutorial or from empirical observations and can be changed in list(DefaultParameters).<br />
 
 Outfiles
 ================
@@ -50,7 +50,7 @@ To display help commands type: <br />
 `Rscript Runs_Seurat_v3.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t MTX -b Y -r 1 -o ~/example/outfiles -p sample_ID -s y -c ~/path_to_/example_cell_type.tsv -g GENE1,GENE2 -a 0.3 -d 10 -m 0,0.5 -n 50,8000 -e 0.01 -u MAX -w N`
+`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t MTX -b 2 -r 1 -o ~/example/outfiles -p sample_ID -c ~/path_to_/example_cell_type.tsv -g GENE1,GENE2 -d 10 -m 0,0.5 -q 0.075 -n 50,8000 -v 1,80000 -e 0.01 -u AUTO -s Y -a AUTO -w N -f Y`
 
 Inputs Description
 ================
@@ -145,3 +145,7 @@ It's used arrange QC violin plots and top legend<br /><br />
 Can be installed in R console with: <br />
 `install.packages('future')`<br />
 It's used parallelize time consuming functions like: RunPCA<br /><br />
+**loomR**<br />
+Can be installed in R console with: <br />
+`devtools::install_github(repo = "mojaveazure/loomR")` <br />
+It's needed for front-end display of data. Only needed if using `-w Y`
