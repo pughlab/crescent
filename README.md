@@ -1,9 +1,10 @@
 # CReSCENT: CanceR Single Cell ExpressioN Toolkit
 
+CReSCENT is an intuitive and scalable web portal incorporating a containerized pipeline execution engine for standardized analysis of single-cell RNA sequencing (scRNA-seq) data.
 
-This repository contains applications implemented for CReSCENT. They work as either one-line-command scripts or as a web portal implemented using the Common Workflow Language at https://crescent.cloud which has its own repository at https://github.com/pughlab/crescent-frontend.
+This repository contains applications implemented for CReSCENT. Scripts work as one-line-commands using the R library(optparse). We also provide a Graphic User Interface (GUI) web version ready to be used without the user needing to install any sotware at https://crescent.cloud. CReSCENT's GUI has its own repository at https://github.com/pughlab/crescent-frontend.
 
-There are three directories in this repository: `bin`, `doc` and `examples`. `bin` contains the applications code, `doc` contains documentation, including dependencies, and `Examples` provides links to inputs and expected outputs.
+This repository has three main directories: `bin`, `doc` and `examples`. `bin` contains the applications code, `doc` contains documentation, including dependencies, and `examples` provides links to inputs and expected outputs.
 
 bin
 ================
