@@ -972,14 +972,16 @@ if (NormalizeAndScale == 1) {
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
 
-  # output the normalized count matrix for front-end violin plots
+  # output the normalized count matrix & features for front-end gene expression visualizations
   writeLines("\n*** Outputting normalized count matrix as loom ***\n")
   
   normalized_count_matrix <- as.matrix(seurat.object.f@assays[["RNA"]]@data)
   
+  # all genes/features in matrix
   features_tsv <- as.data.frame(rownames(normalized_count_matrix))
-  write.table(features_tsv, file=paste("features.tsv", sep=""), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
-  
+  write.table(features_tsv, file=paste(Tempdir,"/","raw/","features.tsv", sep=""), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
+
+  # generating loom file of normalized count matrix
   loom_file <- paste(Tempdir,"/","normalized/","normalized_counts.loom", sep="")
   create(loom_file, normalized_count_matrix)
   
