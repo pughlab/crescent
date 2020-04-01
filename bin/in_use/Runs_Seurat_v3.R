@@ -200,12 +200,12 @@ option_list <- list(
   make_option(c("-m", "--percent_mito"), default="0,0.05",
               help="<comma> delimited min,max fraction of gene counts of mitochondrial origin a cell to be included in normalization and clustering analyses
                 For example, for whole cell scRNA-seq use '0,0.2', or for Nuc-seq use '0,0.05'
-                For negative values (e.g. if using TPM in log scale refer negative values with an 'n', like this 'n1,0.5')
+                For negative values (e.g. if using TPM in log scale refer negative values with a double backslash '\\', like this '\\-1,0.5')
                 Default = '0,0.05'"),
   #
   make_option(c("-q", "--percent_ribo"), default="0,0.75",
               help="<comma> delimited min,max fraction of gene counts of ribosomal proteins to be included in normalization and clustering analyses
-                For negative values (e.g. if using TPM in log scale refer negative values with an 'n', like this 'n1,0.5')
+                For negative values (e.g. if using TPM in log scale refer negative values with a double backslash '\\', like this '\\-1,0.5')
                 Default = '0,0.75'"),
   #
   make_option(c("-n", "--n_genes"), default="50,8000",
@@ -313,9 +313,12 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
 ### Some of these default parameters are provided by Seurat developers,
 ### others are tailored according to clusters/t-SNE granularity
 
-### To be able to take negative values for ListPMito entered using optparse (e.g. -m \\-1,1 means mito.percentage from -1 to 1)
-ListPMito <- gsub("\\\\","", ListPMito, ignore.case = T)
-ListPRibo <- gsub("\\\\","", ListPRibo, ignore.case = T)
+### To be able to take negative values for from cell filtering parameters
+### entered using optparse (e.g. -m \\-1,1 means mito.percentage from -1 to 1)
+ListNReads <- gsub("\\\\","", ListNReads, ignore.case = T)
+ListNGenes <- gsub("\\\\","", ListNGenes, ignore.case = T)
+ListPMito  <- gsub("\\\\","", ListPMito, ignore.case = T)
+ListPRibo  <- gsub("\\\\","", ListPRibo, ignore.case = T)
 
 ListNGenes = unlist(strsplit(ListNGenes, ","))
 MinGenes   = as.numeric(ListNGenes[1])
@@ -624,7 +627,7 @@ if (regexpr("^Y$", ApplyCellFilters, ignore.case = T)[1] == 1) {
   NumberOfBarcodesExcludedByRibo     <- length(BarcodesExcludedByRibo)
   
 }else{
-  writeLines("\n*** QC EDA violin plots ***\n")
+  writeLines("\n*** Not applying cell filters ***\n")
   
   seurat.object.f <- seurat.object.u
   
@@ -1130,6 +1133,8 @@ StopWatchEnd$AverageGeneExpression  <- Sys.time()
 ####################################
 writeLines("\n*** Run and plot dimension reductions ***\n")
 
+names(DimensionReductionMethods) <- c("umap", "tsne")
+
 for (dim_red_method in names(DimensionReductionMethods)) {
   
   ####################################
@@ -1144,11 +1149,15 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   ### `Error in .check_tsne_params(nrow(X), dims = dims, perplexity = perplexity,  : 
   ### perplexity is too large for the number of samples`
   ### User can try tunning down the default RunTSNE(..., perplexity=30) to say 5 or 10
+  ###
+  ### Also using RunTSNE(..., check_duplicates = F) to skip cases where cells happen to have the same values after PCA reduction
   
   if (("tsne" %in% dim_red_method) & (length(colnames(seurat.object.f)) < DefaultParameters$MinNumberOfCellsToReducePerplexity)) {
     writeLines(paste("\n*** Using reduced perplexity = ", DefaultParameters$ReducedPerplexity, " because found ",  length(colnames(seurat.object.f)), " cells", " ***\n", sep = "", collapse = ""))
-    seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, perplexity = DefaultParameters$ReducedPerplexity)
-  }else{
+    seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, perplexity = DefaultParameters$ReducedPerplexity, check_duplicates = F)
+  }else if ("tsne" %in% dim_red_method) {
+    seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, check_duplicates = F)
+  }else if ("umap" %in% dim_red_method) {
     seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse)
   }
   
