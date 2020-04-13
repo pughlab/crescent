@@ -198,7 +198,7 @@ option_list <- list(
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-c", "--infile_metadata"), default="NA",
-              help="A <tab> delimited table of barcodes and discrete properties to colour the t-SNE, like:
+              help="A <tab> delimited table of barcodes and discrete properties to colour the dimension reduction plots, like:
                 Barcode                CellClass    InOtherDatasets
                 d1_AAACCTGAGCGGCTTC-1   1            yes
                 d2_AAACCTGAGTCGAGTG-1   1            no
@@ -293,10 +293,6 @@ RunsCwl                 <- opt$run_cwl
 MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
 
 ####################################
-### Example commands
-####################################
-
-####################################
 ### Define outdirs and CWL parameters
 ####################################
 writeLines("\n*** Create outdirs ***\n")
@@ -304,14 +300,35 @@ writeLines("\n*** Create outdirs ***\n")
 ProgramOutdir <- "SEURAT"
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  ### Outfiles will be stored into `ProgramOutdir` directory
-  #PrefixOutfiles <- "cwl_run" 
-  PrefixOutfiles  <- opt$prefix_outfiles
+  ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
   Tempdir         <- ProgramOutdir
-  dir.create(file.path(Tempdir), showWarnings = F) ## Note Tempdir will be the final out-directory as well
+  dir.create(file.path(Tempdir), showWarnings = F) 
+  
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    "normalized",
+    "coordinates",
+    "raw",
+    "metadata",
+    "markers",
+    "qc",
+    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
+    "DIMENSION_REDUCTION_PLOTS", 
+    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
+    "AVERAGE_GENE_EXPRESSION_TABLES", 
+    "DIFFERENTIAL_GENE_EXPRESSION_TABLES", 
+    "CELL_CLUSTER_IDENTITIES", 
+    "CELL_FRACTIONS", 
+    "QC_PLOTS", 
+    "QC_TABLES", 
+    "SCTRANSFORM_TABLES", 
+    "R_OBJECTS", 
+    "LOG_FILES"
+  )
+  
 }else{
   PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
-  ## Using `Tempdir` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+  ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+  ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
   Tempdir        <- "~/temp" 
   #
@@ -327,7 +344,26 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
+  
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
+    "DIMENSION_REDUCTION_PLOTS", 
+    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
+    "AVERAGE_GENE_EXPRESSION_TABLES", 
+    "DIFFERENTIAL_GENE_EXPRESSION_TABLES", 
+    "CELL_CLUSTER_IDENTITIES", 
+    "CELL_FRACTIONS", 
+    "QC_PLOTS", 
+    "QC_TABLES", 
+    "SCTRANSFORM_TABLES", 
+    "R_OBJECTS", 
+    "LOG_FILES"
+  )
 }
+
+sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(eachdir) {
+  dir.create(file.path(paste0(Tempdir, "/", eachdir)), showWarnings = F, recursive = T)
+})
 
 ####################################
 ### Define number of cores and RAM for parallelization
@@ -505,6 +541,7 @@ if (length(grep('^NA$', ListGenes, perl = T))) {
   }
 }
 
+
 ################################################################################################################################################
 ################################################################################################################################################
 ### HERE ARE THE FUNCTIONS TO LOAD, QC AND INTEGRATE DATASETS
@@ -523,7 +560,7 @@ colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoF
 ####################################
 ### Load scRNA-seq data and generate QC plots and tables
 ####################################
-writeLines("\n*** Load scRNA-seq data  and generate QC plots and tables ***\n")
+writeLines("\n*** Load scRNA-seq data and generate QC plots and tables ***\n")
 
 SeuratObjectsFiltered   <-list()
 SeuratObjectsUnfiltered <-list()
@@ -813,7 +850,7 @@ for (dataset in rownames(InputsTable)) {
     
     ### Create a *pdf file with the violin ggplot's
     
-    VlnPlotPdf<-paste(Tempdir, "/" , PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_QC_VlnPlot.pdf", sep="", collapse = )
+    VlnPlotPdf<-paste(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_QC_VlnPlot.pdf", sep="", collapse = )
     pdf(file=VlnPlotPdf, width = DefaultParameters$BaseSizeSinglePlotPdf * 1.7, height = DefaultParameters$BaseSizeSinglePlotPdf)
     print(plot_grid(Headers.plot, bottom_row, ncol = 1, rel_heights = c(0.2,1)))
     dev.off()
@@ -836,7 +873,7 @@ for (dataset in rownames(InputsTable)) {
     UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$filtered_out, pattern = T, replacement = 4)
     UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$DotPch,       pattern = F, replacement = 16)
     
-    FeatureVsFeaturePlotPdf<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_NumbReadsVsNumbGenesAndMito_ScatterPlot.pdf", sep="", collapse = "")
+    FeatureVsFeaturePlotPdf<-paste(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_NumbReadsVsNumbGenesAndMito_ScatterPlot.pdf", sep="", collapse = "")
     pdf(file=FeatureVsFeaturePlotPdf, width = 10, height = 5)
     par(mfrow=c(1,2))
     ## No. of reads vs. Mitochond. %
@@ -859,7 +896,7 @@ for (dataset in rownames(InputsTable)) {
     
     StopWatchStart$OutTablesFilterDetailsAndFilteredCells$dataset  <- Sys.time()
     
-    OutTableFilterDetails<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_FilterDetails.tsv", sep="", collapse = "")
+    OutTableFilterDetails<-paste(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_FilterDetails.tsv", sep="", collapse = "")
     Headers<-paste("Step", "Filter_min", "Filter_max", "Mean_before_filter", "Median_before_filter", "Mean_after_filter", "Median_after_filter", "Excluded_cells", sep = "\t", collapse = "")
     write.table(Headers, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F)
     
@@ -881,7 +918,7 @@ for (dataset in rownames(InputsTable)) {
     write.table(FilterDetails.mito.fraction, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
     write.table(FilterDetails.ribo.fraction, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
     
-    OutTableFilteredCells<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_NumberOfFilteredCells.tsv", sep="", collapse = "")
+    OutTableFilteredCells<-paste(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_NumberOfFilteredCells.tsv", sep="", collapse = "")
     write.table(paste("Number_of_cells_before_filters", NumberOfCells[["unfiltered"]], sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(paste("Number_of_cells_after_filters", NumberOfCells[["filtered"]],    sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 
@@ -910,12 +947,12 @@ for (dataset in rownames(InputsTable)) {
     Headers<-paste("Cell_barcode", paste(DefaultParameters$CellPropertiesToQC, sep = "", collapse = "\t") ,sep="\t")
     
     BarcodeIdsWithDatasetBeforeFilters <- unlist(x = strsplit(x = paste(dataset, colnames(SeuratObjectsUnfiltered[[NumberOfDatasets]]), sep = "_", collapse = "\n"), split = "\n"))
-    OutfileQCMetadataBeforeFilters<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "Before_filters_QC_metadata.tsv", sep = "", collapse = "")
+    OutfileQCMetadataBeforeFilters<-paste(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "Before_filters_QC_metadata.tsv", sep = "", collapse = "")
     write.table(Headers, file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(data.frame(BarcodeIdsWithDatasetBeforeFilters, SeuratObjectsUnfiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 
     BarcodeIdsWithDatasetAfterFilters <- unlist(x = strsplit(x = paste(dataset, colnames(SeuratObjectsFiltered[[NumberOfDatasets]]), sep = "_", collapse = "\n"), split = "\n"))
-    OutfileQCMetadataAfterFilters<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "After_filters_QC_metadata.tsv", sep = "", collapse = "")
+    OutfileQCMetadataAfterFilters<-paste(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "After_filters_QC_metadata.tsv", sep = "", collapse = "")
     write.table(Headers, file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(data.frame(BarcodeIdsWithDatasetAfterFilters, SeuratObjectsFiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
     
@@ -1081,7 +1118,7 @@ for (dataset in rownames(InputsTable)) {
   mat_for_correl_all_cells.df[[dataset]] <- rowSums(as.matrix(seurat.object.integrated.list[[dataset]]@assays$SCT[,]))
 }
 
-OutfileSCTransform <- paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_SCTransform_DatasetsInColumns.tsv", sep = "", collapse = "")
+OutfileSCTransform <- paste(Tempdir, "/SCTRANSFORM_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_SCTransform_DatasetsInColumns.tsv", sep = "", collapse = "")
 Headers<-paste("SCTransform", paste(colnames(mat_for_correl_all_cells.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
 write.table(Headers, file = OutfileSCTransform, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(mat_for_correl_all_cells.df,  file = OutfileSCTransform, row.names = T, col.names = F, sep="\t", quote = F, append = T)
@@ -1096,7 +1133,7 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
   StopWatchStart$SaveRDSUpToIntegration  <- Sys.time()
   
-  OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_integrated_object_incl_integrated_datasets.rds", sep="")
+  OutfileRDS<-paste(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_integrated_object_incl_integrated_datasets.rds", sep="")
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDSUpToIntegration  <- Sys.time()
@@ -1123,7 +1160,7 @@ StopWatchStart$PCAPlots  <- Sys.time()
 ForElbowPlot<-ElbowPlot(object = seurat.object.integrated, ndims = 50, reduction = "pca")
 MaxYAxis<-as.integer(max(ForElbowPlot$data$stdev)+1)
 
-pdf(file=paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_PCElbowPlot_Integrated.pdf", sep=""))
+pdf(file=paste(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_PCElbowPlot_Integrated.pdf", sep=""))
 print(ForElbowPlot
       + scale_x_continuous(breaks =  seq(from = 0, to = 50, by=5))
       + geom_vline(xintercept = seq(from = 0, to = 50, by=5), linetype='dotted', col="red")
@@ -1186,14 +1223,14 @@ NumberOfClusters<-length(unique(ClusterIdent))
 Headers<-paste("Cell_barcode", paste("seurat_cluster_r", Resolution, sep = "", collapse = "") ,sep="\t")
 clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
 #
-OutfileClusters<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "CellClusters.tsv", sep="")
+OutfileClusters<-paste(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "CellClusters.tsv", sep="")
 write.table(Headers,file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(clusters_data),file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 #
-OutfileNumbClusters<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellClusters", ".tsv", sep="")
+OutfileNumbClusters<-paste(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellClusters", ".tsv", sep="")
 write(x=NumberOfClusters,file = OutfileNumbClusters)
 #
-OutfileNumbCellsPerCluster<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerCluster.tsv", sep="")
+OutfileNumbCellsPerCluster<-paste(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerCluster.tsv", sep="")
 Headers<-paste("Cluster", "Number_of_cells" ,sep="\t", collapse = "")
 write.table(Headers,file = OutfileNumbCellsPerCluster, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(table(ClusterIdent),file = OutfileNumbCellsPerCluster, row.names = F, col.names = F, sep="\t", quote = F, append = T)
@@ -1236,7 +1273,7 @@ for (DatasetId in rownames(InputsTable)) {
   }
 }
 
-OutfileSCTransform <- paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_SCTransform_DatasetClustersInColumns.tsv", sep = "", collapse = "")
+OutfileSCTransform <- paste(Tempdir, "/SCTRANSFORM_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_SCTransform_DatasetClustersInColumns.tsv", sep = "", collapse = "")
 Headers<-paste("SCTransform", paste(colnames(mat_for_correl_each_cluster.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
 write.table(Headers, file = OutfileSCTransform, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(mat_for_correl_each_cluster.df,  file = OutfileSCTransform, row.names = T, col.names = F, sep="\t", quote = F, append = T)
@@ -1257,7 +1294,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 
   plots <- DimPlot(seurat.object.integrated, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 10)
   plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + guides(color = guide_legend(override.aes = list(size = 3))))
-  IntegratedDimRedPlotPdf<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir,  "_GlobalClustering_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
+  IntegratedDimRedPlotPdf<-paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir,  "_GlobalClustering_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
   pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
   print(CombinePlots(plots))
   dev.off()
@@ -1271,7 +1308,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 
   StopWatchStart$DimensionReductionWriteCoords$dim_red_method  <- Sys.time()
 
-  OutfileCoordinates<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_Coordinates.tsv", sep="", collapse = "")
+  OutfileCoordinates<-paste(Tempdir, "/DIMENSION_REDUCTION_COORDINATE_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_Coordinates.tsv", sep="", collapse = "")
   Headers<-paste("Barcode",paste(colnames(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings),sep="",collapse="\t"),sep="\t",collapse = "\t")
   write.table(Headers,file = OutfileCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
@@ -1287,7 +1324,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 
   plots <- DimPlot(seurat.object.integrated, group.by = c("dataset"), combine = F, reduction = dim_red_method)
   plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = NumbRowsForLegendPerDataset, byrow = T, override.aes = list(size = 2))))
-  IntegratedDimRedPlotPdf<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByDataset.pdf", sep="")
+  IntegratedDimRedPlotPdf<-paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByDataset.pdf", sep="")
   pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
   print(CombinePlots(plots))
   dev.off()
@@ -1295,7 +1332,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   ### This is the same plot as above, but with only two dataset labels per row in the legend to make sure that all text is printed out
   plots <- DimPlot(seurat.object.integrated, group.by = c("dataset"), combine = F, reduction = dim_red_method)
   plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(ncol = 2, byrow = T, override.aes = list(size = 1))))
-  IntegratedDimRedPlotPdf<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByDataset_FullLegend.pdf", sep="")
+  IntegratedDimRedPlotPdf<-paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByDataset_FullLegend.pdf", sep="")
   pdf(file=IntegratedDimRedPlotPdf, width = 7, height = (7 + (0.1 * NumberOfDatasets)))
   print(CombinePlots(plots))
   dev.off()
@@ -1342,7 +1379,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 
       plots <- DimPlot(seurat.object.integrated, group.by = c("dataset_type"), combine = F, reduction = dim_red_method, label = F, label.size = 10)
       plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = NumbRowsForLegendPerDatasetType, byrow = T, override.aes = list(size = 2))))
-      IntegratedDimRedPlotPdf<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByDatasetType.pdf", sep="")
+      IntegratedDimRedPlotPdf<-paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByDatasetType.pdf", sep="")
       pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
       print(CombinePlots(plots))
       dev.off()
@@ -1371,7 +1408,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     seurat.object.integrated.sa@reductions$umap <- seurat.object.integrated@reductions$umap
     seurat.object.integrated.sa@reductions$tsne <- seurat.object.integrated@reductions$tsne
 
-    pdf(file=paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
+    pdf(file=paste(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
     print(FeaturePlot(object = seurat.object.integrated.sa, ncol = nColFeaturePlot, features = ListOfGenesForDimRedPlots, cols = c("lightgrey", "blue"),
                       reduction = dim_red_method, order = T, slot = "data", pt.size = 1.5, min.cutoff = "q0.1", max.cutoff = "q90"))
     dev.off()
@@ -1404,7 +1441,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     # even if using layout(matrix(...)) or  par(mfrow=())
     # Thus each property plot is written to a separate page of a single *pdf outfile
     for (property in colnames(CellPropertiesFromMetadata)) {
-      IntegratedDimRedPlotPdf <- paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBy_", property, ".pdf", sep="")
+      IntegratedDimRedPlotPdf <- paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBy_", property, ".pdf", sep="")
       pdf(file=IntegratedDimRedPlotPdf, width = DefaultParameters$BaseSizeSinglePlotPdf, height = (DefaultParameters$BaseSizeSinglePlotPdf + (0.12 * length(unique(CellPropertiesFromMetadata[,property])))))
       
       if ( (sum(CellPropertiesFromMetadata[,property] %in% 0:1 == T)) == (nrow(CellPropertiesFromMetadata)) ) { ## is binary
@@ -1437,9 +1474,9 @@ StopWatchStart$AverageGeneExpressionGlobalClusters  <- Sys.time()
 
 cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F)
 #
-OutfileClusterAveragesRNA<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "AllDatasets_AverageGeneExpression_RNA.tsv", sep="")
-OutfileClusterAveragesSCT<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "AllDatasets_AverageGeneExpression_SCT.tsv", sep="")
-OutfileClusterAveragesINT<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "AllDatasets_AverageGeneExpression_INT.tsv", sep="")
+OutfileClusterAveragesRNA<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "AllDatasets_AverageGeneExpression_RNA.tsv", sep="")
+OutfileClusterAveragesSCT<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "AllDatasets_AverageGeneExpression_SCT.tsv", sep="")
+OutfileClusterAveragesINT<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "AllDatasets_AverageGeneExpression_INT.tsv", sep="")
 #
 Headers<-paste("AVERAGE_GENE_EXPRESSION",paste("r", Resolution, "_C", names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
 #
@@ -1469,7 +1506,7 @@ if (1 %in% RequestedDiffGeneExprComparisons == T) {
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
   seurat.object.integrated.markers <- FindAllMarkers(object = seurat.object.integrated, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
   SimplifiedDiffExprGenes.df <- seurat.object.integrated.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-  OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerCluster.tsv", sep="")
+  OutfileDiffGeneExpression<-paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerCluster.tsv", sep="")
   write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
   
   StopWatchEnd$FindDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
@@ -1499,7 +1536,7 @@ for (dataset in rownames(InputsTable)) {
   
   ### Note: need to AddMetaData() mito.fraction and ribo.fraction from OutfileQCMetadata to generate FeaturePlot()
   ### because they are not inherited in seurat.object.integrated by IntegrateData()
-  InfileQCMetadataAfterFilters<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "After_filters_QC_metadata.tsv", sep = "", collapse = "")
+  InfileQCMetadataAfterFilters<-paste(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "After_filters_QC_metadata.tsv", sep = "", collapse = "")
   
   QCMetadata <- data.frame(read.table(InfileQCMetadataAfterFilters, header = T, row.names = 1))
   seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = QCMetadata)
@@ -1514,7 +1551,7 @@ for (dataset in rownames(InputsTable)) {
   print(seurat.object.each_dataset)
   
   for (dim_red_method in names(DimensionReductionMethods)) {
-    pdf(file=paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByQC.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf * 1.5, height = DefaultParameters$BaseSizeSinglePlotPdf * 1.5)
+    pdf(file=paste(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByQC.pdf", sep=""), width = DefaultParameters$BaseSizeSinglePlotPdf * 1.5, height = DefaultParameters$BaseSizeSinglePlotPdf * 1.5)
     print(FeaturePlot(object = seurat.object.each_dataset, label = F, order = T, features = DefaultParameters$CellPropertiesToQC, cols = c("lightgrey", "blue"), reduction = dim_red_method, ncol = 2, pt.size = 1.5))
     dev.off()
   }
@@ -1536,8 +1573,8 @@ Idents(object = seurat.object.integrated) <- seurat.object.integrated$EachDatase
 ####################################
 writeLines("\n*** Write out number and fraction of cells per cluster, per dataset  ***\n")
 
-OutfileNumbCellsPerClusterPerDataset<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDataset.tsv", sep="")
-OutfileFracCellsPerClusterPerDataset<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "FracCellsPerClusterPerDataset.tsv", sep="")
+OutfileNumbCellsPerClusterPerDataset<-paste(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDataset.tsv", sep="")
+OutfileFracCellsPerClusterPerDataset<-paste(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "FracCellsPerClusterPerDataset.tsv", sep="")
 
 seurat.object.integrated_EachDatasetGlobalCellClusters.df <- as.data.frame(table(seurat.object.integrated$EachDatasetGlobalCellClusters))
 rownames(seurat.object.integrated_EachDatasetGlobalCellClusters.df) <- seurat.object.integrated_EachDatasetGlobalCellClusters.df[,1]
@@ -1595,7 +1632,7 @@ for (dataset in rownames(InputsTable)) {
     
     plots <- DimPlot(seurat.object.each_dataset, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 5)
     plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 2, byrow = T, override.aes = list(size = 3))))
-    IntegratedDimRedPlotPdf<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
+    IntegratedDimRedPlotPdf<-paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
     pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
     print(CombinePlots(plots))
     dev.off()
@@ -1621,7 +1658,7 @@ for (dataset in rownames(InputsTable)) {
       seurat.object.each_dataset.sa@reductions$umap <- seurat.object.each_dataset@reductions$umap
       seurat.object.each_dataset.sa@reductions$tsne <- seurat.object.each_dataset@reductions$tsne
       
-      pdf(file=paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
+      pdf(file=paste(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
       print(FeaturePlot(object = seurat.object.each_dataset.sa, ncol = nColFeaturePlot, features = ListOfGenesForDimRedPlots, cols = c("lightgrey", "blue"),
                         reduction = dim_red_method, order = T, slot = "data", pt.size = 1.5, min.cutoff = "q0.1", max.cutoff = "q90"))
       dev.off()
@@ -1662,7 +1699,7 @@ for (dataset in rownames(InputsTable)) {
           
         }else{
           
-          IntegratedDimRedPlotPdf <- paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBy_", property, ".pdf", sep="")
+          IntegratedDimRedPlotPdf <- paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBy_", property, ".pdf", sep="")
           pdf(file=IntegratedDimRedPlotPdf, width = DefaultParameters$BaseSizeSinglePlotPdf, height = (DefaultParameters$BaseSizeSinglePlotPdf + (0.12 * length(unique(CellPropertiesFromMetadata[,property])))))
           
           if ( (sum(CellPropertiesFromMetadata[,property] %in% 0:1 == T)) == (nrow(CellPropertiesFromMetadata)) ) { ## is binary
@@ -1695,9 +1732,9 @@ StopWatchStart$AverageGeneExpressionEachDatasetGlobalClusters$dataset  <- Sys.ti
 
 cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F)
 
-OutfileClusterAveragesRNA<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDataset_AverageGeneExpression_RNA.tsv", sep="")
-OutfileClusterAveragesSCT<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDataset_AverageGeneExpression_SCT.tsv", sep="")
-OutfileClusterAveragesINT<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDataset_AverageGeneExpression_INT.tsv", sep="")
+OutfileClusterAveragesRNA<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDataset_AverageGeneExpression_RNA.tsv", sep="")
+OutfileClusterAveragesSCT<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDataset_AverageGeneExpression_SCT.tsv", sep="")
+OutfileClusterAveragesINT<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDataset_AverageGeneExpression_INT.tsv", sep="")
 #
 Headers<-paste("AVERAGE_GENE_EXPRESSION",paste(names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
 #
@@ -1745,7 +1782,7 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
     FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
     seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
     SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-    OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", dataset, "_MarkersPerCluster.tsv", sep="")
+    OutfileDiffGeneExpression<-paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", dataset, "_MarkersPerCluster.tsv", sep="")
     write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
     
   }
@@ -1766,7 +1803,7 @@ if (3 %in% RequestedDiffGeneExprComparisons == T) {
   
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
   
-  OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerDatasetEquivalentClusters.tsv", sep="")
+  OutfileDiffGeneExpression<-paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerDatasetEquivalentClusters.tsv", sep="")
   HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
   write.table(HeadersOrder,file = OutfileDiffGeneExpression, row.names = F, col.names = F, sep="", quote = F)
   
@@ -1820,15 +1857,15 @@ if (2 %in% RequestedClusteringInputs == T) {
   
   # Headers for dataset-specific cell clusters
   Headers<-paste("Cell_barcode", paste("seurat_cluster_r", Resolution, sep = "", collapse = ""), sep="\t")
-  OutfileEachDatasetClusters<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "CellClusters.tsv", sep="")
+  OutfileEachDatasetClusters<-paste(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "CellClusters.tsv", sep="")
   write.table(Headers,file = OutfileEachDatasetClusters, row.names = F, col.names = F, sep="\t", quote = F)
   #
   Headers<-paste("Dataset", "Number_of_clusters" ,sep="\t", collapse = "")
-  OutfileEachDatasetNumbClusters<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "NumbCellClusters", ".tsv", sep="")
+  OutfileEachDatasetNumbClusters<-paste(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "NumbCellClusters", ".tsv", sep="")
   write(x=NumberOfClusters,file = OutfileNumbClusters)
   #
   Headers<-paste("Cluster", "Number_of_cells" ,sep="\t", collapse = "")
-  OutfileEachDatasetNumbCellsPerCluster<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "NumbCellsPerCluster.tsv", sep="")
+  OutfileEachDatasetNumbCellsPerCluster<-paste(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "NumbCellsPerCluster.tsv", sep="")
   write.table(Headers,file = OutfileEachDatasetNumbCellsPerCluster, row.names = F, col.names = F, sep="\t", quote = F)
   
   ####################################
@@ -1893,7 +1930,7 @@ if (2 %in% RequestedClusteringInputs == T) {
       
       plots <- DimPlot(seurat.object.each_dataset, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 5)
       plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 2, byrow = T, override.aes = list(size = 3))))
-      IntegratedDimRedPlotPdf<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
+      IntegratedDimRedPlotPdf<-paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
       pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
       print(CombinePlots(plots))
       dev.off()
@@ -1916,7 +1953,7 @@ if (2 %in% RequestedClusteringInputs == T) {
       FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
       seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
       SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-      OutfileDiffGeneExpression <- paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", dataset, "_MarkersPerCluster.tsv", sep="")
+      OutfileDiffGeneExpression <- paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", dataset, "_MarkersPerCluster.tsv", sep="")
       write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
       
       StopWatchEnd$FindDiffMarkersReclusteredVsRestOfCells$dataset  <- Sys.time()
@@ -1944,9 +1981,9 @@ if (2 %in% RequestedClusteringInputs == T) {
   
   cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F)
   
-  OutfileClusterAveragesRNA<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "PerDataset_AverageGeneExpression_RNA.tsv", sep="")
-  OutfileClusterAveragesSCT<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "PerDataset_AverageGeneExpression_SCT.tsv", sep="")
-  OutfileClusterAveragesINT<-paste(Tempdir, "/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "PerDataset_AverageGeneExpression_INT.tsv", sep="")
+  OutfileClusterAveragesRNA<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "PerDataset_AverageGeneExpression_RNA.tsv", sep="")
+  OutfileClusterAveragesSCT<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "PerDataset_AverageGeneExpression_SCT.tsv", sep="")
+  OutfileClusterAveragesINT<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "PerDataset_AverageGeneExpression_INT.tsv", sep="")
   #
   Headers<-paste("AVERAGE_GENE_EXPRESSION",paste(names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
   #
@@ -1999,13 +2036,13 @@ if (NumberOfDatasetsTypes >= 1) {
 
   # Headers for dataset-type-specific cell clusters
   Headers<-paste("Cell_barcode", paste("seurat_cluster_r", Resolution, sep = "", collapse = ""), sep="\t")
-  OutfileEachDatasetTypeGlobalClusters<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "EachDatasetType_CellClusters.tsv", sep="")
+  OutfileEachDatasetTypeGlobalClusters<-paste(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "EachDatasetType_CellClusters.tsv", sep="")
   GlobalClustersByDatasetType<- unlist(x = strsplit(x = paste(seurat.object.integrated@meta.data$dataset_type, seurat.object.integrated@meta.data$seurat_clusters, sep = "_c", collapse = "\n"), split = "\n"))
   write.table(Headers,file = OutfileEachDatasetTypeGlobalClusters, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(paste(colnames(seurat.object.integrated),GlobalClustersByDatasetType, sep = "\t", collapse = "\n"),
               file = OutfileEachDatasetTypeGlobalClusters, row.names = F, col.names = F, quote = F, append = T)
 
-  OutfileNumbCellsPerClusterPerDatasetType<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDatasetType.tsv", sep="")
+  OutfileNumbCellsPerClusterPerDatasetType<-paste(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDatasetType.tsv", sep="")
   Headers<-paste("Cluster", "Number_of_cells" ,sep="\t", collapse = "")
   write.table(Headers, file = OutfileNumbCellsPerClusterPerDatasetType, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(table(GlobalClustersByDatasetType),file = OutfileNumbCellsPerClusterPerDatasetType, row.names = F, col.names = F, sep="\t", quote = F, append = T)
@@ -2041,7 +2078,7 @@ if (NumberOfDatasetsTypes >= 1) {
 
       plots <- DimPlot(seurat.object.each_dataset_type, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 10)
       plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + guides(color = guide_legend(override.aes = list(size = 3))))
-      IntegratedDimRedPlotPdf<-paste(Tempdir,"/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", dataset_type,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
+      IntegratedDimRedPlotPdf<-paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", dataset_type,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
       pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
       print(CombinePlots(plots))
       dev.off()
@@ -2067,7 +2104,7 @@ if (NumberOfDatasetsTypes >= 1) {
         seurat.object.each_dataset_type.sa@reductions$umap <- seurat.object.each_dataset_type@reductions$umap
         seurat.object.each_dataset_type.sa@reductions$tsne <- seurat.object.each_dataset_type@reductions$tsne
 
-        pdf(file=paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
+        pdf(file=paste(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
         print(FeaturePlot(object = seurat.object.each_dataset_type.sa, ncol = nColFeaturePlot, features = ListOfGenesForDimRedPlots, cols = c("lightgrey", "blue"),
                           reduction = dim_red_method, order = T, slot = "data", pt.size = 1.5, min.cutoff = "q0.1", max.cutoff = "q90"))
         dev.off()
@@ -2109,7 +2146,7 @@ if (NumberOfDatasetsTypes >= 1) {
 
           }else{
 
-            IntegratedDimRedPlotPdf <- paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBy_", property, ".pdf", sep="")
+            IntegratedDimRedPlotPdf <- paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBy_", property, ".pdf", sep="")
             pdf(file=IntegratedDimRedPlotPdf, width = DefaultParameters$BaseSizeSinglePlotPdf, height = (DefaultParameters$BaseSizeSinglePlotPdf + (0.12 * length(unique(CellPropertiesFromMetadata[,property])))))
 
             if ( (sum(CellPropertiesFromMetadata[,property] %in% 0:1 == T)) == (nrow(CellPropertiesFromMetadata)) ) { ## is binary
@@ -2157,9 +2194,9 @@ if (NumberOfDatasetsTypes >= 1) {
 
   cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F)
 
-  OutfileClusterAveragesRNA<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDatasetType_AverageGeneExpression_RNA.tsv", sep="")
-  OutfileClusterAveragesSCT<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDatasetType_AverageGeneExpression_SCT.tsv", sep="")
-  OutfileClusterAveragesINT<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDatasetType_AverageGeneExpression_INT.tsv", sep="")
+  OutfileClusterAveragesRNA<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDatasetType_AverageGeneExpression_RNA.tsv", sep="")
+  OutfileClusterAveragesSCT<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDatasetType_AverageGeneExpression_SCT.tsv", sep="")
+  OutfileClusterAveragesINT<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDatasetType_AverageGeneExpression_INT.tsv", sep="")
   #
   Headers<-paste("AVERAGE_GENE_EXPRESSION",paste(names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
   #
@@ -2206,7 +2243,7 @@ if (NumberOfDatasetsTypes >= 1) {
       FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
       seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
       SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-      OutfileDiffGeneExpression <- paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_" , dataset_type, "_MarkersPerCluster.tsv", sep="")
+      OutfileDiffGeneExpression <- paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_" , dataset_type, "_MarkersPerCluster.tsv", sep="")
       write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
 
       StopWatchEnd$FindDiffMarkersEachDatasetTypeGlobalClustersVsRestOfCells$dataset_type  <- Sys.time()
@@ -2232,7 +2269,7 @@ if (NumberOfDatasetsTypes >= 1) {
 
     FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
     
-    OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerDatasetTypeEquivalentClusters.tsv", sep="")
+    OutfileDiffGeneExpression<-paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerDatasetTypeEquivalentClusters.tsv", sep="")
     HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
     write.table(HeadersOrder,file = OutfileDiffGeneExpression, row.names = F, col.names = F, sep="", quote = F)
     
@@ -2298,7 +2335,7 @@ if (NumberOfDatasetsTypes >= 1) {
     ####################################
     ### Prepares outfile headers
     ####################################
-    OutfileEachDatasetTypeReClusters<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "CellClusters.tsv", sep="")
+    OutfileEachDatasetTypeReClusters<-paste(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "CellClusters.tsv", sep="")
     Headers<-paste("Cell_barcode", paste("seurat_cluster_r", Resolution, sep = "", collapse = ""), sep="\t")
     write.table(Headers,file = OutfileEachDatasetTypeReClusters, row.names = F, col.names = F, sep="\t", quote = F)
     
@@ -2348,7 +2385,7 @@ if (NumberOfDatasetsTypes >= 1) {
       CellNames<-rownames(seurat.object.each_dataset_type@meta.data)
       ClusterIdent <-seurat.object.each_dataset_type@meta.data$seurat_clusters
       NumberOfClusters<-length(unique(ClusterIdent))
-      OutfileNumbClusters<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", dataset_type, "_NumbCellClusters", ".tsv", sep="")
+      OutfileNumbClusters<-paste(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", dataset_type, "_NumbCellClusters", ".tsv", sep="")
       write(x=NumberOfClusters,file = OutfileNumbClusters)
       
       StopWatchEnd$WriteReClustersEachDatasetTypeTables$dataset_type <- Sys.time()
@@ -2365,7 +2402,7 @@ if (NumberOfDatasetsTypes >= 1) {
         
         plots <- DimPlot(seurat.object.each_dataset_type, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 5)
         plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 2, byrow = T, override.aes = list(size = 3))))
-        IntegratedUMAPPlotPdf<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
+        IntegratedUMAPPlotPdf<-paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf", sep="")
         pdf(file=IntegratedUMAPPlotPdf, width = 7, height = 8)
         print(CombinePlots(plots))
         dev.off()
@@ -2387,7 +2424,7 @@ if (NumberOfDatasetsTypes >= 1) {
         FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
         seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
         SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-        OutfileDiffGeneExpression <- paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", dataset_type, "_MarkersPerCluster.tsv", sep="")
+        OutfileDiffGeneExpression <- paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", dataset_type, "_MarkersPerCluster.tsv", sep="")
         write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
         
         StopWatchEnd$FindDiffMarkersEachDatasetTypeReclusteredVsRestOfCells$dataset_type  <- Sys.time()
@@ -2415,9 +2452,9 @@ if (NumberOfDatasetsTypes >= 1) {
 
     cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F)
     
-    OutfileClusterAveragesRNA<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "PerDatasetType_AverageGeneExpression_RNA.tsv", sep="")
-    OutfileClusterAveragesSCT<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "PerDatasetType_AverageGeneExpression_SCT.tsv", sep="")
-    OutfileClusterAveragesINT<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "PerDatasetType_AverageGeneExpression_INT.tsv", sep="")
+    OutfileClusterAveragesRNA<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "PerDatasetType_AverageGeneExpression_RNA.tsv", sep="")
+    OutfileClusterAveragesSCT<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "PerDatasetType_AverageGeneExpression_SCT.tsv", sep="")
+    OutfileClusterAveragesINT<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "PerDatasetType_AverageGeneExpression_INT.tsv", sep="")
     #
     Headers<-paste("AVERAGE_GENE_EXPRESSION",paste(names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
     #
@@ -2507,7 +2544,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
         seurat.object.each_property.markers <- FindAllMarkers(object = seurat.object.each_property, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
         SimplifiedDiffExprGenes.df <- seurat.object.each_property.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
         colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
-        OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachMetadataClass_", property, "_MarkersPerClass.tsv", sep="")
+        OutfileDiffGeneExpression<-paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachMetadataClass_", property, "_MarkersPerClass.tsv", sep="")
         write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
       }
     }
@@ -2556,7 +2593,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
           seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
           SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
           colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
-          OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_EachMetadataClass_", property, "_MarkersPerClass.tsv", sep="")
+          OutfileDiffGeneExpression<-paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_EachMetadataClass_", property, "_MarkersPerClass.tsv", sep="")
           write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
         }
       }
@@ -2599,7 +2636,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
         
         FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
     
-        OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachMetadataClass_", property, "_MarkersPerDatasetEquivalentClasses.tsv", sep="")
+        OutfileDiffGeneExpression<-paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachMetadataClass_", property, "_MarkersPerDatasetEquivalentClasses.tsv", sep="")
         HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
         write.table(HeadersOrder,file = OutfileDiffGeneExpression, row.names = F, col.names = F, sep="", quote = F)
         
@@ -2672,7 +2709,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
           seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
           SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
           colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
-          OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_", dataset_type, "_EachMetadataClass_", property, "_MarkersPerClass.tsv", sep="")
+          OutfileDiffGeneExpression<-paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset_type, "_EachMetadataClass_", property, "_MarkersPerClass.tsv", sep="")
           write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
         }
       }
@@ -2716,7 +2753,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
           
           FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
           
-          OutfileDiffGeneExpression<-paste(Tempdir,"/",PrefixOutfiles, ".", ProgramOutdir, "_EachMetadataClass_", property, "_MarkersPerDatasetTypeEquivalentClasses.tsv", sep="")
+          OutfileDiffGeneExpression<-paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachMetadataClass_", property, "_MarkersPerDatasetTypeEquivalentClasses.tsv", sep="")
           HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
           write.table(HeadersOrder,file = OutfileDiffGeneExpression, row.names = F, col.names = F, sep="", quote = F)
           
@@ -2769,7 +2806,7 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
   StopWatchStart$SaveRDSFull  <- Sys.time()
   
-  OutfileRDS<-paste(Tempdir,"/",PrefixOutfiles,".", ProgramOutdir, "_integrated_object_full.rds", sep="")
+  OutfileRDS<-paste(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_integrated_object_full.rds", sep="")
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDSFull  <- Sys.time()
@@ -2785,7 +2822,7 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
 ####################################
 writeLines("\n*** Report used options ***\n")
 
-OutfileOptionsUsed<-paste(Tempdir, "/" , PrefixOutfiles, ".", ProgramOutdir, "_UsedOptions.txt", sep="")
+OutfileOptionsUsed<-paste(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_UsedOptions.txt", sep="")
 TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
 write(file = OutfileOptionsUsed, x=c(TimeOfRun,"\n","Options used:"))
 
@@ -2798,7 +2835,7 @@ for (optionInput in option_list) {
 ####################################
 writeLines("\n*** Report R sessionInfo ***\n")
 
-OutfileRSessionInfo<-paste(Tempdir, "/" , PrefixOutfiles, ".", ProgramOutdir, "_RSessionInfo.txt", sep="")
+OutfileRSessionInfo<-paste(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_RSessionInfo.txt", sep="")
 writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
 
 ####################################
@@ -2808,7 +2845,7 @@ writeLines("\n*** Obtain computing time used***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
-OutfileCPUusage<-paste(Tempdir, "/" , PrefixOutfiles, ".", ProgramOutdir, "_CPUusage.txt", sep="")
+OutfileCPUusage<-paste(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_CPUusage.txt", sep="")
 write(file = OutfileCPUusage, x = paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
 write(file = OutfileCPUusage, x = paste("MaxGlobalVariables", MaxGlobalVariables, sep = "\t", collapse = ""))
 
@@ -2844,19 +2881,17 @@ for (stepToClock in names(StopWatchStart)) {
 ### Moving outfiles into outdir or keeping them at tempdir (if using CWL)
 ####################################
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  writeLines("\n*** Keeping files at: ***\n")
-  writeLines(paste(Tempdir, sep="", collapse = ""))
-} else {
-  writeLines("\n*** Moving outfiles into outdir ***\n")
-  writeLines(paste(Outdir,"/", ProgramOutdir, "/", sep="", collapse = ""))
-  outfiles_to_move <- list.files(Tempdir, pattern = PrefixOutfiles, full.names = F)
-  sapply(outfiles_to_move,FUN=function(eachFile) {
+sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(DirName) {
+  TempdirWithData <- paste0(Tempdir, "/", DirName)
+  OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
+  dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
+
+  sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(eachFileName) {
     ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
-    file.copy(from=paste(Tempdir,"/",eachFile,sep=""), to=paste(Outdir, "/", ProgramOutdir, "/", eachFile,sep=""), overwrite=T)
-    file.remove(paste(Tempdir,"/",eachFile,sep=""))
+    file.copy(from=paste0(TempdirWithData, "/", eachFileName), to=paste0(OutdirFinal, "/", eachFileName), overwrite=T)
+    file.remove(paste0(TempdirWithData, "/", eachFileName))
   })
-}
+})
 
 ####################################
 ### Turning warnings on
