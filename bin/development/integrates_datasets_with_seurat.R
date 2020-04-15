@@ -246,7 +246,7 @@ option_list <- list(
                 '12' = using metadata annotations, for each dataset type, compares each cell class specified by `-a` and `-c` vs. the same class from other dataset types
                 Default = '1'"),
   #
-  make_option(c("-a", "--metadata_column_names_for_dge"), default="NA",
+  make_option(c("-b", "--metadata_column_names_for_dge"), default="NA",
               help="If using -f 8 to 12, indicates the column names of --infile_metadata to be used for differential gene expression
                 Or type 'NA' if not using -f 8 to 12
                 Default = 'NA'"),
@@ -265,7 +265,7 @@ option_list <- list(
                 Note, if using 'y/Y' this supersedes option -o
                 Default = 'N'"),
   #
-  make_option(c("-b", "--max_global_variables"), default="4000",
+  make_option(c("-a", "--max_global_variables"), default="4000",
               help="Indicates maximum allowed total size (in bytes) of global variables identified.
                 Used by library(future) to prevent too large exports
                 Default = '4000' for 4000 MiB")
