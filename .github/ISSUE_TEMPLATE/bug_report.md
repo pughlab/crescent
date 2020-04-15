@@ -34,7 +34,7 @@ If applicable, add screenshots to help explain your problem.
 
 **System (please complete the following information):** <br />
  - OS: [e.g. iOS, Linux, etc]
- - Software versions
+ - Software versions [e.g. GitHub version, and the output of command `sessionInfo` in R]
  
 **Additional context** <br />
 Add any other context about the problem here.
