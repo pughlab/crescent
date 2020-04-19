@@ -8,7 +8,6 @@
 ### 1) Loads scRNA-seq data and generate QC plots for each dataset
 ### 2) Merge datasets, normalizes, corrects batch effects and integrated datasets
 ### 3) Process integrated datasets as a whole, including:
-###    - dimention reduction by PCA
 ###    - 'global' cell clustering
 ###    - UMAP/tSNE plots by global cell clusters, sample, sample type, requested genes and metadata
 ###    - differential gene expression (DGE)
@@ -75,16 +74,13 @@
 ####################################
 ### Required libraries
 ####################################
-### Package 'Seurat' version 3 is needed to run QC, differential gene expression and clustering analyses
+### Package 'Seurat' version 3 is needed - tested using v3.1.1
 ### Seurat's latest stable version can be installed like:
 ### install.packages('Seurat')
 ###
 ### Or the development version can be installed like:
 ### install.packages('devtools')
 ### devtools::install_github(repo = "satijalab/seurat", ref = "develop")
-###
-### Or a specific older version (e.g. v3.1.1)
-### devtools::install_github("satijalab/seurat@3.1.1")
 ###
 ### Or a specific version (e.g. v3.0.3.9023) can be installed from GitHub like:
 ### `PathForV3_0_3_9023Libs<-paste(.libPaths(), "/Seurat_V3_0_3_9023", sep = "", collapse = "")`
@@ -172,7 +168,7 @@ option_list <- list(
                 Default = 'NA'"),
   #
   make_option(c("-k", "--reference_datasets"), default="NA",
-              help="<comma> delimited number of row(s) in --inputs_list of datasets to be used as reference(s) for integration
+              help="A list of <comma> delimited number of row(s) from --inputs_list of datasets to be used as reference(s) for integration
                 Or type 'NA' to run all-vs-all dataset pairwise comparisons (this is more time and memory consuming than using references).
                 If references are used, then references will be integrated and anchors identified between non-reference and reference datasets,
                 but not anchors will be identified between non-reference datasets (this saves time and memory)
@@ -204,11 +200,11 @@ option_list <- list(
                 d2_AAACCTGAGTCGAGTG-1   1            no
                 d3_AAACCTGCAAAGGAAG-1   2            yes
                 Note: the barcode id must include the dataset ID
-                Default = 'NA' (i.e. no --infile_metadata is provided)"),
+                Default = 'NA' (i.e. no metadata to be used for plots or DGE detection)"),
   #
-  make_option(c("-g", "--list_genes"), default="0",
-              help="A <comma> delimited list of gene identifiers whose expression will be mapped into the dimension reduction plots
-                Default = 'NA' (no --list_genes are provided)"),
+  make_option(c("-g", "--infile_selected_genes"), default="NA",
+              help="A path/name to a file with a list of gene identifiers (one-per-row) whose expression will be mapped into the dimension reduction plots
+                Default = 'NA' (i.e. no genes to be plotted)"),
   #
   make_option(c("-l", "--apply_list_genes"), default="NA",
               help="One or more of the following options. If more than one, pass the choice <comma> delimited, e.g. '1,2,3'
@@ -281,8 +277,8 @@ ClusteringInputs        <- opt$clustering_inputs
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
 InfileMetadata          <- opt$infile_metadata
-ListGenes               <- opt$list_genes
-ApplyListGenes          <- opt$apply_list_genes
+InfileSelectedGenes     <- opt$infile_selected_genes
+ApplySelectedGenes      <- opt$apply_list_genes
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
 ThreshReturn            <- as.numeric(opt$return_threshold)
 DiffGeneExprComparisons <- opt$diff_gene_expr_comparisons
@@ -393,7 +389,7 @@ options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 
 RequestedDiffGeneExprComparisons = unlist(strsplit(DiffGeneExprComparisons, ","))
 RequestedClusteringInputs        = unlist(strsplit(ClusteringInputs, ","))
-RequestedApplyListGenes          = unlist(strsplit(ApplyListGenes, ","))
+RequestedApplySelectedGenes      = unlist(strsplit(ApplySelectedGenes, ","))
 
 DefaultParameters <- list(
   ### Parameters for QC plots
@@ -513,11 +509,11 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
 
 #### Gene mapping into dimension reduction plots
 
-if ((1 %in% RequestedApplyListGenes == T) | 
-    (2 %in% RequestedApplyListGenes == T) | 
-    (3 %in% RequestedApplyListGenes == T)
+if ((1 %in% RequestedApplySelectedGenes == T) | 
+    (2 %in% RequestedApplySelectedGenes == T) | 
+    (3 %in% RequestedApplySelectedGenes == T)
     ) {
-  if (length(grep('^NA$', ListGenes, perl = T))) {
+  if (length(grep('^NA$', InfileSelectedGenes, perl = T))) {
     stop("ERROR!!! options `-l [1|2|3] and -g NA` are incompatible with each other")
   }
 }
@@ -525,11 +521,12 @@ if ((1 %in% RequestedApplyListGenes == T) |
 ####################################
 ### Get size of pdf file for genes to be mapped by option `-g`
 ####################################
-if (length(grep('^NA$', ListGenes, perl = T))) {
+if (length(grep('^NA$', InfileSelectedGenes, perl = T))) {
 }else{
   writeLines("\n*** Get size of pdf file for genes to be mapped by option `-g` ***\n")
   
-  ListOfGenesForDimRedPlots<-unlist(strsplit(ListGenes, ","))
+  ListOfGenesForDimRedPlots<-sort(readLines(con = InfileSelectedGenes, skipNul = T))
+
   if (length(ListOfGenesForDimRedPlots) <= 4) {
     pdfWidth  <- (length(ListOfGenesForDimRedPlots) * DefaultParameters$BaseSizeMultiplePlotPdfWidth)
     pdfHeight <- DefaultParameters$BaseSizeMultiplePlotPdfHeight
@@ -540,7 +537,6 @@ if (length(grep('^NA$', ListGenes, perl = T))) {
     nColFeaturePlot <- 4
   }
 }
-
 
 ################################################################################################################################################
 ################################################################################################################################################
@@ -1383,40 +1379,43 @@ for (dim_red_method in names(DimensionReductionMethods)) {
       pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
       print(CombinePlots(plots))
       dev.off()
-      print(IntegratedDimRedPlotPdf)
 
       StopWatchEnd$DimRedOPlotColourByDatasetType$dim_red_method  <- Sys.time()
     }
   }
 
   ####################################
-  ### Colour dimension reduction plots showing each requested gene using integrated data
+  ### Colour dimension reduction plots for all cells by selected genes (option -g)
   ####################################
-  writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot showing each requested gene ***\n", sep = "", collapse = ""))
 
-  ### To program layout() for more than 3 genes in multiple rows
-  if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
+  if (regexpr("^NA$", InfileSelectedGenes, ignore.case = T)[1] == 1) {
     print("No selected genes for dimension reduction plots")
-
-  }else if (1 %in% RequestedApplyListGenes == T) {
-
+    
+  }else if (1 %in% RequestedApplySelectedGenes == T) {
+    writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " for all cells by selected genes (option -g) ***\n", sep = "", collapse = ""))
+    
     StopWatchStart$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
-
+    
     ### Making a new Seurat object `seurat.object.integrated.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
     ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
     seurat.object.integrated.sa <- CreateSeuratObject(seurat.object.integrated@assays$RNA@data)
     seurat.object.integrated.sa@reductions$umap <- seurat.object.integrated@reductions$umap
     seurat.object.integrated.sa@reductions$tsne <- seurat.object.integrated@reductions$tsne
-
-    pdf(file=paste(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
-    print(FeaturePlot(object = seurat.object.integrated.sa, ncol = nColFeaturePlot, features = ListOfGenesForDimRedPlots, cols = c("lightgrey", "blue"),
-                      reduction = dim_red_method, order = T, slot = "data", pt.size = 1.5, min.cutoff = "q0.1", max.cutoff = "q90"))
-    dev.off()
-
+    
+    OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/ALL_CELLS/", DimensionReductionMethods[[dim_red_method]][["name"]]) 
+    dir.create(path = OutDirThisOption, recursive = T)
+    sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
+      OutfilePathAndName <- paste(OutDirThisOption, "/", eachGene, "_all_cells_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf", sep="")
+      pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
+      print(FeaturePlot(object = seurat.object.integrated.sa, ncol = nColFeaturePlot, features = eachGene, cols = c("lightgrey", "blue"),
+                        reduction = dim_red_method, order = T, slot = "data", pt.size = 1, min.cutoff = "q0.1", max.cutoff = "q90"))
+      dev.off()
+    })
+    
     StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
-
+    
   }
-
+  
   ####################################
   ### Colour dimension reduction plots by -infile_metadata using integrated data
   ####################################
@@ -1642,32 +1641,37 @@ for (dataset in rownames(InputsTable)) {
     ####################################
     ### Colour dimension reduction plots for each dataset by selected genes (option -g)
     ####################################
-    
-    ### To program layout() for more than 3 genes in multiple rows
-    if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
-      print("No selected genes for dimension reduction plots")
+
+    if (regexpr("^NA$", InfileSelectedGenes, ignore.case = T)[1] == 1) {
+      print("No selected genes for each dataset dimension reduction plots")
       
-    }else if (2 %in% RequestedApplyListGenes == T) {
+    }else if (2 %in% RequestedApplySelectedGenes == T) {
       writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot for each dataset by selected genes (option -g) ***\n", sep = "", collapse = ""))
       
-      StopWatchStart$DimRedPlotsByDatasetColuredByGenes$dim_red_method  <- Sys.time()
+      StopWatchStart$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
       
-      ### Making a new Seurat object `seurat.object.integrated.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
+      ### Making a new Seurat object `seurat.object.each_dataset.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
       ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
       seurat.object.each_dataset.sa <- CreateSeuratObject(seurat.object.each_dataset@assays$RNA@data)
       seurat.object.each_dataset.sa@reductions$umap <- seurat.object.each_dataset@reductions$umap
       seurat.object.each_dataset.sa@reductions$tsne <- seurat.object.each_dataset@reductions$tsne
       
-      pdf(file=paste(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
-      print(FeaturePlot(object = seurat.object.each_dataset.sa, ncol = nColFeaturePlot, features = ListOfGenesForDimRedPlots, cols = c("lightgrey", "blue"),
-                        reduction = dim_red_method, order = T, slot = "data", pt.size = 1.5, min.cutoff = "q0.1", max.cutoff = "q90"))
-      dev.off()
+      OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/DATASETS/", DimensionReductionMethods[[dim_red_method]][["name"]]) 
+      dir.create(path = OutDirThisOption, recursive = T)
+      sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
+        OutfilePathAndName <- paste(OutDirThisOption, "/", eachGene, "_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf", sep="")
+        pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
+        print(FeaturePlot(object = seurat.object.each_dataset.sa, ncol = nColFeaturePlot, features = eachGene, cols = c("lightgrey", "blue"),
+                          reduction = dim_red_method, order = T, slot = "data", pt.size = 1, min.cutoff = "q0.1", max.cutoff = "q90"))
+        dev.off()
+      })
       
-      StopWatchEnd$DimRedPlotsByDatasetColuredByGenes$dim_red_method  <- Sys.time()
+      StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
       
       rm(seurat.object.each_dataset.sa)
-      
+
     }
+
     ####################################
     ### Colour dimension reduction plots for each dataset by -infile_metadata using integrated data
     ####################################
@@ -1723,6 +1727,8 @@ for (dataset in rownames(InputsTable)) {
     
   }
 }
+
+
 ####################################
 ### Get average gene expression for each dataset based on global clusters
 ####################################
@@ -2007,15 +2013,14 @@ if (2 %in% RequestedClusteringInputs == T) {
 ################################################################################################################################################
 
 ####################################
-### FOR EACH DATASET TYPE uses integrated/normalized counts and generates dimension reduction plots for each dataset coloured by: a) dataset type, b) global clusters, c) selected genes and d) metadata
+### FOR EACH DATASET TYPE uses integrated/normalized counts and generates dimension reduction plots coloured by: a) dataset type, b) global clusters, c) selected genes and d) metadata
 ####################################
 if (NumberOfDatasetsTypes >= 1) {
-  writeLines("\n*** FOR EACH DATASET TYPE uses integrated/normalized counts and generates dimension reduction plots for each dataset coloured by: a) dataset type, b) global clusters, c) selected genes and d) metadata ***\n")
+  writeLines("\n*** FOR EACH DATASET TYPE uses integrated/normalized counts and generates dimension reduction plots coloured by: a) dataset type, b) global clusters, c) selected genes and d) metadata ***\n")
 
   ####################################
   ### Prepares each dataset type object
   ####################################
-  # Get dataset_type assignments replacing dataset ids using list_DatasetToType()
 
   StopWatchStart$PrepareEachDatasetTypeForDimRedPlotsByVariousAttributes <- Sys.time()
 
@@ -2049,7 +2054,6 @@ if (NumberOfDatasetsTypes >= 1) {
 
   StopWatchEnd$WriteOutDatasetTypeClusterAssignments  <- Sys.time()
 
-  
   ####################################
   ### Loops each dataset type
   ####################################
@@ -2065,7 +2069,7 @@ if (NumberOfDatasetsTypes >= 1) {
       rm(seurat.object.each_dataset_type)
     }
     seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
-    
+
     for (dim_red_method in names(DimensionReductionMethods)) {
       
       ####################################
@@ -2089,30 +2093,33 @@ if (NumberOfDatasetsTypes >= 1) {
       ### Colour dimension reduction plots for each dataset type by selected genes (option -g)
       ####################################
 
-      ### To program layout() for more than 3 genes in multiple rows
-      if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
-        print("No selected genes for dimension reduction plots")
+      if (regexpr("^NA$", InfileSelectedGenes, ignore.case = T)[1] == 1) {
+        print("No selected genes for each dataset type dimension reduction plots")
 
-      }else if (3 %in% RequestedApplyListGenes == T) {
-        writeLines("\n*** Colour dimension reduction plots for each dataset type by selected genes (option -g) ***\n")
+      }else if (3 %in% RequestedApplySelectedGenes == T) {
+        writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot for each dataset type by selected genes (option -g) ***\n", sep = "", collapse = ""))
 
-        StopWatchEnd$DimRedPlotsByDatasetTypeColuredByGenes$dim_red_method$dataset_type  <- Sys.time()
+        StopWatchStart$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
 
-        ### Making a new Seurat object `seurat.object.integrated.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
+        ### Making a new Seurat object `seurat.object.each_dataset_type.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
         ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
         seurat.object.each_dataset_type.sa <- CreateSeuratObject(seurat.object.each_dataset_type@assays$RNA@data)
         seurat.object.each_dataset_type.sa@reductions$umap <- seurat.object.each_dataset_type@reductions$umap
         seurat.object.each_dataset_type.sa@reductions$tsne <- seurat.object.each_dataset_type@reductions$tsne
+        
+        OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/DATASET_TYPES/", DimensionReductionMethods[[dim_red_method]][["name"]])
+        dir.create(path = OutDirThisOption, recursive = T)
+        sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
+          OutfilePathAndName <- paste(OutDirThisOption, "/", eachGene, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf", sep="")
+          pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
+          print(FeaturePlot(object = seurat.object.each_dataset_type.sa, ncol = nColFeaturePlot, features = eachGene, cols = c("lightgrey", "blue"),
+                            reduction = dim_red_method, order = T, slot = "data", pt.size = 1, min.cutoff = "q0.1", max.cutoff = "q90"))
+          dev.off()
+        })
 
-        pdf(file=paste(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBySelectedGenes.pdf", sep=""), width=pdfWidth, height=pdfHeight)
-        print(FeaturePlot(object = seurat.object.each_dataset_type.sa, ncol = nColFeaturePlot, features = ListOfGenesForDimRedPlots, cols = c("lightgrey", "blue"),
-                          reduction = dim_red_method, order = T, slot = "data", pt.size = 1.5, min.cutoff = "q0.1", max.cutoff = "q90"))
-        dev.off()
+        StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
 
         rm(seurat.object.each_dataset_type.sa)
-
-        StopWatchEnd$DimRedPlotsByDatasetTypeColuredByGenes$dim_red_method$dataset_type  <- Sys.time()
-
       }
 
       ####################################
@@ -2253,26 +2260,26 @@ if (NumberOfDatasetsTypes >= 1) {
   ####################################
   ### Finding differentially expressed genes (5): using global cell clusers, for each dataset type, compares each cell cluster vs. the same cluster from other dataset types
   ####################################
-  
+
   if (5 %in% RequestedDiffGeneExprComparisons == T) {
-    
+
     writeLines("\n*** Finding differentially expressed genes (5): using global cell clusers, compares each cell cluster from each dataset type vs. the same cluster from other dataset types ***\n")
 
     StopWatchStart$FindDiffMarkersEachDatasetTypeGlobalClustersVsSameClusterInOtherDatasets  <- Sys.time()
-    
+
     NumberOfClusters <- length(unique(seurat.object.integrated$seurat_clusters))
-    
+
     print(paste("Number of clusters = ", NumberOfClusters, sep = "", collapse = ""))
-    
+
     # switch the identity class of all cells to reflect each dataset clusters
     Idents(object = seurat.object.integrated) <- seurat.object.integrated$EachDatasetTypeGlobalCellClusters
 
     FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
-    
+
     OutfileDiffGeneExpression<-paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerDatasetTypeEquivalentClusters.tsv", sep="")
     HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
     write.table(HeadersOrder,file = OutfileDiffGeneExpression, row.names = F, col.names = F, sep="", quote = F)
-    
+
     for (cluster in unique(seurat.object.integrated$seurat_clusters)) {
       for (dataset_type1 in unique(InputsTable[,"DatasetType"])) {
         for (dataset_type2 in unique(InputsTable[,"DatasetType"])) {
@@ -2294,7 +2301,7 @@ if (NumberOfDatasetsTypes >= 1) {
         }
       }
     }
-    
+
     StopWatchEnd$FindDiffMarkersEachDatasetTypeGlobalClustersVsSameClusterInOtherDatasets  <- Sys.time()
   }
 }
@@ -2315,8 +2322,7 @@ if (NumberOfDatasetsTypes >= 1) {
   ####################################
   ### Prepares each dataset type object
   ####################################
-  # Get dataset_type assignments replacing dataset ids using list_DatasetToType()
-  
+
   StopWatchStart$PrepareEachDatasetTypeForRecusterAndDimRedPlots <- Sys.time()
   
   seurat.object.integrated$dataset_type<-seurat.object.integrated$dataset
@@ -2881,16 +2887,29 @@ for (stepToClock in names(StopWatchStart)) {
 ### Moving outfiles into outdir or keeping them at tempdir (if using CWL)
 ####################################
 
+### using two steps to copy files (`file.copy` and `file.remove`) instead of just `file.rename` to avoid issues with path to Tempdir in cluster systems
+
 sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(DirName) {
   TempdirWithData <- paste0(Tempdir, "/", DirName)
-  OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
-  dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
-
-  sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(eachFileName) {
-    ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
-    file.copy(from=paste0(TempdirWithData, "/", eachFileName), to=paste0(OutdirFinal, "/", eachFileName), overwrite=T)
-    file.remove(paste0(TempdirWithData, "/", eachFileName))
-  })
+  if (DirName == "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS") {
+    sapply(list.dirs(TempdirWithData, full.names = F, recursive = F), FUN=function(SubDirName) {
+      sapply(list.dirs(paste0(TempdirWithData, "/", SubDirName), full.names = F, recursive = F), FUN=function(SubSubDirName) {
+        OutdirFinal <- gsub(pattern = Tempdir, replacement =  paste0(Outdir, "/", ProgramOutdir), x = paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName))
+        dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
+        sapply(list.files(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName), pattern = ".pdf", full.names = F), FUN=function(EachFileName) {
+          file.copy(from=paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+          file.remove(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName))
+          
+        })
+      })
+    })
+  }else{
+    OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
+    sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(EachFileName) {
+      file.copy(from=paste0(TempdirWithData, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+      file.remove(paste0(TempdirWithData, "/", EachFileName))
+    })
+  }
 })
 
 ####################################
