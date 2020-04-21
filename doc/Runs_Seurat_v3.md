@@ -65,6 +65,7 @@ Outputs Description
 | CELL_CLUSTER_IDENTITIES                  | table with cell cluster identities | 
 | AVERAGE_GENE_EXPRESSION_TABLES           | table with each gene average expression for each cell cluster | 
 | DIFFERENTIAL_GENE_EXPRESSION_TABLES      | table with DGE for each cell cluster vs. rest of cells in the dataset | 
+| DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS  | t-SNE/UMAP plots showing each cluster top-2 DGE genes|  
 | R_OBJECTS                                | R object files | 
 | LOG_FILES                                | tables with run commands, computing times and R libraries used |
 
