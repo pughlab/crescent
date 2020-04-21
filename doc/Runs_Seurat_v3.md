@@ -69,6 +69,8 @@ Outputs Description
 | R_OBJECTS                                | R object files | 
 | LOG_FILES                                | tables with run commands, computing times and R libraries used |
 
+Note: if the run uses `-w Y` then other directories with prefix `frontend_` needed by CReSCENT's graphic user interface will be produced. 
+
 Authors
 ================
 
