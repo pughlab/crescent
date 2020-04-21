@@ -2,7 +2,21 @@
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Script made based on https://satijalab.org/seurat/v3.0/pbmc3k_tutorial.html
 ### and https://satijalab.org/seurat/v3.0/sctransform_vignette.html
-### 
+####################################
+
+####################################
+### GENERAL OVERVIEW OF THIS SCRIPT
+### 1) Loads scRNA-seq data and generate QC plots
+### 2) Normalizes and scales measurements
+### 3) Runs dimension reduction
+### 4) Determines cell clusters
+### 5) Runs average gene expression
+### 6) Draws UMAP/tSNE plots using cell clusters, requested genes and metadata
+### 7) Runs differential gene expression (DGE)
+### 8) Saves log files
+####################################
+
+####################################
 ### THINGS TO DO:
 ### 1) Parallelize FindAllMarkers() to send each cluster to a separate core
 ###    Although it seems that FindMarkers() is already parallelized by Seurat:
@@ -85,7 +99,6 @@
 ### `packageVersion("Seurat")`
 ### ### should return:
 ### [1] ‘3.0.3.9023’
-
 suppressPackageStartupMessages(library(Seurat))       # (CRAN) to run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
@@ -129,6 +142,8 @@ suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loom
 oldw <- getOption("warn")
 options( warn = -1 )
 
+ThisScriptName <- "Runs_Seurat_v3.R"
+  
 ####################################
 ### Get inputs from command line argumets
 ####################################
@@ -253,7 +268,7 @@ NormalizeAndScale       <- as.numeric(opt$normalize_and_scale_sample)
 Resolution              <- as.numeric(opt$resolution)
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
-InfileMetadata <- opt$infile_metadata
+InfileMetadata          <- opt$infile_metadata
 ListGenes               <- opt$list_genes
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
 ApplyCellFilters        <- opt$apply_cell_filters
@@ -266,78 +281,6 @@ NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
 MaxGlobalVariables      <- opt$max_global_variables
-
-####################################
-### Define outdirs and CWL parameters
-####################################
-writeLines("\n*** Create outdirs ***\n")
-
-ProgramOutdir <- "SEURAT"
-
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
-  Tempdir         <- ProgramOutdir
-  dir.create(file.path(Tempdir), showWarnings = F) 
-  
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "normalized",
-    "coordinates",
-    "raw",
-    "metadata",
-    "markers",
-    "qc",
-    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
-    "DIMENSION_REDUCTION_PLOTS", 
-    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
-    "AVERAGE_GENE_EXPRESSION_TABLES", 
-    "DIFFERENTIAL_GENE_EXPRESSION_TABLES", 
-    "CELL_CLUSTER_IDENTITIES", 
-    "QC_PLOTS", 
-    "QC_TABLES", 
-    "R_OBJECTS", 
-    "LOG_FILES"
-  )
-  
-}else{
-  PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
-  ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
-  ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
-  ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
-  Tempdir        <- "~/temp" 
-  #
-  CommandsToGetUserHomeDirectory<-("eval echo \"~$USER\"")
-  UserHomeDirectory<-system(command = CommandsToGetUserHomeDirectory, input = NULL, wait = T, intern = T)
-  #
-  Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Outdir)
-  Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Tempdir)
-  Outdir<-gsub("/+", "/", Outdir, perl = T)
-  Tempdir<-gsub("/+", "/", Tempdir, perl = T)
-  Outdir<-gsub("/$", "", Outdir)
-  Tempdir<-gsub("/$", "", Tempdir)
-  #
-  dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
-  dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
-  
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
-    "DIMENSION_REDUCTION_PLOTS", 
-    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
-    "AVERAGE_GENE_EXPRESSION_TABLES", 
-    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
-    "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
-    "CELL_CLUSTER_IDENTITIES", 
-    "QC_PLOTS", 
-    "QC_TABLES", 
-    "SUMMARY_PLOTS",
-    "R_OBJECTS", 
-    "LOG_FILES"
-  )
-}
-
-sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(eachdir) {
-  dir.create(file.path(paste0(Tempdir, "/", eachdir)), showWarnings = F, recursive = T)
-})
-
 
 ####################################
 ### Define default parameters
@@ -473,6 +416,105 @@ for (param in ListMandatory) {
 }
 
 ####################################
+### Define outdirs and CWL parameters
+####################################
+writeLines("\n*** Create outdirs ***\n")
+
+ProgramOutdir <- "SEURAT"
+
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
+  Tempdir         <- ProgramOutdir
+  dir.create(file.path(Tempdir), showWarnings = F) 
+  
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    "frontend_normalized",
+    "frontend_coordinates",
+    "frontend_raw",
+    "frontend_metadata",
+    "frontend_markers",
+    "frontend_qc",
+    "frontend_groups",
+    "QC_PLOTS", 
+    "QC_TABLES", 
+    "DIMENSION_REDUCTION_PLOTS", 
+    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
+    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
+    "CELL_CLUSTER_IDENTITIES", 
+    "AVERAGE_GENE_EXPRESSION_TABLES", 
+    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
+    "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
+    "SUMMARY_PLOTS",
+    "R_OBJECTS", 
+    "LOG_FILES"
+  )
+  
+}else{
+  PrefixOutfiles <- c(paste(PrefixOutfiles,"_res",Resolution,sep=""))
+  ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+  ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
+  ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
+  Tempdir        <- "~/temp" 
+  #
+  CommandsToGetUserHomeDirectory<-("eval echo \"~$USER\"")
+  UserHomeDirectory<-system(command = CommandsToGetUserHomeDirectory, input = NULL, wait = T, intern = T)
+  #
+  Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Outdir)
+  Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Tempdir)
+  Outdir<-gsub("/+", "/", Outdir, perl = T)
+  Tempdir<-gsub("/+", "/", Tempdir, perl = T)
+  Outdir<-gsub("/$", "", Outdir)
+  Tempdir<-gsub("/$", "", Tempdir)
+  #
+  dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
+  dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
+  
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    "QC_PLOTS", 
+    "QC_TABLES", 
+    "DIMENSION_REDUCTION_PLOTS", 
+    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
+    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
+    "CELL_CLUSTER_IDENTITIES", 
+    "AVERAGE_GENE_EXPRESSION_TABLES", 
+    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
+    "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
+    "SUMMARY_PLOTS",
+    "R_OBJECTS", 
+    "LOG_FILES"
+  )
+}
+
+sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(eachdir) {
+  dir.create(file.path(paste0(Tempdir, "/", eachdir)), showWarnings = F, recursive = T)
+})
+
+####################################
+### Report used options
+####################################
+writeLines("\n*** Report used options ***\n")
+
+StopWatchStart$ReportUsedOptions  <- Sys.time()
+
+OutfileOptionsUsed<-paste(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_UsedOptions.txt", sep="")
+
+TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
+write(file = OutfileOptionsUsed, x=paste0("Run started: ", TimeOfRun, "\n"))
+
+write(file = OutfileOptionsUsed, x=c("Commands used:"), append = T)
+for (optionInput in option_list) {
+  write(file = OutfileOptionsUsed, x=(paste(optionInput@short_flag, optionInput@dest, opt[optionInput@dest], sep="\t", collapse="\t")),append = T)
+}
+
+cat(file = OutfileOptionsUsed, x=paste("\n", "One-line-commands used:", "\n", "`Rscript /path_to/", ThisScriptName, sep = ""), append = T)
+for (optionInput in option_list) {
+  cat(file = OutfileOptionsUsed, x=(paste(" ", optionInput@short_flag, " ", opt[optionInput@dest], sep="", collapse = "")),append = T)
+}
+cat(file = OutfileOptionsUsed, x="`\n", append = T)
+
+StopWatchEnd$ReportUsedOptions  <- Sys.time()
+
+####################################
 ### Load scRNA-seq data
 ####################################
 writeLines("\n*** Load scRNA-seq data ***\n")
@@ -514,7 +556,7 @@ if (regexpr("^AUTO$", NumbCores, ignore.case = T)[1] == 1) {
 }else if (regexpr("^[0-9]+$", NumbCores, ignore.case = T)[1] == 1) {
   NumbCoresRequested <- as.numeric(NumbCores)
 }else{
-  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript Runs_Seurat_v3.R -h\n\n", sep=""))
+  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript", ThisScriptName, " -h\n\n", sep=""))
 }
 
 ### Check if number of cores requested is not larger than number of cores available
@@ -546,7 +588,7 @@ if (regexpr("^AUTO$", MaxGlobalVariables, ignore.case = T)[1] == 1) {
 }else if (regexpr("^[0-9]+$", MaxGlobalVariables, ignore.case = T)[1] == 1) {
   MaxGlobalVariablesToUse <- as.numeric(MaxGlobalVariables)
 }else{
-  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript Runs_Seurat_v3.R -h\n\n", sep=""))
+  stop(paste("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript ", ThisScriptName, " -h\n\n", sep=""))
 }
 
 ### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
@@ -710,23 +752,23 @@ writeLines("\n*** QC EDA violin plots ***\n")
 StopWatchStart$QCviolinplots  <- Sys.time()
 
 QCStats <- list()
-QCStats$unfiltered$mean$nFeature_RNA<-round(mean(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
-QCStats$unfiltered$median$nFeature_RNA<-round(median(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
-QCStats$unfiltered$mean$nCount_RNA<-round(mean(seurat.object.u@meta.data[,"nCount_RNA"]),0)
-QCStats$unfiltered$median$nCount_RNA<-round(median(seurat.object.u@meta.data[,"nCount_RNA"]),0)
-QCStats$unfiltered$mean$mito.fraction<-round(mean(seurat.object.u@meta.data[,"mito.fraction"]),3)
-QCStats$unfiltered$median$mito.fraction<-round(median(seurat.object.u@meta.data[,"mito.fraction"]),3)
-QCStats$unfiltered$mean$ribo.fraction<-round(mean(seurat.object.u@meta.data[,"ribo.fraction"]),3)
-QCStats$unfiltered$median$ribo.fraction<-round(median(seurat.object.u@meta.data[,"ribo.fraction"]),3)
+QCStats$unfiltered$mean$nFeature_RNA    <-round(mean(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
+QCStats$unfiltered$median$nFeature_RNA  <-round(median(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
+QCStats$unfiltered$mean$nCount_RNA      <-round(mean(seurat.object.u@meta.data[,"nCount_RNA"]),0)
+QCStats$unfiltered$median$nCount_RNA    <-round(median(seurat.object.u@meta.data[,"nCount_RNA"]),0)
+QCStats$unfiltered$mean$mito.fraction   <-round(mean(seurat.object.u@meta.data[,"mito.fraction"]),3)
+QCStats$unfiltered$median$mito.fraction <-round(median(seurat.object.u@meta.data[,"mito.fraction"]),3)
+QCStats$unfiltered$mean$ribo.fraction   <-round(mean(seurat.object.u@meta.data[,"ribo.fraction"]),3)
+QCStats$unfiltered$median$ribo.fraction <-round(median(seurat.object.u@meta.data[,"ribo.fraction"]),3)
 #
-QCStats$filtered$mean$nFeature_RNA<-round(mean(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
-QCStats$filtered$median$nFeature_RNA<-round(median(seurat.object.u@meta.data[,"nFeature_RNA"]),0)
-QCStats$filtered$mean$nCount_RNA<-round(mean(seurat.object.u@meta.data[,"nCount_RNA"]),0)
-QCStats$filtered$median$nCount_RNA<-round(median(seurat.object.u@meta.data[,"nCount_RNA"]),0)
-QCStats$filtered$mean$mito.fraction<-round(mean(seurat.object.u@meta.data[,"mito.fraction"]),3)
-QCStats$filtered$median$mito.fraction<-round(median(seurat.object.u@meta.data[,"mito.fraction"]),3)
-QCStats$filtered$mean$ribo.fraction<-round(mean(seurat.object.u@meta.data[,"ribo.fraction"]),3)
-QCStats$filtered$median$ribo.fraction<-round(median(seurat.object.u@meta.data[,"ribo.fraction"]),3)
+QCStats$filtered$mean$nFeature_RNA      <-round(mean(seurat.object.f@meta.data[,"nFeature_RNA"]),0)
+QCStats$filtered$median$nFeature_RNA    <-round(median(seurat.object.f@meta.data[,"nFeature_RNA"]),0)
+QCStats$filtered$mean$nCount_RNA        <-round(mean(seurat.object.f@meta.data[,"nCount_RNA"]),0)
+QCStats$filtered$median$nCount_RNA      <-round(median(seurat.object.f@meta.data[,"nCount_RNA"]),0)
+QCStats$filtered$mean$mito.fraction     <-round(mean(seurat.object.f@meta.data[,"mito.fraction"]),3)
+QCStats$filtered$median$mito.fraction   <-round(median(seurat.object.f@meta.data[,"mito.fraction"]),3)
+QCStats$filtered$mean$ribo.fraction     <-round(mean(seurat.object.f@meta.data[,"ribo.fraction"]),3)
+QCStats$filtered$median$ribo.fraction   <-round(median(seurat.object.f@meta.data[,"ribo.fraction"]),3)
 
 ### Get unfiltered data QC statistics
 nFeature_RNA.u.df   <-data.frame(Expression_level = seurat.object.u@meta.data$nFeature_RNA, nGenes = 1)
@@ -740,23 +782,23 @@ mito.fraction.u     <-paste(c(" mean = ", QCStats$unfiltered$mean$mito.fraction,
 ribo.fraction.u     <-paste(c(" mean = ", QCStats$unfiltered$mean$ribo.fraction,"\n", "median = ", QCStats$unfiltered$median$ribo.fraction), sep = "", collapse="")
 
 ### Get filtered data QC statistics
-nFeature_RNA.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$nFeature_RNA, nGenes = 2)
-nCount_RNA.f.df    <-data.frame(Expression_level = seurat.object.f@meta.data$nCount_RNA,   nCount_RNA = 2)
+nFeature_RNA.f.df   <-data.frame(Expression_level = seurat.object.f@meta.data$nFeature_RNA, nGenes = 2)
+nCount_RNA.f.df     <-data.frame(Expression_level = seurat.object.f@meta.data$nCount_RNA,   nCount_RNA = 2)
 mito.fraction.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$mito.fraction, mito.fraction = 2)
 ribo.fraction.f.df  <-data.frame(Expression_level = seurat.object.f@meta.data$ribo.fraction, ribo.fraction = 2)
 #
-nFeature_RNAStats.f<-paste(c(" mean = ", QCStats$filtered$mean$nFeature_RNA,"\n", "median = ", QCStats$filtered$median$nFeature_RNA), sep = "", collapse="")
-nCount_RNAStats.f  <-paste(c(" mean = ", QCStats$filtered$mean$nCount_RNA,  "\n", "median = ", QCStats$filtered$median$nCount_RNA),   sep = "", collapse="")
+nFeature_RNAStats.f <-paste(c(" mean = ", QCStats$filtered$mean$nFeature_RNA,"\n", "median = ", QCStats$filtered$median$nFeature_RNA), sep = "", collapse="")
+nCount_RNAStats.f   <-paste(c(" mean = ", QCStats$filtered$mean$nCount_RNA,  "\n", "median = ", QCStats$filtered$median$nCount_RNA),   sep = "", collapse="")
 mito.fraction.f     <-paste(c(" mean = ", QCStats$filtered$mean$mito.fraction,"\n", "median = ", QCStats$filtered$median$mito.fraction), sep = "", collapse="")
 ribo.fraction.f     <-paste(c(" mean = ", QCStats$filtered$mean$ribo.fraction,"\n", "median = ", QCStats$filtered$median$ribo.fraction), sep = "", collapse="")
 
 ### Put QC statistics together
-nFeature_RNA.m.df  <-data.frame(rbind(nFeature_RNA.u.df,nFeature_RNA.f.df))
-nCount_RNA.m.df    <-data.frame(rbind(nCount_RNA.u.df,nCount_RNA.f.df))
+nFeature_RNA.m.df   <-data.frame(rbind(nFeature_RNA.u.df,nFeature_RNA.f.df))
+nCount_RNA.m.df     <-data.frame(rbind(nCount_RNA.u.df,nCount_RNA.f.df))
 mito.fraction.m.df  <-data.frame(rbind(mito.fraction.u.df,mito.fraction.f.df))
 ribo.fraction.m.df  <-data.frame(rbind(ribo.fraction.u.df,ribo.fraction.f.df))
-LabelUnfiltered    <-paste("Before filters: No. of cells = ", nrow(seurat.object.u@meta.data), sep ="", collapse = "")
-LabelFiltered      <-paste("After filters:  No. of cells = ", nrow(seurat.object.f@meta.data), sep ="", collapse = "")
+LabelUnfiltered     <-paste("Before filters: No. of cells = ", nrow(seurat.object.u@meta.data), sep ="", collapse = "")
+LabelFiltered       <-paste("After filters:  No. of cells = ", nrow(seurat.object.f@meta.data), sep ="", collapse = "")
 NumberOfCells<- list()
 NumberOfCells[["unfiltered"]] <- nrow(seurat.object.u@meta.data)
 NumberOfCells[["filtered"]]   <- nrow(seurat.object.f@meta.data)
@@ -825,14 +867,14 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   interactive_qc_plot_u$Mitochondrial_Genes_Percentage <- interactive_qc_plot_u$Mitochondrial_Genes_Percentage * 100
   interactive_qc_plot_u$Ribosomal_Protein_Genes_Percentage <- interactive_qc_plot_u$Ribosomal_Protein_Genes_Percentage * 100
   colnames(interactive_qc_plot_u) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Percentage","Ribosomal Protein Genes Percentage")
-  write.table(interactive_qc_plot_u, paste(Tempdir,"/","qc/","BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+  write.table(interactive_qc_plot_u, paste(Tempdir,"/","frontend_qc/","BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
   
   # filtered
   interactive_qc_plot_f  <-data.frame(Barcodes = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
   interactive_qc_plot_f$Mitochondrial_Genes_Percentage <- interactive_qc_plot_f$Mitochondrial_Genes_Percentage * 100
   interactive_qc_plot_f$Ribosomal_Protein_Genes_Percentage <- interactive_qc_plot_f$Ribosomal_Protein_Genes_Percentage * 100
   colnames(interactive_qc_plot_f) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Percentage","Ribosomal Protein Genes Percentage")
-  write.table(interactive_qc_plot_f, paste(Tempdir,"/","qc/","AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+  write.table(interactive_qc_plot_f, paste(Tempdir,"/","frontend_qc/","AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
   
   qc_tsv <- data.frame(NAME = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
   qc_tsv$Mitochondrial_Genes_Percentage <- qc_tsv$Mitochondrial_Genes_Percentage * 100
@@ -840,7 +882,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   qc_tsv_string <- sapply(qc_tsv, as.character)
   qc_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", Number_of_Genes = "numeric", Number_of_Reads = "numeric", Mitochondrial_Genes_Percentage = "numeric", Ribosomal_Protein_Genes_Percentage = "numeric"), qc_tsv_string)
   
-  qc_outfile <-paste(Tempdir,"/","qc/","qc_data.tsv", sep="")
+  qc_outfile <-paste(Tempdir,"/","frontend_qc/","qc_data.tsv", sep="")
   write.table(data.frame(qc_tsv_string_TYPE),file = qc_outfile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
 } 
 
@@ -888,16 +930,20 @@ Headers<-paste("Step", "Filter_min", "Filter_max", "Mean_before_filter", "Median
 write.table(Headers, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F)
 
 FilterDetails.nFeature_RNA  <- paste("nFeature_RNA", ListNGenes[[1]], ListNGenes[[2]],
-                                     QCStats$unfiltered$mean$nFeature_RNA,  QCStats$unfiltered$median$nFeature_RNA,  QCStats$filtered$mean$nFeature_RNA,  QCStats$filtered$median$nFeature_RNA, 
+                                     QCStats$unfiltered$mean$nFeature_RNA,  QCStats$unfiltered$median$nFeature_RNA,
+                                     QCStats$filtered$mean$nFeature_RNA,    QCStats$filtered$median$nFeature_RNA, 
                                      NumberOfBarcodesExcludedByNFeature, sep = "\t", collapse = "")
 FilterDetails.nCount_RNA    <- paste("nCount_RNA", ListNReads[[1]], ListNReads[[2]], 
-                                     QCStats$unfiltered$mean$nCount_RNA,    QCStats$unfiltered$median$nCount_RNA,    QCStats$filtered$mean$nCount_RNA,    QCStats$filtered$median$nCount_RNA, 
+                                     QCStats$unfiltered$mean$nCount_RNA,    QCStats$unfiltered$median$nCount_RNA,
+                                     QCStats$filtered$mean$nCount_RNA,      QCStats$filtered$median$nCount_RNA, 
                                      NumberOfBarcodesExcludedByNReads, sep = "\t", collapse = "")
 FilterDetails.mito.fraction <- paste("mito.fraction", ListPMito[[1]], ListPMito[[2]],
-                                     QCStats$unfiltered$mean$mito.fraction, QCStats$unfiltered$median$mito.fraction, QCStats$filtered$mean$mito.fraction, QCStats$filtered$median$mito.fraction, 
+                                     QCStats$unfiltered$mean$mito.fraction, QCStats$unfiltered$median$mito.fraction,
+                                     QCStats$filtered$mean$mito.fraction,   QCStats$filtered$median$mito.fraction, 
                                      NumberOfBarcodesExcludedByMito, sep = "\t", collapse = "")
 FilterDetails.ribo.fraction <- paste("ribo.fraction", ListPRibo[[1]], ListPRibo[[2]],
-                                     QCStats$unfiltered$mean$ribo.fraction, QCStats$unfiltered$median$ribo.fraction, QCStats$filtered$mean$ribo.fraction, QCStats$filtered$median$ribo.fraction, 
+                                     QCStats$unfiltered$mean$ribo.fraction, QCStats$unfiltered$median$ribo.fraction,
+                                     QCStats$filtered$mean$ribo.fraction,   QCStats$filtered$median$ribo.fraction, 
                                      NumberOfBarcodesExcludedByRibo, sep = "\t", collapse = "")
 
 write.table(FilterDetails.nFeature_RNA,  file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
@@ -1014,10 +1060,10 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   
   # all genes/features in matrix
   features_tsv <- as.data.frame(rownames(normalized_count_matrix))
-  write.table(features_tsv, file=paste(Tempdir,"/","raw/","features.tsv", sep=""), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
+  write.table(features_tsv, file=paste(Tempdir,"/","frontend_raw/","features.tsv", sep=""), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
   
   # generating loom file of normalized count matrix
-  loom_file <- paste(Tempdir,"/","normalized/","normalized_counts.loom", sep="")
+  loom_file <- paste(Tempdir,"/","frontend_normalized/","normalized_counts.loom", sep="")
   create(loom_file, normalized_count_matrix)
   
 }
@@ -1110,7 +1156,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   metadata_tsv_string <- sapply(metadata_tsv, as.character)
   metadata_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", seurat_clusters = "group"), metadata_tsv_string)
   colnames(metadata_tsv_string_TYPE) <- c("NAME", paste("Seurat_Clusters_Resolution", Resolution, sep = "", collapse = ""))
-  OutfileClusters<-paste(Tempdir,"/","groups.tsv", sep="")
+  OutfileClusters<-paste(Tempdir,"/","frontend_groups/","groups.tsv", sep="")
   write.table(data.frame(metadata_tsv_string_TYPE),file = OutfileClusters, row.names = F, col.names = T, sep="\t", quote = F, append = T)
   
 }
@@ -1194,7 +1240,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   Headers<-paste("Barcode",paste(colnames(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings),sep="",collapse="\t"),sep="\t",collapse = "\t")
   
   if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-    OutfileCoordinatesCWL<-paste(Tempdir,"/","coordinates/",DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv", sep="", collapse = "")
+    OutfileCoordinatesCWL<-paste(Tempdir,"/","frontend_coordinates/",DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv", sep="", collapse = "")
     write.table(Headers,file = OutfileCoordinatesCWL, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinatesCWL,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
   }
@@ -1310,7 +1356,7 @@ StopWatchEnd$FindDiffMarkers  <- Sys.time()
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   top_6_genes_by_cluster<-(seurat.object.markers %>% group_by(cluster) %>% top_n(6, avg_logFC))
   markers_file <- top_6_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
-  write.table(markers_file, paste(Tempdir,"/","markers/","TopTwoMarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
+  write.table(markers_file, paste(Tempdir,"/","frontend_markers/","TopTwoMarkersPerCluster.tsv",sep=""),row.names = F,sep="\t",quote = F)
 } 
 
 ####################################
@@ -1367,8 +1413,8 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   ####################################
   ### Dimension reduction plots showing each cluster top genes
   ####################################
-  writeLines("\n*** Dimension reduction plots showing each cluster top genes ***\n")
-  
+  writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by each cluster top genes ***\n"))
+
   pdfWidth  <- 4 * DefaultParameters$BaseSizeMultiplePlotPdfWidth
   pdfHeight <- NumberOfClusters * DefaultParameters$BaseSizeMultiplePlotPdfHeight / 2
   pdf(file=paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_EachClusterTop2DEGs.pdf", sep=""), width=pdfWidth, height=pdfHeight)
@@ -1388,7 +1434,6 @@ SummaryPlots <- "Y"
 StopWatchStart$SummaryPlots  <- Sys.time()
 
 if (regexpr("^y$", SummaryPlots, ignore.case = T)[1] == 1) {
-  suppressPackageStartupMessages(library(staplr))
   SummaryPlotsPdf<-paste(Tempdir, "/SUMMARY_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_summary_plots.pdf", sep = "", collapse = "")
   ListOfPdfFilesToMerge<-c(paste(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_QC_VlnPlot.pdf", sep = "", collapse = ""),
                            paste(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_UMAPPlot_ColourByCellClusters.pdf", sep = "", collapse = ""),
@@ -1429,19 +1474,6 @@ sapply(ListOfPdfFilesToPng,FUN=function(eachFile) {
 })
 
 StopWatchEnd$TransformPdfToPng  <- Sys.time()
-
-####################################
-### Report used options
-####################################
-writeLines("\n*** Report used options ***\n")
-
-OutfileOptionsUsed<-paste(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_UsedOptions.txt", sep="")
-TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
-write(file = OutfileOptionsUsed, x=c(TimeOfRun,"\n","Options used:"))
-
-for (optionInput in option_list) {
-  write(file = OutfileOptionsUsed, x=(paste(optionInput@short_flag, optionInput@dest, opt[optionInput@dest], sep="\t", collapse="\t")),append = T)
-}
 
 ####################################
 ### Report R sessionInfo
