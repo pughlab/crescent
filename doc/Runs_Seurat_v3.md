@@ -4,7 +4,7 @@ Script name
 
 Description
 ================
-Runs Seurat version 3 scRNA-seq data normalization, dimension reduction and cell clustering. The input is either a matrix in MTX format (matrix.mtx.gz) and its barcode and gene/feature indices (barcode.tsv.gz and features.tsv.gz) or a Digital Expression Matrix file (DGE, with genes (rows) vs. barcodes (columns). See *Inputs Description* below). The MTX files are typical outputs from a 10X Cell Ranger, and can also be generated from a DGE file using script `bin/development/obtains_mtx_files_from_gene_x_barcode_matrix.R`.
+Runs Seurat version 3 scRNA-seq data normalization, dimension reduction and cell clustering. The input is either a matrix in MTX format (matrix.mtx.gz) and its barcode and gene/feature indices (barcode.tsv.gz and features.tsv.gz) or a GEM Gene Expression Matrix file (GEM, with genes (rows) vs. barcodes (columns). See *Inputs Description* below). The MTX files are typical outputs from a 10X Cell Ranger, and can also be generated from a GEM file using script: `bin/in_use/obtains_mtx_files_from_gene_x_barcode_matrix.R`.
 
 
 The clustering procedure is based on this Seurat tutorial https://satijalab.org/seurat/pbmc3k_tutorial_v3.html
@@ -21,26 +21,15 @@ A table with the cell-clusters, a table with differentially expressed genes on e
 General workflow
 ================
 This code is a wrapper library written in R and the general workflow of this script is as follows:
-  1. Reads data from 10X directory or a DGE matrix file
-  2. Flags mitochondrial genes
-  3. Creates Quality Control (QC) 'violin' and scatter plots before and after filtering data
-  4. Creates scatter plots of No. of reads vs. mitochondrial representation and, No. of reads vs. No. of genes
-  4. Normalizes data
-  5. Detects variable genes
-  6. Performs linear dimensional reduction by PCA
-  7. Determines statistically significant principal components
-  8. Clusters the cells
-  9. Gets average gene expression per cluster
-  10. Runs Non-linear dimensional reduction (tSNE and UMAP)
-  11. Finds differentially expressed genes (gene markers for each cell cluster)
-  12. Creates 'violin' plots for top differentially expressed genes for each cell cluster
-  13. Creates heatmaps for top differentially expressed genes for each cell cluster
-  14. Creates t-SNE and UMAP plots for top differentially expressed genes for each cell cluster
-  15. Creates t-SNE and UMAP plots for requested barcode-attributes (optional)
-  16. Creates t-SNE and UMAP plots for selected genes (optional)
-  17. Creates a file with summary plots
-  18. Reports used options
-  19. Ends
+  1. Loads scRNA-seq data and generate QC plots
+  2. Normalizes and scales measurements
+  3. Runs dimension reduction
+  4. Determines cell clusters
+  5. Runs average gene expression
+  6. Draws UMAP/tSNE plots using cell clusters, requested genes and metadata
+  7. Runs differential gene expression (DGE)
+  8. Saves log files
+  9. Ends
 
 Example commands
 ================
@@ -50,7 +39,7 @@ To display help commands type: <br />
 `Rscript Runs_Seurat_v3.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t MTX -b 2 -r 1 -o ~/example/outfiles -p sample_ID -c ~/path_to_/example_cell_type.tsv -g GENE1,GENE2 -d 10 -m 0,0.5 -q 0.075 -n 50,8000 -v 1,80000 -e 0.01 -u AUTO -s Y -a AUTO -w N -f Y`
+`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t MTX -j NA -b 2 -r 1 -o ~/example/outfiles -p sample_ID -c ~/path_to_/example_cell_type.tsv -g ~/path_to_/example_selected_genes.txt -d 10 -f Y -m 0,0.5 -q 0.075 -n 50,8000 -v 1,80000 -e 0.01 -u AUTO -s Y -w N -a AUTO`
 
 Inputs Description
 ================
@@ -58,7 +47,7 @@ Inputs Description
 One of the following input types:<br />
 a) a *directory* with 10X files from Cell Ranger v2 (barcodes.tsv, genes.tsv and matrix.mtx) <br />
 b) a *directory* with 10X files from Cell Ranger v3 (barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz) <br />
-c) a *file* with the Digital Gene Expression (DGE) matrix with cell-barcodes in columns and genes in rows (e.g. from DropSeq)
+c) a *file* in GEM format with cell-barcodes in columns and genes in rows (e.g. from DropSeq)
 
 Example infiles are provided in folder 'examples'
 
@@ -68,36 +57,16 @@ Outputs Description
 ================
 |               Extension                  |                        Contents                        |
 | --------------------------------------   |  ----------------------------------------------------- |
-| *QC_VlnPlot.pdf                          |  QC violin plots before and after filtering cells      |
-| *TSNEPlot_QC.tsv                         |  t-SNE plots of No. of reads vs. No.Genes and mito %   |
-| *NumbReadsVsNumbGenesAndMito_VlnPlot.pdf |  Scatter plots of No. of reads vs. No.Genes and mito % |
-| *CellClusters.tsv                        |  Cell cluster identities                               |
-| *NumbCellClusters.tsv                    |  Number of cell clusters                               |
-| *AverageGeneExpressionPerCluster.tsv     |  Average gene expression per cell cluster              |
-| *MarkersPerCluster.tsv                   |  Markers per cluster                                   |
-| *VizPCA.pdf                              |  Vizualize genes associated with PCA                   |
-| *PCAPlot.pdf                             |  PCA plot                                              |
-| *PCElbowPlot.pdf                         |  PCElbow plot                                          |
-| *PCHeatmap.C1toN.pdf                     |  PCHeatmap all clusters                                |
-| *VariableGenes.pdf                       |  Variable genes plot                                   |
-| *VariableGenes.txt                       |  Variable genes list                                   |
-| *TSNEPlot.pdf                            |  t-SNE plot                                            |
-| *TSNECoordinates.tsv                     |  t-SNE plot coordinates                                |
-| *TSNEPlot_ExtraProperties.pdf            |  t-SNE plot of extra barcode properties by option -c   |
-| *TSNEPlot_EachTopGene.pdf                |  t-SNE plot mapping top-2 genes for each cluster       |
-| *TSNEPlot_SelectedGenes.pdf              |  t-SNE plot mapping genes selected by option -g        |
-| *UMAPPlot.pdf                            |  UMAP plot                                             |
-| *UMAPCoordinates.tsv                     |  UMAP plot coordinates                                 |
-| *UMAPPlot_ExtraProperties.pdf            |  UMAP plot of extra barcode properties by option -c    |
-| *UMAPPlot_EachTopGene.pdf                |  UMAP plot mapping top-2 genes for each cluster        |
-| *UMAPPlot_SelectedGenes.pdf              |  UMAP plot mapping genes selected by option -g         |
-| *Heatmap.pdf                             |  Heatmap top genes, all clusters                       |
-| *VlnPlot_AfterClusters.pdf               |  Violing plot of top-2 genes for each cluster          |
-| *summary_plots.pdf                       |  Summary plots                                         |
-| *object.rds                              |  R object including analysis up to cell clustering     |
-| *CPUusage.tsv                            |  CPU time usage                                        |
-| *UsedOptions.txt                         |  Options used in run                                   |
-
+| QC_PLOTS                                 | violin and t-SNE/UMAP plots showing QC metrics         | 
+| QC_TABLES                                | tables underlying QC_PLOTS | 
+| DIMENSION_REDUCTION_PLOTS                | t-SNE/UMAP plots showing cell clusters and metadata | 
+| DIMENSION_REDUCTION_COORDINATE_TABLES    | tables underlying DIMENSION_REDUCTION_PLOTS | 
+| SELECTED_GENE_DIMENSION_REDUCTION_PLOTS  | t-SNE/UMAP plots showing selected genes| 
+| CELL_CLUSTER_IDENTITIES                  | table with cell cluster identities | 
+| AVERAGE_GENE_EXPRESSION_TABLES           | table with each gene average expression for each cell cluster | 
+| DIFFERENTIAL_GENE_EXPRESSION_TABLES      | table with DGE for each cell cluster vs. rest of cells in the dataset | 
+| R_OBJECTS                                | R object files | 
+| LOG_FILES                                | tables with run commands, computing times and R libraries used |
 
 Authors
 ================
@@ -111,8 +80,8 @@ Dependencies
 **Seurat version 3** <br />
 Can be installed in R console with: <br />
 `install.packages('devtools')`<br />
-`devtools::install_github(repo = "satijalab/seurat", ref = "develop")`<br />
-The latest version tested was v3.0.3.9023<br /><br />
+`devtools::install_github("satijalab/seurat@v3.1.1")`<br />
+The latest version tested was v3.1.1<br /><br />
 **dplyr** <br />
 Can be installed in R console with: <br />
 `install.packages('dplyr')`<br /><br />
