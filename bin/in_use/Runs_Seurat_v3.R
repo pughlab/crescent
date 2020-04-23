@@ -1217,7 +1217,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   }else if ("tsne" %in% dim_red_method) {
     seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, check_duplicates = F)
   }else if ("umap" %in% dim_red_method) {
-    seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse)
+    seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, umap.method = "umap-learn", metric = "correlation")
   }
   
   StopWatchEnd$DimensionReduction$dim_red_method  <- Sys.time()
