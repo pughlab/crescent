@@ -121,19 +121,6 @@ suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loom
 ###           https://www.pdflabs.com/tools/pdftk-the-pdf-toolkit/
 ### 'convert' to transofrm *pdf files into *png
 ###           it's part of ImageMagic (https://imagemagick.org/index.php)
-### 'umap'    to get the UMAP plots
-###           the front-end web version of CReSCENT needs version 0.4dev or higher to avoid an issue with CWL in older versions
-###           It can be downloaded with:
-###           `wget https://github.com/lmcinnes/umap/archive/0.4dev.zip`
-###           Then installed with:
-###           `unzip 0.4dev.zip`
-###           `cd umap-0.4dev`
-###           `pip3 install -r requirements.txt` ### Note this needs Python v3 or higher
-###           `python3 setup.py install`
-###           To check if version 0.4 is being used, type:
-###           `python3`
-###           `import umap`
-###           `print(umap.__version__)`
 ####################################
 
 ####################################
@@ -143,7 +130,7 @@ oldw <- getOption("warn")
 options( warn = -1 )
 
 ThisScriptName <- "Runs_Seurat_v3.R"
-  
+
 ####################################
 ### Get inputs from command line argumets
 ####################################
@@ -1217,7 +1204,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   }else if ("tsne" %in% dim_red_method) {
     seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, check_duplicates = F)
   }else if ("umap" %in% dim_red_method) {
-    seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, umap.method = "umap-learn", metric = "correlation")
+    seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, umap.method = "uwot")
   }
   
   StopWatchEnd$DimensionReduction$dim_red_method  <- Sys.time()
@@ -1414,7 +1401,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   ### Dimension reduction plots showing each cluster top genes
   ####################################
   writeLines(paste("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by each cluster top genes ***\n"))
-
+  
   pdfWidth  <- 4 * DefaultParameters$BaseSizeMultiplePlotPdfWidth
   pdfHeight <- NumberOfClusters * DefaultParameters$BaseSizeMultiplePlotPdfHeight / 2
   pdf(file=paste(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_EachClusterTop2DEGs.pdf", sep=""), width=pdfWidth, height=pdfHeight)
@@ -1523,6 +1510,8 @@ for (stepToClock in names(StopWatchStart)) {
 ### Moving outfiles into outdir or keeping them at tempdir (if using CWL)
 ####################################
 
+### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
+
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   writeLines("\n*** Keeping files at: ***\n")
   
@@ -1533,10 +1522,9 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(DirName) {
     TempdirWithData <- paste0(Tempdir, "/", DirName)
     OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
+    print(OutdirFinal)
     dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
-    
     sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(eachFileName) {
-      ### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
       file.copy(from=paste0(TempdirWithData, "/", eachFileName), to=paste0(OutdirFinal, "/", eachFileName), overwrite=T)
       file.remove(paste0(TempdirWithData, "/", eachFileName))
     })
