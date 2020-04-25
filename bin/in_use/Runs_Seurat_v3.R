@@ -660,12 +660,6 @@ if (regexpr("^Y$", ApplyCellFilters, ignore.case = T)[1] == 1) {
                             & ribo.fraction >= DefaultParameters$MinPRibo
                             & ribo.fraction <= DefaultParameters$MaxPRibo)
     
-    ### Get list of barcodes excluded by nFeature_RNA, nCount_RNA, mito.fraction or ribo.fraction
-    BarcodesExcludedByNFeature <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)))
-    BarcodesExcludedByNReads   <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nCount_RNA   >= DefaultParameters$MinReads & nCount_RNA   <= DefaultParameters$MaxReads)))
-    BarcodesExcludedByMito     <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = mito.fraction >= DefaultParameters$MinPMito & mito.fraction <= DefaultParameters$MaxPMito)))
-    BarcodesExcludedByRibo     <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = ribo.fraction >= DefaultParameters$MinPRibo & ribo.fraction <= DefaultParameters$MaxPRibo)))
-    
   }else{
     seurat.object.f<-subset(x = seurat.object.u, subset = 
                               nFeature_RNA >= DefaultParameters$MinGenes
@@ -674,28 +668,23 @@ if (regexpr("^Y$", ApplyCellFilters, ignore.case = T)[1] == 1) {
                             & nCount_RNA   <= DefaultParameters$MaxReads 
                             & ribo.fraction >= DefaultParameters$MinPRibo
                             & ribo.fraction <= DefaultParameters$MaxPRibo)
-    
-    ### Get list of barcodes excluded by nFeature_RNA, nCount_RNA or ribo.fraction
-    BarcodesExcludedByNFeature <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes)))
-    BarcodesExcludedByNReads   <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nCount_RNA   >= DefaultParameters$MinReads & nCount_RNA   <= DefaultParameters$MaxReads)))
-    BarcodesExcludedByMito     <- ""
-    BarcodesExcludedByRibo     <- setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = ribo.fraction >= DefaultParameters$MinPRibo & ribo.fraction <= DefaultParameters$MaxPRibo)))
   }
-  
-  NumberOfBarcodesExcludedByNFeature <- length(BarcodesExcludedByNFeature)
-  NumberOfBarcodesExcludedByNReads   <- length(BarcodesExcludedByNReads)
-  NumberOfBarcodesExcludedByMito     <- length(BarcodesExcludedByMito)
-  NumberOfBarcodesExcludedByRibo     <- length(BarcodesExcludedByRibo)
-  
+    
+  ### Get list of barcodes excluded by nFeature_RNA, nCount_RNA or ribo.fraction
+  NumberOfBarcodesExcludedByNFeature <- length(setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nFeature_RNA >= DefaultParameters$MinGenes & nFeature_RNA <= DefaultParameters$MaxGenes))))
+  NumberOfBarcodesExcludedByNReads   <- length(setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nCount_RNA   >= DefaultParameters$MinReads & nCount_RNA   <= DefaultParameters$MaxReads))))
+  NumberOfBarcodesExcludedByMito     <- length(setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = mito.fraction >= DefaultParameters$MinPMito & mito.fraction <= DefaultParameters$MaxPMito))))
+  NumberOfBarcodesExcludedByRibo     <- length(setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = ribo.fraction >= DefaultParameters$MinPRibo & ribo.fraction <= DefaultParameters$MaxPRibo))))
+
+  print(paste0("NumberOfBarcodesExcludedByNFeature=", NumberOfBarcodesExcludedByNFeature))
+  print(paste0("NumberOfBarcodesExcludedByNReads=", NumberOfBarcodesExcludedByNReads))
+  print(paste0("NumberOfBarcodesExcludedByMito=", NumberOfBarcodesExcludedByMito))
+  print(paste0("NumberOfBarcodesExcludedByRibo=", NumberOfBarcodesExcludedByRibo))
+
 }else{
   writeLines("\n*** Not applying cell filters ***\n")
   
   seurat.object.f <- seurat.object.u
-  
-  BarcodesExcludedByNFeature <- ""
-  BarcodesExcludedByNReads   <- ""
-  BarcodesExcludedByMito     <- ""
-  BarcodesExcludedByRibo     <- ""
   
   NumberOfBarcodesExcludedByNFeature <- 0
   NumberOfBarcodesExcludedByNReads   <- 0
@@ -728,7 +717,9 @@ if (regexpr("^Y$", ApplyCellFilters, ignore.case = T)[1] == 1) {
 StopWatchEnd$FilterCells  <- Sys.time()
 
 ### Just reporting the summary of the UNfiltered and filtered objects
+print("Unfiltered object")
 seurat.object.u
+print("Filtered object")
 seurat.object.f
 
 ####################################
