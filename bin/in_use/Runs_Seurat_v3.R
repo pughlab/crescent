@@ -935,6 +935,19 @@ write.table(paste("Number_of_cells_after_filters", NumberOfCells[["filtered"]], 
 
 StopWatchEnd$OutTablesFilterDetailsAndFilteredCells  <- Sys.time()
 
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  qc_metrics_genes <- data.frame(Step = "Number of Genes", Filter_min = ListNGenes[[1]], Filter_max = ListNGenes[[2]], Excluded_cells = NumberOfBarcodesExcludedByNFeature)
+  qc_metrics_reads <- data.frame(Step = "Number of Reads", Filter_min = ListNReads[[1]], Filter_max = ListNReads[[2]], Excluded_cells = NumberOfBarcodesExcludedByNReads)
+  qc_metrics_mito <- data.frame(Step = "Percentage of Mitochondrial Genes", Filter_min = as.numeric(ListPMito[[1]])*100, Filter_max = as.numeric(ListPMito[[2]])*100, Excluded_cells = NumberOfBarcodesExcludedByMito)
+  qc_metrics_ribo <- data.frame(Step = "Percentage of Ribsomal Protein Genes", Filter_min = as.numeric(ListPRibo[[1]])*100, Filter_max = as.numeric(ListPRibo[[2]])*100, Excluded_cells = NumberOfBarcodesExcludedByRibo)
+
+  qc_metrics <-paste(Tempdir,"/","frontend_qc/","qc_metrics.tsv", sep="")
+  write.table(qc_metrics_genes, file = qc_metrics, row.names = F, col.names = T, sep="\t", quote = F, append = T)
+  write.table(qc_metrics_reads, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+  write.table(qc_metrics_mito, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+  write.table(qc_metrics_ribo, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+}
+
 ####################################
 ### Write out QC data
 ####################################
