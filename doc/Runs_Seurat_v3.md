@@ -39,7 +39,7 @@ To display help commands type: <br />
 `Rscript Runs_Seurat_v3.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to_/filtered_feature_bc_matrix/ -t MTX -j NA -b 2 -r 1 -o ~/example/outfiles -p sample_ID -c ~/path_to_/example_cell_type.tsv -g ~/path_to_/example_selected_genes.txt -d 10 -f Y -m 0,0.5 -q 0.075 -n 50,8000 -v 1,80000 -e 0.01 -u AUTO -s Y -w N -a AUTO`
+`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to/filtered_feature_bc_matrix/ -t MTX -j NA -b 2 -r 1 -o ~/example/outfiles -p sample_ID -c ~/path_to/example_cell_type.tsv -g ~/path_to/example_selected_genes.txt -d 10 -f Y -m 0,0.5 -q 0.075 -n 50,8000 -v 1,80000 -e 0.01 -u AUTO -s Y -w N -a AUTO`
 
 Inputs Description
 ================
@@ -76,48 +76,47 @@ Authors
 
 **Javier Diaz (https://github.com/jdime)**
 
-Dependencies
+Dependencies [brackets indicate tested versions]
 ================
 
-**R and the following R packages** <br /><br />
-**Seurat version 3** <br />
+**R [3.6.1] and the following R packages** <br /><br />
+**Seurat [3.1.1] ** <br />
 Can be installed in R console with: <br />
 `install.packages('devtools')`<br />
 `devtools::install_github("satijalab/seurat@v3.1.1")`<br />
-The latest version tested was v3.1.1<br /><br />
-**dplyr** <br />
+**dplyr [0.8.3]** <br />
 Can be installed in R console with: <br />
 `install.packages('dplyr')`<br /><br />
-**optparse**<br />
+**optparse [1.6.4]**<br />
 Can be installed in R console with: <br />
 `install.packages('optparse')`<br />
 It's used to handle one-line commands<br /><br />
-**data.table**<br />
+**data.table [1.12.2]**<br />
 Can be installed in R console with: <br />
 `install.packages('data.table')`<br />
 It's used to read Gene Expression matrices faster than read.table()<br /><br />
-**staplr**<br />
+**staplr [2.9.0]**<br />
 Can be installed in R console with: <br />
 `install.packages('staplr')`<br />
-It's used to manipulate *pdf files. It requires pdftk, which can be obtained from<br />
+It's used to manipulate \*pdf files. It requires pdftk, which can be obtained from<br />
 https://www.pdflabs.com/tools/pdftk-the-pdf-toolkit/<br /><br />
-**fmsb**<br />
+**fmsb [0.6.3]**<br />
 Can be installed in R console with: <br />
 `install.packages('fmsb')`<br />
 It's used to calculate the percentages of extra properties to be t-SNE plotted<br /><br />
-**ggplot2**<br />
+**ggplot2 [3.2.1]**<br />
 Can be installed in R console with: <br />
 `install.packages('ggplot2')`<br />
 It's used to generate QC violin plots<br /><br />
-**cowplot**<br />
+**cowplot [1.0.0]**<br />
 Can be installed in R console with: <br />
 `install.packages('cowplot')`<br />
 It's used arrange QC violin plots and top legend<br /><br />
-**future**<br />
+**future [1.15.1]**<br />
 Can be installed in R console with: <br />
 `install.packages('future')`<br />
 It's used parallelize time consuming functions like: RunPCA<br /><br />
-**loomR**<br />
+**loomR [0.2.0]**<br />
 Can be installed in R console with: <br />
 `devtools::install_github(repo = "mojaveazure/loomR")` <br />
 It's needed for front-end display of data. Only needed if using `-w Y`
