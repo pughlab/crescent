@@ -536,6 +536,8 @@ if (regexpr("^AUTO$", NumbCores, ignore.case = T)[1] == 1) {
   if (NumberOfBarcodes <= DefaultParameters$MaxNumbCellsSmallForNumbCores) {
     NumbCoresRequested <-DefaultParameters$NumbCoresSmall
   }else if (NumbCoresAvailable < DefaultParameters$NumbCoresMedOrLarge) {
+    NumbCoresRequested <- NumbCoresAvailable
+  }else{
     NumbCoresRequested <-DefaultParameters$NumbCoresMedOrLarge
   }
 }else if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
