@@ -942,7 +942,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   qc_metrics_reads <- data.frame(Step = "Number of Reads", Filter_min = ListNReads[[1]], Filter_max = ListNReads[[2]], Excluded_cells = NumberOfBarcodesExcludedByNReads)
   qc_metrics_mito <- data.frame(Step = "Percentage of Mitochondrial Genes", Filter_min = as.numeric(ListPMito[[1]])*100, Filter_max = as.numeric(ListPMito[[2]])*100, Excluded_cells = NumberOfBarcodesExcludedByMito)
   qc_metrics_ribo <- data.frame(Step = "Percentage of Ribsomal Protein Genes", Filter_min = as.numeric(ListPRibo[[1]])*100, Filter_max = as.numeric(ListPRibo[[2]])*100, Excluded_cells = NumberOfBarcodesExcludedByRibo)
-
+  
   qc_metrics <-paste(Tempdir,"/","frontend_qc/","qc_metrics.tsv", sep="")
   write.table(qc_metrics_genes, file = qc_metrics, row.names = F, col.names = T, sep="\t", quote = F, append = T)
   write.table(qc_metrics_reads, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
@@ -990,7 +990,7 @@ if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
   colnames(AllBarcodesToRemove.tab) <- c("Barcode")
   
   seurat.object.full    <- seurat.object.f
-  seurat.object.subset  <- subset(seurat.object.full, cells = colnames(seurat.object.full[,AllBarcodesToRemove.tab[,"Barcode"]]))
+  seurat.object.subset  <- subset(seurat.object.full, cells = setdiff(colnames(seurat.object.full),BarcodesToSubset.tab[,"Barcode"]))
   print(paste(paste("Before:", ncol(seurat.object.full), sep = "", collapse =""), paste("After:", ncol(seurat.object.subset), sep = "", collapse =""), sep = "  ", collapse = "\n"))
   seurat.object.f       <- seurat.object.subset
   
