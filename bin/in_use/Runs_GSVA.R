@@ -114,9 +114,7 @@ PrefixOutfiles  <- opt$prefix_outfiles
 PvalueCutoff    <- as.numeric(opt$pvalue_cutoff)
 FdrCutoff       <- as.numeric(opt$fdr_cutoff)
 RunsCwl         <- opt$run_cwl
-NumbCores               <- opt$number_cores
-
-Tempdir         <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+NumbCores       <- opt$number_cores
 
 ####################################
 ### Start stopwatches
@@ -159,19 +157,6 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F) 
   
-  OutfileEnrichmentScores<-paste(Tempdir,"/",PrefixOutfiles,".GSVA_enrichment_scores.tsv", sep="")
-  OutfileEnrichScorsClust<-paste(Tempdir,"/",PrefixOutfiles,".GSVA_enrichment_scores_sorted.tsv", sep="")
-  OutfilePvalues         <-paste(Tempdir,"/",PrefixOutfiles,".GSVA_pvalues.tsv", sep="")
-  OutfileFdrvalues       <-paste(Tempdir,"/",PrefixOutfiles,".GSVA_fdr_values.tsv", sep="")
-  OutfileAllScores       <-paste(Tempdir,"/",PrefixOutfiles,".GSVA_all_scores_table.tsv", sep="")
-  OutfileFilteredES      <-paste(Tempdir,"/",PrefixOutfiles,".GSVA_filtered.tsv", sep="")
-  OutfileFinalLabel      <-paste(Tempdir,"/",PrefixOutfiles,".GSVA_final_label.tsv", sep="")
-  
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "GSVA_RESULTS", 
-    "LOG_FILES"
-  )
-  
 }else{
   ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
   ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
@@ -186,6 +171,9 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
   ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
+  
+  Tempdir         <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+  
   ScratchTempdir<-gsub("home","scratch", Tempdir)
   if (dir.exists(ScratchTempdir)[1] == 1) {
     Tempdir<-ScratchTempdir
@@ -203,20 +191,20 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
-  
-  OutfileEnrichmentScores<-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_enrichment_scores.tsv", sep="")
-  OutfileEnrichScorsClust<-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_enrichment_scores_sorted.tsv", sep="")
-  OutfilePvalues         <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_pvalues.tsv", sep="")
-  OutfileFdrvalues       <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_fdr_values.tsv", sep="")
-  OutfileAllScores       <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_all_scores_table.tsv", sep="")
-  OutfileFilteredES      <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_filtered.tsv", sep="")
-  OutfileFinalLabel      <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_final_label.tsv", sep="")
-  
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "GSVA_RESULTS", 
-    "LOG_FILES"
-  )
 }
+
+OutfileEnrichmentScores<-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_enrichment_scores.tsv", sep="")
+OutfileEnrichScorsClust<-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_enrichment_scores_sorted.tsv", sep="")
+OutfilePvalues         <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_pvalues.tsv", sep="")
+OutfileFdrvalues       <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_fdr_values.tsv", sep="")
+OutfileAllScores       <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_all_scores_table.tsv", sep="")
+OutfileFilteredES      <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_filtered.tsv", sep="")
+OutfileFinalLabel      <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_final_label.tsv", sep="")
+
+FILE_TYPE_OUT_DIRECTORIES = c(
+  "GSVA_RESULTS", 
+  "LOG_FILES"
+)
 
 sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(eachdir) {
   dir.create(file.path(paste0(Tempdir, "/", eachdir)), showWarnings = F, recursive = T)
