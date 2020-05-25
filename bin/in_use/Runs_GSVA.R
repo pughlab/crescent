@@ -263,8 +263,6 @@ if (NumbCoresAvailable < NumbCoresRequested) {
 
 writeLines(paste("\nUsing ", NumbCoresToUse, " cores\n", sep = "", collapse = ""))
 
-plan(strategy = "multicore", workers = NumbCoresToUse)
-
 ####################################
 ### Load data
 ####################################
