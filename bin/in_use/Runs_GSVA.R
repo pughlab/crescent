@@ -161,7 +161,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
   ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
-
+  
   ### Checking if the system follows a mirror /scratch vs. /home structure
   ### If that's the case, this script will use Tempdir at /scratch, not at /home
   ### This is because systems like SciNet (Compute Canada) using 'Slurm Workload Manager'
@@ -263,8 +263,6 @@ if (NumbCoresAvailable < NumbCoresRequested) {
 
 writeLines(paste("\nUsing ", NumbCoresToUse, " cores\n", sep = "", collapse = ""))
 
-plan(strategy = "multicore", workers = NumbCoresToUse)
-
 ####################################
 ### Load data
 ####################################
@@ -305,7 +303,7 @@ StopWatchStart$RunGSVA  <- Sys.time()
 
 ### Get and print out GSVA enrichment scores
 StartTimeGsva<-Sys.time()
-EnrichmentScores<-gsva(expr=fullmat, gset.idx.list=gmt2, min.sz=1, max.sz=Inf, mx.diff=TRUE, verbose=T, parallel.sz=0)
+EnrichmentScores<-gsva(expr=fullmat, gset.idx.list=gmt2, min.sz=1, max.sz=Inf, mx.diff=TRUE, verbose=T, parallel.sz=NumbCoresToUse)
 SortedRowNames<-rownames(EnrichmentScores)
 SortedColNames<-colnames(EnrichmentScores)
 #
