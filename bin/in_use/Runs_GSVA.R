@@ -101,7 +101,7 @@ option_list <- list(
                 a) Type the number of cores to use for parellelization (e.g. '4')
                 b) Type 'MAX' to determine and use all available cores in the system
                 Default = 'MAX'")
-  
+
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -404,7 +404,9 @@ StopWatchEnd$SortGSVAERmatrix  <- Sys.time()
 
 StopWatchStart$GetFinalLabel  <- Sys.time()
 
-writeLines("\n*** Report R sessionInfo ***\n")
+writeLines("\n*** Write cluster labels based on maximum GSVA enrichment scores ***\n")
+
+row.names(predictions.mat.ordered) <- sub("C", "", row.names(predictions.mat.ordered))
 
 write(paste(row.names(predictions.mat.ordered), colnames(predictions.mat.ordered)[max.col(predictions.mat.ordered, ties.method="first")], sep = "\t", collapse = "\n"),
       OutfileFinalLabel)
