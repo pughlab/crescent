@@ -101,7 +101,7 @@ option_list <- list(
                 a) Type the number of cores to use for parellelization (e.g. '4')
                 b) Type 'MAX' to determine and use all available cores in the system
                 Default = 'MAX'")
-
+  
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
@@ -130,7 +130,13 @@ StopWatchStart$Overall  <- Sys.time()
 ####################################
 
 DefaultParameters <- list(
-  DigitsForRound = 5 ### Number of digits to round up enrichment score values in outfiles
+  ### General
+  DigitsForRound = 5, ### Number of digits to round up enrichment score values in outfiles
+  
+  ### Scoring
+  MinEScoreToAssignLabel = 0,
+  LabelForUndefinedScored = "UNDEFINED"
+  
 )
 
 ####################################
@@ -398,16 +404,34 @@ StopWatchEnd$SortGSVAERmatrix  <- Sys.time()
 
 ####################################
 ### Outfile *.GSVA_final_label.tsv - currently simply taking the maximum GSVA enrichment score for each array (column of --infile_mat)
+### and making enrichment scores <= 0 to show 'UNDEFINED' predictions
 ####################################
 
 StopWatchStart$GetFinalLabel  <- Sys.time()
 
 writeLines("\n*** Write cluster labels based on maximum GSVA enrichment scores ***\n")
 
-row.names(predictions.mat.ordered) <- sub("C", "", row.names(predictions.mat.ordered))
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  row.names(predictions.mat.ordered) <- sub("C", "", row.names(predictions.mat.ordered))
+}
 
-write(paste(row.names(predictions.mat.ordered), colnames(predictions.mat.ordered)[max.col(predictions.mat.ordered, ties.method="first")], sep = "\t", collapse = "\n"),
-      OutfileFinalLabel)
+HighestScoreLabels <- colnames(predictions.mat.ordered)[max.col(predictions.mat.ordered, ties.method="first")]
+HighestScoreLabels.df <- as.data.frame(cbind(row.names(predictions.mat.ordered), HighestScoreLabels))
+colnames(HighestScoreLabels.df)[1] <- "cluster"
+
+close(file(OutfileFinalLabel, open="w")) # just to clean-up OutfileFinalLabel if there is a pre-existing run
+
+sapply(row.names(HighestScoreLabels.df), FUN=function(eachClusterN) {
+  ClusterId     <- HighestScoreLabels.df[eachClusterN,"cluster"]
+  LabelAssigned <- HighestScoreLabels.df[eachClusterN,"HighestScoreLabels"]
+  EnrichmentScore <- predictions.mat.ordered[ClusterId,LabelAssigned]
+  
+  if (EnrichmentScore > DefaultParameters$MinEScoreToAssignLabel) {
+    write(file = OutfileFinalLabel, x = paste(ClusterId, LabelAssigned, sep = "\t"), append = T)
+  }else{
+    write(file = OutfileFinalLabel, x = paste(ClusterId, DefaultParameters$LabelForUndefinedScored, sep = "\t"), append = T)
+  }
+})
 
 StopWatchEnd$GetFinalLabel  <- Sys.time()
 
