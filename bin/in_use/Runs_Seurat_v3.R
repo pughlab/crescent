@@ -1174,7 +1174,7 @@ StopWatchStart$AverageGeneExpression  <- Sys.time()
 
 cluster.averages<-AverageExpression(object = seurat.object.f, use.scale = F, use.counts = F)
 OutfileClusterAverages<-paste(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles,".", ProgramOutdir, "_AverageGeneExpressionPerCluster.tsv", sep="")
-Headers<-paste("AVERAGE_GENE_EXPRESSION",paste("r", Resolution, "_C", names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
+Headers<-paste("AVERAGE_GENE_EXPRESSION",paste("C", names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
 write.table(Headers,file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(cluster.averages$RNA),file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
