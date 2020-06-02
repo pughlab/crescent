@@ -422,10 +422,10 @@ colnames(HighestScoreLabels.df)[1] <- "cluster"
 close(file(OutfileFinalLabel, open="w")) # just to clean-up OutfileFinalLabel if there is a pre-existing run
 
 sapply(row.names(HighestScoreLabels.df), FUN=function(eachClusterN) {
-  ClusterId     <- HighestScoreLabels.df[eachClusterN,"cluster"]
-  LabelAssigned <- HighestScoreLabels.df[eachClusterN,"HighestScoreLabels"]
+  ClusterId     <- as.character(HighestScoreLabels.df[eachClusterN,"cluster"])
+  LabelAssigned <- as.character(HighestScoreLabels.df[eachClusterN,"HighestScoreLabels"])
   EnrichmentScore <- predictions.mat.ordered[ClusterId,LabelAssigned]
-  
+
   if (EnrichmentScore > DefaultParameters$MinEScoreToAssignLabel) {
     write(file = OutfileFinalLabel, x = paste(ClusterId, LabelAssigned, sep = "\t"), append = T)
   }else{
