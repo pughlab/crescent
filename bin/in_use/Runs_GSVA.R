@@ -199,13 +199,13 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
 }
 
-OutfileEnrichmentScores<-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_enrichment_scores.tsv", sep="")
-OutfileEnrichScorsClust<-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_enrichment_scores_sorted.tsv", sep="")
-OutfilePvalues         <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_pvalues.tsv", sep="")
-OutfileFdrvalues       <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_fdr_values.tsv", sep="")
-OutfileAllScores       <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_all_scores_table.tsv", sep="")
-OutfileFilteredES      <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_filtered.tsv", sep="")
-OutfileFinalLabel      <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_final_label.tsv", sep="")
+OutfileEnrichmentScores  <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_enrichment_scores.tsv", sep="")
+OutfileEnrichScorsClust  <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_enrichment_scores_sorted.tsv", sep="")
+OutfilePvalues           <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_pvalues.tsv", sep="")
+OutfileFdrvalues         <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_fdr_values.tsv", sep="")
+OutfileAllScores         <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_all_scores_table.tsv", sep="")
+OutfileFilteredES        <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_filtered.tsv", sep="")
+OutfileClusterFinalLabel <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_cluster_final_label.tsv", sep="")
 
 FILE_TYPE_OUT_DIRECTORIES = c(
   "GSVA_RESULTS", 
@@ -419,7 +419,8 @@ HighestScoreLabels <- colnames(predictions.mat.ordered)[max.col(predictions.mat.
 HighestScoreLabels.df <- as.data.frame(cbind(row.names(predictions.mat.ordered), HighestScoreLabels))
 colnames(HighestScoreLabels.df)[1] <- "cluster"
 
-close(file(OutfileFinalLabel, open="w")) # just to clean-up OutfileFinalLabel if there is a pre-existing run
+# just to clean-up OutfileFinalLabel if there is a pre-existing run
+close(file(OutfileClusterFinalLabel, open="w"))
 
 sapply(row.names(HighestScoreLabels.df), FUN=function(eachClusterN) {
   ClusterId     <- as.character(HighestScoreLabels.df[eachClusterN,"cluster"])
@@ -427,9 +428,9 @@ sapply(row.names(HighestScoreLabels.df), FUN=function(eachClusterN) {
   EnrichmentScore <- predictions.mat.ordered[ClusterId,LabelAssigned]
 
   if (EnrichmentScore > DefaultParameters$MinEScoreToAssignLabel) {
-    write(file = OutfileFinalLabel, x = paste(ClusterId, LabelAssigned, sep = "\t"), append = T)
+    write(file = OutfileClusterFinalLabel, x = paste(ClusterId, LabelAssigned, paste0(ClusterId, ".", LabelAssigned), sep = "\t"), append = T)
   }else{
-    write(file = OutfileFinalLabel, x = paste(ClusterId, DefaultParameters$LabelForUndefinedScored, sep = "\t"), append = T)
+    write(file = OutfileClusterFinalLabel, x = paste(ClusterId, DefaultParameters$LabelForUndefinedScored, paste0(ClusterId, ".", DefaultParameters$LabelForUndefinedScored), sep = "\t"), append = T)
   }
 })
 
