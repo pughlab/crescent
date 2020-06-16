@@ -35,10 +35,10 @@ Example commands
 This example works with files provided in folder ~/examples/INPUTS<br />
 
 To display help commands type: <br />
-`Rscript Runs_Seurat_v3.R -h`
+`Rscript Runs_Seurat_v3_SingleDataset.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to/filtered_feature_bc_matrix/ -t MTX -j NA -b 2 -k Y -r 1 -o ~/example/outfiles -p sample_ID -c ~/path_to/example_cell_type.tsv -g ~/path_to/example_selected_genes.txt -d 10 -f Y -m 0,0.5 -q 0.075 -n 50,8000 -v 1,80000 -e 0.01 -u AUTO -s Y -w N -a AUTO`
+`Rscript ~/bin/Runs_Seurat_v3_SingleDataset.R -i ~/path_to/filtered_feature_bc_matrix/ -t MTX -j NA -b 2 -k Y -r 1 -o ~/example/outfiles -p sample_ID -c ~/path_to/example_cell_type.tsv -g ~/path_to/example_selected_genes.txt -d 10 -f Y -m 0,0.5 -q 0.075 -n 50,8000 -v 1,80000 -e 0.01 -u AUTO -s Y -w N -a AUTO`
 
 Inputs Description
 ================
@@ -49,8 +49,6 @@ b) a *directory* with 10X files from Cell Ranger v3 (barcodes.tsv.gz, features.t
 c) a *file* in TSV <tab> delimited format with cell-barcodes in columns and genes in rows (e.g. from DropSeq)
 
 Example infiles are provided in folder 'examples'
-
-
 
 Outputs Description
 ================
@@ -72,7 +70,6 @@ Outputs Description
 
 Note: if the run uses `-w Y` then other directories with prefix `frontend_` needed by CReSCENT's graphic user 
 interface will be produced. 
-
 
 Authors
 ================
