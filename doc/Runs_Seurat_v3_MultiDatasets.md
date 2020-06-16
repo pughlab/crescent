@@ -1,6 +1,6 @@
 Script name
 ================
-`integrates_datasets_with_seurat.R`
+`Runs_Seurat_v3_MultiDatasets.R`
 
 Description
 ================
@@ -40,10 +40,10 @@ Example commands
 This example works with files provided in folder ~/examples/INPUTS<br />
 
 To display help commands type: <br />
-`Rscript integrates_datasets_with_seurat.R -h`
+`Rscript Runs_Seurat_v3_MultiDatasets.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/r_programs/integrates_datasets_with_seurat_dev.R -i ~/path_to/list_of_datasets_and_params.tsv -j ~/path_to/list_of_barcodes_to_remove -k reference_datasets_list -r 0.4 -v 1,2,3 -o ~/path_to/outdir -p outfiles_prefix  -c ~/path_to/metadata.tsv -g GENE1,GENE2 -d 10 -e 0.01 -f 1,2,3,4,5,6,7,8,9,10,11,12 -b r0.4_cell_type -u MAX -s Y -w N -a 4000`
+`Rscript ~/r_programs/Runs_Seurat_v3_MultiDatasets.R -i ~/path_to/list_of_datasets_and_params.tsv -j ~/path_to/list_of_barcodes_to_remove -k reference_datasets_list -r 0.4 -v 1,2,3 -o ~/path_to/outdir -p outfiles_prefix  -c ~/path_to/metadata.tsv -g GENE1,GENE2 -d 10 -e 0.01 -f 1,2,3,4,5,6,7,8,9,10,11,12 -b r0.4_cell_type -u MAX -s Y -w N -a 4000`
 
 Inputs Description
 ================
@@ -54,7 +54,6 @@ b) a *directory* with 10X files from Cell Ranger v3 (barcodes.tsv.gz, features.t
 c) a *file* in TSV <tab> delimited format with cell-barcodes in columns and genes in rows (e.g. from DropSeq)
 
 Example infiles are provided in folder 'examples'
-
 
 Outputs Description
 ================
@@ -73,7 +72,6 @@ Outputs Description
 | SELECTED_GENE_DIMENSION_REDUCTION_PLOTS  | t-SNE/UMAP plots showing selected genes| 
 
 Note: if the run uses `-w Y` then other directories with prefix `frontend_` needed by CReSCENT's graphic user interface will be produced. 
-
 
 Authors
 ================
