@@ -4,8 +4,7 @@ Script name
 
 Description
 ================
-Runs Seurat version 3 scRNA-seq data normalization, dimension reduction and cell clustering. The input is either a matrix in MTX format (matrix.mtx.gz) and its barcode and gene/feature indices (barcode.tsv.gz and features.tsv.gz) or a GEM Gene Expression Matrix file (GEM, with genes (rows) vs. barcodes (columns). See *Inputs Description* below). The MTX files are typical outputs from a 10X Cell Ranger, and can also be generated from a GEM file using script: `bin/in_use/obtains_mtx_files_from_gene_x_barcode_matrix.R`.
-
+Runs Seurat version 3 scRNA-seq data QC, normalization, dimension reduction, cell clustering and differential gene expression. The input is a matrix in either MTX or TSV format (descriptions below). 
 
 The clustering procedure is based on this Seurat tutorial https://satijalab.org/seurat/pbmc3k_tutorial_v3.html
 
@@ -15,8 +14,8 @@ Default parameters are set as defults based on the Seurat tutorial or from empir
 
 Outfiles
 ================
-A table with the cell-clusters, a table with differentially expressed genes on each cell-cluster, plots provided as
-\*pdf files from the t-SNE and UMAP, violin plots, clustering etc. See 'Outputs Description' below for details.
+Tables with QC data, cell clusters, differential gene expression (DGE), t-SNE and UMAP plots, DGE violin plots, etc.
+See 'Outputs Description' below for details.
 
 General workflow
 ================
@@ -27,7 +26,7 @@ This code is a wrapper library written in R and the general workflow of this scr
   4. Determines cell clusters
   5. Runs average gene expression
   6. Draws UMAP/tSNE plots using cell clusters, requested genes and metadata
-  7. Runs differential gene expression (DGE)
+  7. Runs DGE
   8. Saves log files
   9. Ends
 
@@ -47,7 +46,7 @@ Inputs Description
 One of the following input types:<br />
 a) a *directory* with 10X files from Cell Ranger v2 (barcodes.tsv, genes.tsv and matrix.mtx) <br />
 b) a *directory* with 10X files from Cell Ranger v3 (barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz) <br />
-c) a *file* in GEM format with cell-barcodes in columns and genes in rows (e.g. from DropSeq)
+c) a *file* in TSV <tab> delimited format with cell-barcodes in columns and genes in rows (e.g. from DropSeq)
 
 Example infiles are provided in folder 'examples'
 
@@ -71,7 +70,8 @@ Outputs Description
 | R_OBJECTS                                | R object files | 
 | LOG_FILES                                | tables with run commands, computing times and R libraries used |
 
-Note: if the run uses `-w Y` then other directories with prefix `frontend_` needed by CReSCENT's graphic user interface will be produced. 
+Note: if the run uses `-w Y` then other directories with prefix `frontend_` needed by CReSCENT's graphic user 
+interface will be produced. 
 
 
 Authors
@@ -83,10 +83,15 @@ Dependencies [brackets indicate tested versions]
 ================
 
 **R [3.6.1] and the following R packages** <br /><br />
-**Seurat [3.1.1] ** <br />
+**Seurat [3.1.1]** <br />
 Can be installed in R console with: <br />
 `install.packages('devtools')`<br />
-`devtools::install_github("satijalab/seurat@v3.1.1")`<br />
+`devtools::install_github("satijalab/seurat@v3.1.1")`<br /><br />
+**DropletUtils [1.6.1]** <br />
+Can be installed in R console with: <br />
+`if (!requireNamespace("BiocManager", quietly = TRUE))`<br />
+`install.packages("BiocManager")`<br />
+`BiocManager::install("DropletUtils")`<br /><br />
 **dplyr [0.8.3]** <br />
 Can be installed in R console with: <br />
 `install.packages('dplyr')`<br /><br />
