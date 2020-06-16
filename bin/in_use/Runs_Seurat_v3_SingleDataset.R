@@ -1191,7 +1191,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   metadata_tsv  <-data.frame(NAME = row.names(seurat.object.f@meta.data), seurat_clusters = seurat.object.f@meta.data$seurat_clusters)
   metadata_tsv_string <- sapply(metadata_tsv, as.character)
   metadata_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", seurat_clusters = "group"), metadata_tsv_string)
-  colnames(metadata_tsv_string_TYPE) <- c("NAME", paste0("Seurat_Clusters_Resolution", Resolution))
+  colnames(metadata_tsv_string_TYPE) <- c("NAME", paste("Seurat_Clusters_Resolution", Resolution, sep = "", collapse = ""))
   OutfileClusters<-paste0(Tempdir,"/","frontend_groups/","groups.tsv")
   write.table(data.frame(metadata_tsv_string_TYPE),file = OutfileClusters, row.names = F, col.names = T, sep="\t", quote = F, append = T)
   
@@ -1217,7 +1217,7 @@ StopWatchStart$AverageGeneExpression  <- Sys.time()
 
 cluster.averages<-AverageExpression(object = seurat.object.f, use.scale = F, use.counts = F)
 OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles,".", ProgramOutdir, "_AverageGeneExpressionPerCluster.tsv")
-Headers<-paste("AVERAGE_GENE_EXPRESSION",paste("r", Resolution, "_C", names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
+Headers<-paste("AVERAGE_GENE_EXPRESSION",paste("C", names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
 write.table(Headers,file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(cluster.averages$RNA),file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
