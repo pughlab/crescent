@@ -19,7 +19,7 @@
 ####################################
 ### HOW TO RUN THIS SCRIPT 
 ### Using one-line-commands in a console or terminal type:
-### 'Rscript ~/path_to_this_file/Runs_Seurat_v3.R -h'
+### 'Rscript ~/path_to_this_file/Runs_Seurat_v3_SingleDataset.R -h'
 ### for help
 ####################################
 
@@ -89,23 +89,6 @@
 ####################################
 ### Required libraries
 ####################################
-### Package 'Seurat' version 3 is needed - tested using v3.1.1
-### Seurat's latest stable version can be installed like:
-### install.packages('Seurat')
-###
-### Or the development version can be installed like:
-### install.packages('devtools')
-### devtools::install_github(repo = "satijalab/seurat", ref = "develop")
-###
-### Or a specific older version (e.g. v3.0.3.9023) can be installed from GitHub like:
-### `PathForV3_0_3_9023Libs<-paste(.libPaths(), "/Seurat_V3_0_3_9023", sep = "", collapse = "")`
-### `dir.create(file.path(PathForV3_0_3_9023Libs), showWarnings = F, recursive = T)``
-### `devtools::install_github("satijalab/seurat", ref = "556e598", lib = PathForV3_0_3_9023Libs)`
-### ### To check that v3.0.3.9023 is installed
-### `library("Seurat",lib.loc = PathForV3_0_3_9023Libs)``
-### `packageVersion("Seurat")`
-### ### should return:
-### [1] ‘3.0.3.9023’
 suppressPackageStartupMessages(library(DropletUtils)) # (Bioconductor) to handle MTX/H5 format files. Note it has about the same speed than library(earlycross) which can't handle H5
 suppressPackageStartupMessages(library(Seurat))       # (CRAN) to run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
@@ -137,7 +120,7 @@ suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loom
 oldw <- getOption("warn")
 options( warn = -1 )
 
-ThisScriptName <- "Runs_Seurat_v3.R"
+ThisScriptName <- "Runs_Seurat_v3_SingleDataset.R"
 ProgramOutdir  <- "SEURAT"
 
 ####################################
@@ -146,15 +129,16 @@ ProgramOutdir  <- "SEURAT"
 #
 option_list <- list(
   make_option(c("-i", "--input"), default="NA",
-              help="Either the path/name to a MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files;
-                or path/name of a <tab> delimited digital gene expression (DGE) *file* with genes in rows vs. barcodes in columns
-                Notes:
-                The 'MTX' files can be for example the output from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
-                Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
+              help="Path/name to either a read counts matrix in either 'MTX' or 'TSV' format (see parameter -t)
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-t", "--input_type"), default="NA",
-              help="Indicates if input is either a 'MTX' directory or a 'DGE' file
+              help="Either 'MTX', 'TSV' or 'HDF5'
+                'MTX'  is the path/name to an MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files
+                'TSV'  is the path/name of a <tab> delimited *file* with genes in rows vs. barcodes in columns
+                'HDF5' is the path/name of a *file* in hdf5 format (e.g. from Cell Ranger)
+                Note 'MTX' files can be the outputs from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
+                Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-j", "--inputs_remove_barcodes"), default="NA",
@@ -173,7 +157,12 @@ option_list <- list(
                 Default = '2'"),
   #
   make_option(c("-k", "--save_filtered_data"), default="N",
-              help="Indicates one the filtered raw and normalized data should be saved as MTX files. Type 'y/Y' or 'n/N'
+              help="Indicates if filtered raw and normalized data should be saved as MTX files. Type 'y/Y' or 'n/N'
+                Default = 'N'"),
+  #
+  make_option(c("-l", "--save_unfiltered_data"), default="N",
+              help="Indicates if unfiltered raw data (exactly as inputted by --input) should be saved as MTX files. Type 'y/Y' or 'n/N'
+                This may be useful to share with collaborators along results in a single zipped file
                 Default = 'N'"),
   #
   make_option(c("-r", "--resolution"), default="1",
@@ -266,6 +255,7 @@ InputType               <- opt$input_type
 InfileRemoveBarcodes    <- opt$inputs_remove_barcodes
 NormalizeAndScale       <- as.numeric(opt$normalize_and_scale_sample)
 SaveFilteredData        <- opt$save_filtered_data 
+SaveUnFilteredData      <- opt$save_unfiltered_data 
 Resolution              <- as.numeric(opt$resolution)
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
@@ -436,19 +426,20 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     "frontend_markers",
     "frontend_qc",
     "frontend_groups",
-    "QC_PLOTS", 
-    "QC_TABLES", 
-    "FILTERED_DATA_MATRICES",
-    "DIMENSION_REDUCTION_PLOTS", 
-    "DIMENSION_REDUCTION_COORDINATE_TABLES",
-    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
-    "CELL_CLUSTER_IDENTITIES", 
     "AVERAGE_GENE_EXPRESSION_TABLES", 
+    "CELL_CLUSTER_IDENTITIES", 
     "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
     "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
-    "SUMMARY_PLOTS",
+    "DIMENSION_REDUCTION_COORDINATE_TABLES",
+    "DIMENSION_REDUCTION_PLOTS",
+    "FILTERED_DATA_MATRICES",
+    "LOG_FILES",
+    "QC_PLOTS", 
+    "QC_TABLES", 
     "R_OBJECTS", 
-    "LOG_FILES"
+    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
+    "SUMMARY_PLOTS",
+    "UNFILTERED_DATA_MATRICES"
   )
   
 }else{
@@ -472,19 +463,20 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
   
   FILE_TYPE_OUT_DIRECTORIES = c(
-    "QC_PLOTS", 
-    "QC_TABLES", 
-    "FILTERED_DATA_MATRICES",
-    "DIMENSION_REDUCTION_PLOTS", 
-    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
-    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
-    "CELL_CLUSTER_IDENTITIES", 
     "AVERAGE_GENE_EXPRESSION_TABLES", 
+    "CELL_CLUSTER_IDENTITIES", 
     "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
     "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
-    "SUMMARY_PLOTS",
+    "DIMENSION_REDUCTION_COORDINATE_TABLES",
+    "DIMENSION_REDUCTION_PLOTS",
+    "FILTERED_DATA_MATRICES",
+    "LOG_FILES",
+    "QC_PLOTS", 
+    "QC_TABLES", 
     "R_OBJECTS", 
-    "LOG_FILES"
+    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
+    "SUMMARY_PLOTS",
+    "UNFILTERED_DATA_MATRICES"
   )
 }
 
@@ -533,18 +525,41 @@ writeLines("\n*** Load scRNA-seq data ***\n")
 StopWatchStart$LoadScRNAseqData  <- Sys.time()
 
 if (regexpr("^MTX$", InputType, ignore.case = T)[1] == 1) {
-  print("Loading MTX infiles")
+  writeLines(paste0("\n*** Loading MTX infiles ***\n"))
   input.matrix <- Read10X(data.dir = Input)
-}else if (regexpr("^DGE$", InputType, ignore.case = T)[1] == 1) {
-  print("Loading Digital Gene Expression matrix")
+}else if (regexpr("^TSV$", InputType, ignore.case = T)[1] == 1) {
+  writeLines(paste0("\n*** Loading matrix of genes (rows) vs. barcodes (columns) ***\n"))
   ## Note `check.names = F` is needed for both `fread` and `data.frame`
   input.matrix <- as.matrix(data.frame(fread(Input, check.names = F), row.names=1, check.names = F))
+}else if (regexpr("^HDF5$", InputType, ignore.case = T)[1] == 1) {
+  writeLines(paste0("\n*** Loading HDF5 infile ***\n"))
+  input.matrix <- Read10X_h5(filename = Input, use.names = T, unique.features = T)
 }else{
   stop(paste0("Unexpected type of input: ", InputType, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n"))
 }
 dim(input.matrix)
 
 StopWatchEnd$LoadScRNAseqData  <- Sys.time()
+
+####################################
+### Save unfiltered data
+####################################
+
+if (regexpr("^Y$", SaveUnFilteredData, ignore.case = T)[1] == 1) {
+  writeLines("\n*** Save unfiltered data ***\n")
+  
+  StopWatchStart$SaveUnFilteredData  <- Sys.time()
+
+  ### This is to write out the input data with no filters at all
+  seurat.object.tmp  <- CreateSeuratObject(counts = input.matrix, min.cells = 0, min.features = 0, project = PrefixOutfiles)
+  
+  OutDirUnfilteredRaw <-paste0(Tempdir, "/UNFILTERED_DATA_MATRICES/", "RAW")
+  dir.create(file.path(OutDirUnfilteredRaw), showWarnings = F, recursive = T)
+  write10xCounts(path = OutDirUnfilteredRaw, x = seurat.object.tmp@assays[["RNA"]]@counts, gene.type="Raw_Gene_Expression", overwrite=T, type="sparse", version="3")
+
+  StopWatchEnd$SaveUnFilteredData  <- Sys.time()
+
+}
 
 ####################################
 ### Define number of cores for parallelization
@@ -1067,18 +1082,21 @@ if (NormalizeAndScale == 1) {
 ####################################
 ### Save filtered data
 ####################################
-writeLines("\n*** Save filtered data ***\n")
 
 if (regexpr("^Y$", SaveFilteredData, ignore.case = T)[1] == 1) {
+  writeLines("\n*** Save filtered data ***\n")
   
   OutDirFilteredRaw <-paste0(Tempdir, "/FILTERED_DATA_MATRICES/", "RAW")
+  dir.create(file.path(OutDirFilteredRaw), showWarnings = F, recursive = T)
   write10xCounts(path = OutDirFilteredRaw, x = seurat.object.f@assays[["RNA"]]@counts, gene.type="Raw_Gene_Expression", overwrite=T, type="sparse", version="3")
 
   if (NormalizeAndScale == 1) {
     OutDirFilteredNorm<-paste0(Tempdir, "/FILTERED_DATA_MATRICES/", "NORMALIZED_LOG")
+    dir.create(file.path(OutDirFilteredNorm), showWarnings = F, recursive = T)
     write10xCounts(path = OutDirFilteredNorm, x = round(seurat.object.f@assays[["RNA"]]@data, digits = 4), gene.type="LogNormalize_Gene_Expression", overwrite=T, type="sparse", version="3")
   }else if (NormalizeAndScale == 2) {
     OutDirFilteredNorm<-paste0(Tempdir, "/FILTERED_DATA_MATRICES/", "NORMALIZED_SCT")
+    dir.create(file.path(OutDirFilteredNorm), showWarnings = F, recursive = T)
     write10xCounts(path = OutDirFilteredNorm, x = round(seurat.object.f@assays[["SCT"]]@data, digits = 4), gene.type="SCTransform_Gene_Expression", overwrite=T, type="sparse", version="3")
   }
 }
@@ -1191,6 +1209,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   metadata_tsv  <-data.frame(NAME = row.names(seurat.object.f@meta.data), seurat_clusters = seurat.object.f@meta.data$seurat_clusters)
   metadata_tsv_string <- sapply(metadata_tsv, as.character)
   metadata_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", seurat_clusters = "group"), metadata_tsv_string)
+  ### Note paste0() didn't work here. Use paste(...,  sep = "", collapse = "") instead
   colnames(metadata_tsv_string_TYPE) <- c("NAME", paste("Seurat_Clusters_Resolution", Resolution, sep = "", collapse = ""))
   OutfileClusters<-paste0(Tempdir,"/","frontend_groups/","groups.tsv")
   write.table(data.frame(metadata_tsv_string_TYPE),file = OutfileClusters, row.names = F, col.names = T, sep="\t", quote = F, append = T)
@@ -1217,7 +1236,7 @@ StopWatchStart$AverageGeneExpression  <- Sys.time()
 
 cluster.averages<-AverageExpression(object = seurat.object.f, use.scale = F, use.counts = F)
 OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles,".", ProgramOutdir, "_AverageGeneExpressionPerCluster.tsv")
-Headers<-paste("AVERAGE_GENE_EXPRESSION",paste("C", names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
+Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("C", names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
 write.table(Headers,file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(cluster.averages$RNA),file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
@@ -1561,7 +1580,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   
   sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(DirName) {
     TempdirWithData <- paste0(Tempdir, "/", DirName)
-    if (DirName == "FILTERED_DATA_MATRICES") {
+    if (DirName == "FILTERED_DATA_MATRICES" | DirName == "UNFILTERED_DATA_MATRICES") {
       sapply(list.dirs(TempdirWithData, full.names = F, recursive = F), FUN=function(SubDirName) {
         OutdirFinal <- gsub(pattern = Tempdir, replacement =  paste0(Outdir, "/", ProgramOutdir), x = paste0(TempdirWithData, "/", SubDirName))
         dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
