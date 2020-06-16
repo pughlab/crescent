@@ -39,7 +39,7 @@ To display help commands type: <br />
 `Rscript Runs_Seurat_v3.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to/filtered_feature_bc_matrix/ -t MTX -j NA -b 2 -r 1 -o ~/example/outfiles -p sample_ID -c ~/path_to/example_cell_type.tsv -g ~/path_to/example_selected_genes.txt -d 10 -f Y -m 0,0.5 -q 0.075 -n 50,8000 -v 1,80000 -e 0.01 -u AUTO -s Y -w N -a AUTO`
+`Rscript ~/bin/Runs_Seurat_v3.R -i ~/path_to/filtered_feature_bc_matrix/ -t MTX -j NA -b 2 -k Y -r 1 -o ~/example/outfiles -p sample_ID -c ~/path_to/example_cell_type.tsv -g ~/path_to/example_selected_genes.txt -d 10 -f Y -m 0,0.5 -q 0.075 -n 50,8000 -v 1,80000 -e 0.01 -u AUTO -s Y -w N -a AUTO`
 
 Inputs Description
 ================
@@ -58,7 +58,8 @@ Outputs Description
 |               Extension                  |                        Contents                        |
 | --------------------------------------   |  ----------------------------------------------------- |
 | QC_PLOTS                                 | violin and t-SNE/UMAP plots showing QC metrics         | 
-| QC_TABLES                                | tables underlying QC_PLOTS | 
+| QC_TABLES                                | tables underlying QC_PLOTS |
+| FILTERED_DATA_MATRICES                   | MTX files with filtered raw and normalized values |
 | DIMENSION_REDUCTION_PLOTS                | t-SNE/UMAP plots showing cell clusters and metadata | 
 | DIMENSION_REDUCTION_COORDINATE_TABLES    | tables underlying DIMENSION_REDUCTION_PLOTS | 
 | SELECTED_GENE_DIMENSION_REDUCTION_PLOTS  | t-SNE/UMAP plots showing selected genes| 
@@ -66,10 +67,12 @@ Outputs Description
 | AVERAGE_GENE_EXPRESSION_TABLES           | table with each gene average expression for each cell cluster | 
 | DIFFERENTIAL_GENE_EXPRESSION_TABLES      | table with DGE for each cell cluster vs. rest of cells in the dataset | 
 | DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS  | t-SNE/UMAP plots showing each cluster top-2 DGE genes|  
+| SUMMARY_PLOTS                            | selection of plots typically used for publications |  
 | R_OBJECTS                                | R object files | 
 | LOG_FILES                                | tables with run commands, computing times and R libraries used |
 
 Note: if the run uses `-w Y` then other directories with prefix `frontend_` needed by CReSCENT's graphic user interface will be produced. 
+
 
 Authors
 ================
