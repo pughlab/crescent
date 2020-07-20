@@ -260,6 +260,10 @@ option_list <- list(
                 Note, if using 'y/Y' this supersedes option -o
                 Default = 'N'"),
   #
+  make_option(c("-x", "--minio_path"), default="NA",
+              help="Used with the 'run_cwl' option above for mounting input data files in 'inputs_list' to CWL containers. 
+                Default = 'NA'"),
+  #
   make_option(c("-a", "--max_global_variables"), default="4000",
               help="Indicates maximum allowed total size (in bytes) of global variables identified.
                 Used by library(future) to prevent too large exports
@@ -289,6 +293,7 @@ NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
 MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
+MinioPath               <- as.list(strsplit(opt$minio_path, ",")[[1]])
 
 ####################################
 ### Define outdirs and CWL parameters
@@ -579,10 +584,29 @@ if ((1 %in% RequestedApplySelectedGenes == T) |
 ####################################
 writeLines("\n*** Load --inputs_list ***\n")
 
-InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
-InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPath)), dataset_path=rep(0, length(MinioPath)))
+  
+  for (i in seq_along(MinioPath)) {
+    MinioDataPaths[i, ] = c(basename(MinioPath[[i]]), MinioPath[[i]])
+  }
 
+  InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
+  
+  MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
+  MergeFilter <- c("name", "dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
+  MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
+  MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
+  rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
+  colnames(MergedInputsTableFilteredFinal) <-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+  
+  InputsTable <- MergedInputsTableFilteredFinal
+
+} else {
+  InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
+  InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
+  colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+}
 ####################################
 ### Load scRNA-seq data and generate QC plots and tables
 ####################################
@@ -609,8 +633,12 @@ for (dataset in rownames(InputsTable)) {
   print(NumberOfDatasets)
   Dataset.SO <-paste0(dataset, ".so")
 
-  PathToDataset <- gsub("^~/",paste0(UserHomeDirectory,"/"), InputsTable[dataset,"PathToDataset"])
-  
+  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    PathToDataset <- InputsTable[dataset,"PathToDataset"]
+  } else {
+    PathToDataset <- gsub("^~/",paste0(UserHomeDirectory,"/"), InputsTable[dataset,"PathToDataset"])
+  }
+
   DatasetType   <- InputsTable[dataset,"DatasetType"]
 
   list_DatasetToType[[dataset]]      <- DatasetType
@@ -2971,41 +2999,46 @@ for (stepToClock in names(StopWatchStart)) {
 ####################################
 
 ### using two steps to copy files (`file.copy` and `file.remove`) instead of just `file.rename` to avoid issues with path to Tempdir in cluster systems
-
-sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(DirName) {
-  TempdirWithData <- paste0(Tempdir, "/", DirName)
-  if (DirName == "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS") {
-    sapply(list.dirs(TempdirWithData, full.names = F, recursive = F), FUN=function(SubDirName) {
-      sapply(list.dirs(paste0(TempdirWithData, "/", SubDirName), full.names = F, recursive = F), FUN=function(SubSubDirName) {
-        OutdirFinal <- gsub(pattern = Tempdir, replacement =  paste0(Outdir, "/", ProgramOutdir), x = paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName))
-        dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
-        sapply(list.files(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName), pattern = ".pdf", full.names = F), FUN=function(EachFileName) {
-          file.copy(from=paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
-          file.remove(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName))
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  writeLines("\n*** Keeping files at: ***\n")
+  writeLines(Tempdir)
+} else {
+  writeLines("\n*** Moving outfiles into outdir ***\n")
+  sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(DirName) {
+    TempdirWithData <- paste0(Tempdir, "/", DirName)
+    if (DirName == "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS") {
+      sapply(list.dirs(TempdirWithData, full.names = F, recursive = F), FUN=function(SubDirName) {
+        sapply(list.dirs(paste0(TempdirWithData, "/", SubDirName), full.names = F, recursive = F), FUN=function(SubSubDirName) {
+          OutdirFinal <- gsub(pattern = Tempdir, replacement =  paste0(Outdir, "/", ProgramOutdir), x = paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName))
+          dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
+          sapply(list.files(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName), pattern = ".pdf", full.names = F), FUN=function(EachFileName) {
+            file.copy(from=paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+            file.remove(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName))
+          })
         })
       })
-    })
-  }else if (DirName == "FILTERED_DATA_MATRICES" | DirName == "UNFILTERED_DATA_MATRICES") {
-    sapply(list.dirs(TempdirWithData, full.names = F, recursive = F), FUN=function(SubDirName) {
-      sapply(list.dirs(paste0(TempdirWithData, "/", SubDirName), full.names = F, recursive = F), FUN=function(SubSubDirName) {
-        OutdirFinal <- gsub(pattern = Tempdir, replacement =  paste0(Outdir, "/", ProgramOutdir), x = paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName))
-        dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
-        sapply(list.files(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName), pattern = ".gz", full.names = F), FUN=function(EachFileName) {
-          file.copy(from=paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
-          file.remove(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName))
+    }else if (DirName == "FILTERED_DATA_MATRICES" | DirName == "UNFILTERED_DATA_MATRICES") {
+      sapply(list.dirs(TempdirWithData, full.names = F, recursive = F), FUN=function(SubDirName) {
+        sapply(list.dirs(paste0(TempdirWithData, "/", SubDirName), full.names = F, recursive = F), FUN=function(SubSubDirName) {
+          OutdirFinal <- gsub(pattern = Tempdir, replacement =  paste0(Outdir, "/", ProgramOutdir), x = paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName))
+          dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
+          sapply(list.files(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName), pattern = ".gz", full.names = F), FUN=function(EachFileName) {
+            file.copy(from=paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+            file.remove(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName))
+          })
         })
       })
-    })
-  }else{
-    OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
-    print(OutdirFinal)
-    dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
-    sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(EachFileName) {
-      file.copy(from=paste0(TempdirWithData, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
-      file.remove(paste0(TempdirWithData, "/", EachFileName))
-    })
-  }
-})
+    }else{
+      OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
+      print(OutdirFinal)
+      dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
+      sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(EachFileName) {
+        file.copy(from=paste0(TempdirWithData, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+        file.remove(paste0(TempdirWithData, "/", EachFileName))
+      })
+    }
+  })
+}
 
 ####################################
 ### Turning warnings on
