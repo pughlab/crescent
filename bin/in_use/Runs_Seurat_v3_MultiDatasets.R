@@ -306,12 +306,14 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   dir.create(file.path(Tempdir), showWarnings = F) 
   
   FILE_TYPE_OUT_DIRECTORIES = c(
-    "normalized",
-    "coordinates",
-    "raw",
-    "metadata",
-    "markers",
-    "qc",
+    "CRESCENT_CLOUD",
+    "CRESCENT_CLOUD/frontend_normalized",
+    "CRESCENT_CLOUD/frontend_coordinates",
+    "CRESCENT_CLOUD/frontend_raw",
+    "CRESCENT_CLOUD/frontend_metadata",
+    "CRESCENT_CLOUD/frontend_markers",
+    "CRESCENT_CLOUD/frontend_qc",
+    "CRESCENT_CLOUD/frontend_groups",
     "AVERAGE_GENE_EXPRESSION_TABLES", 
     "CELL_CLUSTER_IDENTITIES", 
     "CELL_FRACTIONS", 
@@ -1327,6 +1329,16 @@ StopWatchEnd$ClusterAllCells  <- Sys.time()
 
 StopWatchStart$AllCellClusterTables  <- Sys.time()
 
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  metadata_tsv  <-data.frame(NAME = row.names(seurat.object.integrated@meta.data), seurat_clusters = seurat.object.integrated@meta.data$seurat_clusters)
+  metadata_tsv_string <- sapply(metadata_tsv, as.character)
+  metadata_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", seurat_clusters = "group"), metadata_tsv_string)
+  ### Note paste0() didn't work here. Use paste(...,  sep = "", collapse = "") instead
+  colnames(metadata_tsv_string_TYPE) <- c("NAME", paste("Seurat_Global_Clusters_Res", Resolution, sep = "", collapse = ""))
+  OutfileClusters<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_groups/","groups.tsv")
+  write.table(data.frame(metadata_tsv_string_TYPE),file = OutfileClusters, row.names = F, col.names = T, sep="\t", quote = F, append = T)
+}
+
 CellNames<-rownames(seurat.object.integrated@meta.data)
 ClusterIdent <-seurat.object.integrated@meta.data$seurat_clusters
 NumberOfClusters<-length(unique(ClusterIdent))
@@ -1431,6 +1443,12 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   Headers<-paste("Barcode",paste(colnames(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings), sep="", collapse="\t"), sep="\t", collapse = "\t")
   write.table(Headers,file = OutfileCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
+
+  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    OutfileCoordinatesCWL<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_coordinates/",DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv")
+    write.table(Headers,file = OutfileCoordinatesCWL, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinatesCWL,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  }
 
   StopWatchEnd$DimensionReductionWriteCoords$dim_red_method  <- Sys.time()
 
