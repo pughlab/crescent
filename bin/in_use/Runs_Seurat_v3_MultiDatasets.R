@@ -293,7 +293,7 @@ NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
 MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
-MinioPath               <- as.list(strsplit(opt$minio_path, ",")[[1]])
+MinioPath               <- opt$minio_path
 
 ####################################
 ### Define outdirs and CWL parameters
@@ -587,10 +587,11 @@ if ((1 %in% RequestedApplySelectedGenes == T) |
 writeLines("\n*** Load --inputs_list ***\n")
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPath)), dataset_path=rep(0, length(MinioPath)))
+  MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
+  MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
   
-  for (i in seq_along(MinioPath)) {
-    MinioDataPaths[i, ] = c(basename(MinioPath[[i]]), MinioPath[[i]])
+  for (i in seq_along(MinioPaths)) {
+    MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
   }
 
   InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
