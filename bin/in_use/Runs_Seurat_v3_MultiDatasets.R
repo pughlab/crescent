@@ -509,7 +509,7 @@ if ((1 %in% RequestedDiffGeneExprComparisons == T) | (2 %in% RequestedDiffGeneEx
 }
 
 if (6 %in% RequestedDiffGeneExprComparisons == T) {
-  if (1 %in% RequestedClusteringInputs == T) {
+  if (2 %in% RequestedClusteringInputs == T) {
     writeLines("\nOk\n")
   }else{
     stop("ERROR!!! options `-f 6` needs option `-v 1`")
