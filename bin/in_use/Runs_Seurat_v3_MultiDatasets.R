@@ -42,6 +42,12 @@
 ###   SMTR_res1.SEURAT_GlobalClustering_Rad_unknownt1_NonRad_TSNEPlot_ColourByCellClusters.pdf
 ###   When it should be:
 ###   SMTR_res1.SEURAT_GlobalClustering_Rad_unknown_TSNEPlot_ColourByCellClusters.pdf
+### 3) To program a loop to avoid an error when integrating very heretogeneous datasets--where few anchors are expected:
+###    Error in nn2(data = c(-0.0268782296438318, -0.0333332648557412, -0.032492403275445,  : 
+###       Cannot find more nearest neighbours than there are points
+###    To avoid this error one can modify `k.filter` from 200 (default) to lower values, e.g. `k.filter = 160` worked out for
+###    Pugh/dePerrot labe SMARTER datasets, where sample SMTR05t1_NonRad integrated vs. SMTR0[2-4] produced the above error
+###    Documented here: https://github.com/satijalab/seurat/issues/997
 ####################################
 
 ####################################
@@ -122,7 +128,7 @@ option_list <- list(
                 9) dataset minimum number of genes (e.g. '50')
                 10) dataset maximum number of genes (e.g. '8000')
                 11) dataset minimum number of reads (e.g. '1')
-                12) dataset minimum number of reads (e.g. '80000')
+                12) dataset maximum number of reads (e.g. '80000')
                 Default = 'No default. It's mandatory to specify this parameter'
 
                 Notes:
@@ -208,6 +214,12 @@ option_list <- list(
                 *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
                 Default = '10'"),
   #
+  make_option(c("-n", "--k_filter"), default="200",
+              help="Integrating highly heterogenous datasets can lead to a too small number of anchors,
+                resulting in an error 'Cannot find more nearest neighbours than there are points'
+                This can be avoided by using a -k_filter value smaller than the default (e.g. '150')
+                Default = '200'"),
+  #
   make_option(c("-e", "--return_threshold"), default="0.01",
               help="For each differentially expressed genes test returns only hits that have an UNcorrected p-value < return_thresh
                 Default = '0.01'"),
@@ -269,6 +281,7 @@ InfileMetadata          <- opt$infile_metadata
 InfileSelectedGenes     <- opt$infile_selected_genes
 ApplySelectedGenes      <- opt$apply_list_genes
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
+KFilter                 <- as.numeric(opt$k_filter)
 ThreshReturn            <- as.numeric(opt$return_threshold)
 DiffGeneExprComparisons <- opt$diff_gene_expr_comparisons
 MetadataColNamesForDge  <- opt$metadata_column_names_for_dge
@@ -506,6 +519,12 @@ if (7 %in% RequestedDiffGeneExprComparisons == T) {
 
 #### Metadata options
 
+if (length(grep('^NA$', InfileMetadata, perl = T))) {
+  writeLines("\nNo metadata will be used\n")
+}else{
+  CellPropertiesFromMetadata <- data.frame(read.table(InfileMetadata, header = T, row.names = 1, check.names = F))
+}
+
 if ((8 %in% RequestedDiffGeneExprComparisons == T) | 
     (9 %in% RequestedDiffGeneExprComparisons == T) | 
     (10 %in% RequestedDiffGeneExprComparisons == T) |
@@ -527,7 +546,6 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
   writeLines(paste0("\n*** Check that requested --metadata_column_names_for_dge exist in --infile_metadata ***\n"))
   
   MetadataColNamesForDge.list  = unlist(strsplit(MetadataColNamesForDge, ","))
-  CellPropertiesFromMetadata <- data.frame(read.table(InfileMetadata, header = T, row.names = 1, check.names = F))
   if (sum(MetadataColNamesForDge.list %in% colnames(CellPropertiesFromMetadata)) == length(MetadataColNamesForDge.list)) {
   writeLines("\nOk\n")
   }else{
@@ -1139,11 +1157,11 @@ StopWatchStart$FindIntegrationAnchors  <- Sys.time()
 writeLines("\n*** Run FindIntegrationAnchors() ***\n")
 if (regexpr("^NA$", ReferenceDatasets , ignore.case = T)[1] == 1) {
   writeLines("\n*** No reference datasets will be used. Finding anchors in all-vs-all dataset pairwise comparisons ***\n")
-  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, verbose = T)
+  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, verbose = T)
 
 }else if (regexpr("[0-9]", ReferenceDatasets , ignore.case = T, perl = T)[1] == 1) {
   writeLines(paste0("\n*** Dataset number(s): ", ReferenceDatasets, " will be used as reference(s) ***\n"))
-  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, reference = c(as.numeric(unlist(strsplit(ReferenceDatasets, ",")))), verbose = T)
+  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, reference = c(as.numeric(unlist(strsplit(ReferenceDatasets, ",")))), verbose = T)
 
 }else{
   stop(paste0("Unexpected format in --reference_datasets ", ReferenceDatasets))
