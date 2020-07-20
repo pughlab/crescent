@@ -419,13 +419,14 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   dir.create(file.path(Tempdir), showWarnings = F) 
   
   FILE_TYPE_OUT_DIRECTORIES = c(
-    "frontend_normalized",
-    "frontend_coordinates",
-    "frontend_raw",
-    "frontend_metadata",
-    "frontend_markers",
-    "frontend_qc",
-    "frontend_groups",
+    "CRESCENT_CLOUD",
+    "CRESCENT_CLOUD/frontend_normalized",
+    "CRESCENT_CLOUD/frontend_coordinates",
+    "CRESCENT_CLOUD/frontend_raw",
+    "CRESCENT_CLOUD/frontend_metadata",
+    "CRESCENT_CLOUD/frontend_markers",
+    "CRESCENT_CLOUD/frontend_qc",
+    "CRESCENT_CLOUD/frontend_groups",
     "AVERAGE_GENE_EXPRESSION_TABLES", 
     "CELL_CLUSTER_IDENTITIES", 
     "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
@@ -886,14 +887,14 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   interactive_qc_plot_u$Mitochondrial_Genes_Percentage <- interactive_qc_plot_u$Mitochondrial_Genes_Percentage * 100
   interactive_qc_plot_u$Ribosomal_Protein_Genes_Percentage <- interactive_qc_plot_u$Ribosomal_Protein_Genes_Percentage * 100
   colnames(interactive_qc_plot_u) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Percentage","Ribosomal Protein Genes Percentage")
-  write.table(interactive_qc_plot_u, paste(Tempdir,"/","frontend_qc/","BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+  write.table(interactive_qc_plot_u, paste(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/","BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
   
   # filtered
   interactive_qc_plot_f  <-data.frame(Barcodes = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
   interactive_qc_plot_f$Mitochondrial_Genes_Percentage <- interactive_qc_plot_f$Mitochondrial_Genes_Percentage * 100
   interactive_qc_plot_f$Ribosomal_Protein_Genes_Percentage <- interactive_qc_plot_f$Ribosomal_Protein_Genes_Percentage * 100
   colnames(interactive_qc_plot_f) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Percentage","Ribosomal Protein Genes Percentage")
-  write.table(interactive_qc_plot_f, paste(Tempdir,"/","frontend_qc/","AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+  write.table(interactive_qc_plot_f, paste(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/","AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
   
   qc_tsv <- data.frame(NAME = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
   qc_tsv$Mitochondrial_Genes_Percentage <- qc_tsv$Mitochondrial_Genes_Percentage * 100
@@ -901,7 +902,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   qc_tsv_string <- sapply(qc_tsv, as.character)
   qc_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", Number_of_Genes = "numeric", Number_of_Reads = "numeric", Mitochondrial_Genes_Percentage = "numeric", Ribosomal_Protein_Genes_Percentage = "numeric"), qc_tsv_string)
   
-  qc_outfile <-paste0(Tempdir,"/","frontend_qc/","qc_data.tsv")
+  qc_outfile <-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/","qc_data.tsv")
   write.table(data.frame(qc_tsv_string_TYPE),file = qc_outfile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
 } 
 
@@ -982,7 +983,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   qc_metrics_mito <- data.frame(Step = "Percentage of Mitochondrial Genes", Filter_min = as.numeric(ListPMito[[1]])*100, Filter_max = as.numeric(ListPMito[[2]])*100, Excluded_cells = NumberOfBarcodesExcludedByMito)
   qc_metrics_ribo <- data.frame(Step = "Percentage of Ribsomal Protein Genes", Filter_min = as.numeric(ListPRibo[[1]])*100, Filter_max = as.numeric(ListPRibo[[2]])*100, Excluded_cells = NumberOfBarcodesExcludedByRibo)
   
-  qc_metrics <-paste0(Tempdir,"/","frontend_qc/","qc_metrics.tsv")
+  qc_metrics <-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/","qc_metrics.tsv")
   write.table(qc_metrics_genes, file = qc_metrics, row.names = F, col.names = T, sep="\t", quote = F, append = T)
   write.table(qc_metrics_reads, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
   write.table(qc_metrics_mito, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
@@ -1114,10 +1115,10 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   
   # all genes/features in matrix
   features_tsv <- as.data.frame(rownames(normalized_count_matrix))
-  write.table(features_tsv, file=paste0(Tempdir,"/","frontend_raw/","features.tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
+  write.table(features_tsv, file=paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_raw/","features.tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
   
   # generating loom file of normalized count matrix
-  loom_file <- paste0(Tempdir,"/","frontend_normalized/","normalized_counts.loom")
+  loom_file <- paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_normalized/","normalized_counts.loom")
   create(loom_file, normalized_count_matrix)
   
 }
@@ -1211,7 +1212,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   metadata_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", seurat_clusters = "group"), metadata_tsv_string)
   ### Note paste0() didn't work here. Use paste(...,  sep = "", collapse = "") instead
   colnames(metadata_tsv_string_TYPE) <- c("NAME", paste("Seurat_Clusters_Resolution", Resolution, sep = "", collapse = ""))
-  OutfileClusters<-paste0(Tempdir,"/","frontend_groups/","groups.tsv")
+  OutfileClusters<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_groups/","groups.tsv")
   write.table(data.frame(metadata_tsv_string_TYPE),file = OutfileClusters, row.names = F, col.names = T, sep="\t", quote = F, append = T)
   
 }
@@ -1295,7 +1296,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   Headers<-paste("Barcode",paste(colnames(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings),sep="",collapse="\t"), sep="\t", collapse = "\t")
   
   if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-    OutfileCoordinatesCWL<-paste0(Tempdir,"/","frontend_coordinates/",DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv")
+    OutfileCoordinatesCWL<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_coordinates/",DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv")
     write.table(Headers,file = OutfileCoordinatesCWL, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinatesCWL,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
   }
@@ -1411,7 +1412,7 @@ StopWatchEnd$FindDiffMarkers  <- Sys.time()
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   top_6_genes_by_cluster<-(seurat.object.markers %>% group_by(cluster) %>% top_n(6, avg_logFC))
   markers_file <- top_6_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
-  write.table(markers_file, paste0(Tempdir,"/","frontend_markers/","TopTwoMarkersPerCluster.tsv"),row.names = F,sep="\t",quote = F)
+  write.table(markers_file, paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_markers/","TopTwoMarkersPerCluster.tsv"),row.names = F,sep="\t",quote = F)
 } 
 
 ####################################
