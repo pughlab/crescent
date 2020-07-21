@@ -99,7 +99,8 @@ suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC vi
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
 suppressPackageStartupMessages(library(staplr))       # (CRAN) to merge pdf files. Note it needs pdftk available. If not available use `SummaryPlots <- "N"`
-suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`
+suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`.
+suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
 ####################################
 
 ####################################
@@ -1108,15 +1109,15 @@ if (regexpr("^Y$", SaveFilteredData, ignore.case = T)[1] == 1) {
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   
-  # output the normalized count matrix & features for front-end gene expression visualizations
   writeLines("\n*** Save normalized count matrix as loom ***\n")
   
   normalized_count_matrix <- as.matrix(seurat.object.f@assays[["RNA"]]@data)
   
   # all genes/features in matrix
-  features_tsv <- as.data.frame(rownames(normalized_count_matrix))
-  write.table(features_tsv, file=paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_raw/","features.tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
-  
+  features_tsv <- data.frame(features = rownames(normalized_count_matrix))
+  features_tsv_ordered <- as.data.frame(features_tsv[mixedorder(features_tsv$features),])
+  write.table(features_tsv_ordered, file=paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_raw/","features.tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
+
   # generating loom file of normalized count matrix
   loom_file <- paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_normalized/","normalized_counts.loom")
   create(loom_file, normalized_count_matrix)
