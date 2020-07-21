@@ -98,6 +98,8 @@ suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables qu
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
+suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`.
+suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.     
 ####################################
 
 ####################################
@@ -1229,6 +1231,26 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
 }
 
 ####################################
+### Save normalized count matrix as loom
+####################################
+
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  writeLines("\n*** Save normalized count matrix as loom ***\n")
+
+  normalized_count_matrix <- as.matrix(seurat.object.integrated@assays[["RNA"]]@data)
+  
+  # all genes/features in matrix
+  features_tsv <- data.frame(features = rownames(normalized_count_matrix))
+  features_tsv_ordered <- as.data.frame(features_tsv[mixedorder(features_tsv$features),])
+  write.table(features_tsv_ordered, file=paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_raw/","features.tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
+
+  # generating loom file of normalized count matrix
+  loom_file <- paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_normalized/","normalized_counts.loom")
+  create(loom_file, normalized_count_matrix)
+  
+}
+
+####################################
 ### Generate a matrix with each gene (rows) marginals of SCTransform values from all cells for each dataset (columns)
 ####################################
 writeLines("\n*** Generate a matrix with each gene (rows) marginals of SCTransform values from all cells for each dataset (columns) ***\n")
@@ -1330,16 +1352,6 @@ StopWatchEnd$ClusterAllCells  <- Sys.time()
 
 StopWatchStart$AllCellClusterTables  <- Sys.time()
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  metadata_tsv  <-data.frame(NAME = row.names(seurat.object.integrated@meta.data), seurat_clusters = seurat.object.integrated@meta.data$seurat_clusters)
-  metadata_tsv_string <- sapply(metadata_tsv, as.character)
-  metadata_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", seurat_clusters = "group"), metadata_tsv_string)
-  ### Note paste0() didn't work here. Use paste(...,  sep = "", collapse = "") instead
-  colnames(metadata_tsv_string_TYPE) <- c("NAME", paste("Seurat_Global_Clusters_Res", Resolution, sep = "", collapse = ""))
-  OutfileClusters<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_groups/","groups.tsv")
-  write.table(data.frame(metadata_tsv_string_TYPE),file = OutfileClusters, row.names = F, col.names = T, sep="\t", quote = F, append = T)
-}
-
 CellNames<-rownames(seurat.object.integrated@meta.data)
 ClusterIdent <-seurat.object.integrated@meta.data$seurat_clusters
 NumberOfClusters<-length(unique(ClusterIdent))
@@ -1350,6 +1362,12 @@ clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
 OutfileClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "CellClusters.tsv")
 write.table(Headers,file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(clusters_data),file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
+# dataframe to merge for groups.tsv 
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  OutfileClustersDataframe  <- data.frame(NAME = rownames(seurat.object.integrated@meta.data), Seurat_Global_Clusters = seurat.object.integrated@meta.data$seurat_clusters)
+}
+
 #
 OutfileNumbClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellClusters", ".tsv")
 write(x=NumberOfClusters,file = OutfileNumbClusters)
@@ -1649,6 +1667,12 @@ if (1 %in% RequestedDiffGeneExprComparisons == T) {
   OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerCluster.tsv")
   write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
   
+  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    top_6_genes_by_cluster<-(seurat.object.integrated.markers %>% group_by(cluster) %>% top_n(6, avg_logFC))
+    globalMarkersFile <- top_6_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
+    write.table(globalMarkersFile, paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_markers/","TopTwoMarkersPerCluster.tsv"), row.names = F, sep="\t", quote = F)
+  } 
+
   StopWatchEnd$FindDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
   
 }
@@ -2200,6 +2224,19 @@ if (NumberOfDatasetsTypes >= 1) {
   write.table(Headers,file = OutfileEachDatasetTypeGlobalClusters, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(paste(colnames(seurat.object.integrated), GlobalClustersByDatasetType, sep = "\t", collapse = "\n"),
               file = OutfileEachDatasetTypeGlobalClusters, row.names = F, col.names = F, quote = F, append = T)
+  
+  # dataframe to merge for groups.tsv 
+  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    OutfileEachDatasetTypeGlobalClustersDataframe  <- data.frame(NAME = colnames(seurat.object.integrated), Seurat_Datasets_Global_Clusters = GlobalClustersByDatasetType)
+    
+    groupsMergedDataframe <- merge(OutfileClustersDataframe, OutfileEachDatasetTypeGlobalClustersDataframe, by="NAME")
+    groupsMergedDataframeString <- sapply(groupsMergedDataframe, as.character)
+    groupsMergedDataframeStringTYPE <- rbind(data.frame(NAME = "TYPE", Seurat_Global_Clusters = "group", Seurat_Datasets_Global_Clusters = "group"), groupsMergedDataframeString)
+    colnames(groupsMergedDataframeStringTYPE) <- c("NAME", paste("Seurat_Global_Clusters_Resolution", Resolution, sep = "", collapse = ""), paste("Seurat_Datasets_Global_Clusters_Resolution", Resolution, sep = "", collapse = ""))
+
+    OutfileClustersMerged<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_groups/","groups.tsv")
+    write.table(data.frame(groupsMergedDataframeStringTYPE), file = OutfileClustersMerged, row.names = F, col.names = T, sep="\t", quote = F, append = T)
+  }
 
   OutfileNumbCellsPerClusterPerDatasetType<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDatasetType.tsv")
   Headers<-paste("Cluster", "Number_of_cells", sep="\t", collapse = "")
@@ -2405,7 +2442,7 @@ if (NumberOfDatasetsTypes >= 1) {
       SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
       OutfileDiffGeneExpression <- paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_" , dataset_type, "_MarkersPerCluster.tsv")
       write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
-
+      
       StopWatchEnd$FindDiffMarkersEachDatasetTypeGlobalClustersVsRestOfCells$dataset_type  <- Sys.time()
     }
   }
