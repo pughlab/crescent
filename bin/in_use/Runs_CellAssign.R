@@ -1,12 +1,17 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Erik Christensen - echris3@uwo.ca
-### Script made based on #TODO fill in some sources
+### Script made based on https://irrationone.github.io/cellassign/index.html
 ####################################
 
 ####################################
 ### GENERAL OVERVIEW OF THIS SCRIPT
-### 1) #TODO write an overview
+### 1) Loads scRNA-seq data 
+### 2) Computes cell size factors
+### 3) Loads marker gene matrix
+### 4) Subsets the scRNA-seq data based on the marker gene matrix and transposes it
+### 5) Runs cellassign
+### 6) Saves log files
 ####################################
 
 ####################################
@@ -23,25 +28,19 @@
 ####################################
 ### Required libraries
 ####################################
-suppressPackageStartupMessages(library(cellassign))   # TODO get other includes and describe them
-#TODO see if i acutally need these
-#suppressPackageStartupMessages(library(Seurat))       # (CRAN) to run QC, differential gene expression and clustering analyses
-#suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
-#suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
-#suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be t-SNE plotted
-#suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables quicker than read.table
-#suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
-#suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
-#suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
-#suppressPackageStartupMessages(library(staplr))       # (CRAN) to merge pdf files. Note it needs pdftk available. If not available use `SummaryPlots <- "N"`
-#suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`.
-#suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
+suppressPackageStartupMessages(library(cellassign))   # (GitHub Irrationone/cellassign) to assign scRNA-seq data to known cell types
+suppressPackageStartupMessages(library(scran))        # (Bioconductor) to compute cell size factors
+suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
+suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables quicker than read.table
+suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`.
 ####################################
 
 ####################################
 ### Required external packages
 ####################################
-#TODO Shouldn't be any?
+### Tensorflow 2.1.0 with tensorflow-probability (required for cellassign)
+###     install.packages("tensorflow")
+###     tensorflow::install_tensorflow(extra_packages='tensorflow-probability', version = "2.1.0")
 ####################################
 
 ####################################
@@ -62,7 +61,7 @@ option_list <- list(
               help="Path/name to either a read counts matrix in either 'MTX' or 'TSV' format (see parameter -t)
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
-  make_option(c("-t", "--input_type"), default="NA", #TODO make sure i can support this option
+  make_option(c("-t", "--input_type"), default="NA", 
               help="Either 'MTX', 'TSV' or 'HDF5'
                 'MTX'  is the path/name to an MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files
                 'TSV'  is the path/name of a <tab> delimited *file* with genes in rows vs. barcodes in columns
@@ -72,16 +71,16 @@ option_list <- list(
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-m", "--input_markers"), default="NA",
-              help=""), #TODO write help for marker input
-  #
-  make_option(c("-s", "--size_factors"), default="NA",
-              help="") #TODO write help for size factors
+              help="Path/name to a binary marker by cell type matrix in 'CSV' format.
+              Default = 'No default. It's mandatory to specify this parameter'"), 
   #
   make_option(c("-x", "--design_matrix"), default="NA",
-              help="") #TODO write help for design matrix (is it even required)
+              help="Path to an N by P design matrix of covariates for any patient/batch specific effects. 
+              Default = No default, optional."),
   #
-  make_option(c(), default="NA",
-              help="") #TODO fill other options
+  make_option(c("-l", "--learning_rate"), default="0.01",
+              help="The learning rate for ADAM optimization
+              Default = '0.01'"), 
   #
   make_option(c("-o", "--outdir"), default="NA",
               help="A path/name for the results directory
@@ -91,13 +90,6 @@ option_list <- list(
               help="A prefix for outfile names, e.g. your project ID
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
-  make_option(c("-u", "--number_cores"), default="AUTO",
-              help="Indicates one of three options:
-                a) Type the number of cores to use for parellelization (e.g. '4')
-                b) Type 'AUTO' to detect the number of cells in the sample and assign a pre-established number of cores based on that
-                c) Type 'MAX' to determine and use all available cores in the system
-                Default = 'AUTO'"),
-  #
   make_option(c("-s", "--save_r_object"), default="N",
               help="Indicates if a R object with the data and analyzes from the run should be saved
                 Note that this may be time consuming. Type 'y/Y' or 'n/N'
@@ -106,22 +98,17 @@ option_list <- list(
   make_option(c("-w", "--run_cwl"), default="N",
               help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME' . Type 'y/Y' or 'n/N'.
                 Note, if using 'y/Y' this supersedes option -o
-                Default = 'N'"),
-  #
-  make_option(c("-a", "--max_global_variables"), default="AUTO",
-              help="Indicates one of two options:
-                a) Type the maximum allowed total size (in bytes) of global variables identified for library(future) (e.g. '4000')
-                b) Type 'AUTO' to detect the number of cells in the sample and assign a pre-established size of global variables
-                Default = 'AUTO'")
+                Default = 'N'")
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
 
 Input                   <- opt$input
 InputType               <- opt$input_type
+InputMarkers            <- opt$input_markers
+LearningRate            <- opt$learning_rate
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
-NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
 MaxGlobalVariables      <- opt$max_global_variables
@@ -129,29 +116,11 @@ MaxGlobalVariables      <- opt$max_global_variables
 ####################################
 ### Define default parameters
 ####################################
-#TODO define defaults for cellassign (see runs_seurat_v3_single.. for examples)
 
 DefaultParameters <- list(
   
 )
 
-#TODO do i need these definitions
-### Colour definitions 
-ColourDefinitions<-list("orange"        = "#E69F00",
-                        "bluishgreen"   = "#009E73",
-                        "reddishpurple" = "#CC79A7",
-                        "dodgerblue"    = "#1E90FF",
-                        "vermillion"    = "#D55E00",
-                        "snow4"         = "#8B8989",
-                        "yellow"        = "#FFD700",
-                        "seagreen3"     = "#43CD80",
-                        "pink"          = "#FFC0CB",
-                        "skyblue"       = "#56B4E9",
-                        "orchid4"       = "#8B4789",
-                        "blue"          = "#0072B2",
-                        "black"         = "#000000"
-)
-ColoursQCViolinPlots <- c(ColourDefinitions[["skyblue"]][[1]], ColourDefinitions[["orange"]][[1]])
 
 ####################################
 ### Start stopwatches
@@ -166,8 +135,7 @@ StopWatchStart$Overall  <- Sys.time()
 ### Check that mandatory parameters are not 'NA' (default)
 ####################################
 writeLines("\n*** Check that mandatory parameters are not 'NA' (default) ***\n")
-#TODO update list of mandatory parameters for cellassign
-ListMandatory<-list("input", "input_type", "outdir", "prefix_outfiles")
+ListMandatory<-list("input", "input_type", "input_matrix","outdir", "prefix_outfiles")
 for (param in ListMandatory) {
   if (length(grep('^NA$',opt[[param]], perl = T))) {
     stop(paste0("Parameter -", param, " can't be 'NA' (default). Use option -h for help."))
@@ -184,7 +152,6 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
   Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F) 
-  #TODO
   FILE_TYPE_OUT_DIRECTORIES = c(
     "CRESCENT_CLOUD",
     "CRESCENT_CLOUD/frontend_normalized",
@@ -229,7 +196,6 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
-  #TODO
   FILE_TYPE_OUT_DIRECTORIES = c(
     "AVERAGE_GENE_EXPRESSION_TABLES", 
     "CELL_CLUSTER_IDENTITIES", 
@@ -295,7 +261,7 @@ writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
 
 
 ####################################
-### Load scRNA-seq data #TODO make sure this will work for cellassign
+### Load scRNA-seq data #TODO make sure these extra formats will work for cellassign
 ####################################
 writeLines("\n*** Load scRNA-seq data ***\n")
 
@@ -318,78 +284,48 @@ dim(input.matrix)
 
 StopWatchEnd$LoadScRNAseqData  <- Sys.time()
 
-#TODO See if cellassign supports parallelisation. I'd like to keep this.
 ####################################
-### Define number of cores for parallelization
-### Note: this must run after loading scRNA-seq data to get the number of barcodes (if using `-u AUTO`)
+### Calculate Size Factors 
 ####################################
-writeLines("\n*** Define number of cores for parallelization ***\n")
 
-NumbCoresAvailable <- as.numeric(availableCores()[[1]]) ## Number of cores available in the system
-NumberOfBarcodes <- ncol(input.matrix)
+StopWatchStart$ComputeSizeFactors <- Sys.time()
+size.factors <- calculateSumFactors(input.matrix, min.mean = 1)
+StopWatchEnd$ComputeSizeFactors <- Sys.time()
 
-### Get number of cores requested
-if (regexpr("^AUTO$", NumbCores, ignore.case = T)[1] == 1) {
-  if (NumberOfBarcodes <= DefaultParameters$MaxNumbCellsSmallForNumbCores) {
-    NumbCoresRequested <-DefaultParameters$NumbCoresSmall
-  }else if (NumbCoresAvailable < DefaultParameters$NumbCoresMedOrLarge) {
-    NumbCoresRequested <- NumbCoresAvailable
-  }else{
-    NumbCoresRequested <-DefaultParameters$NumbCoresMedOrLarge
-  }
-}else if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
-  NumbCoresRequested <- NumbCoresAvailable
-}else if (regexpr("^[0-9]+$", NumbCores, ignore.case = T)[1] == 1) {
-  NumbCoresRequested <- as.numeric(NumbCores)
-}else{
-  stop(paste0("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript", ThisScriptName, " -h\n\n"))
-}
-
-### Check if number of cores requested is not larger than number of cores available
-if (NumbCoresAvailable < NumbCoresRequested) {
-  print(paste0("WARNING: Parameter `-u` requested ", NumbCoresRequested, " cores to process ", NumberOfBarcodes, " cells. But only ", NumbCoresAvailable, " cores are available and they will be used instead"))
-  NumbCoresToUse <- NumbCoresAvailable
-}else{
-  NumbCoresToUse <- NumbCoresRequested
-}
-
-writeLines(paste0("\nUsing ", NumbCoresToUse, " cores\n"))
-
-#TODO see above, might have to delete this
 ####################################
-### Define library(future) strategy for parallelization
-### Note: this must run after:
-###       a) loading scRNA-seq data to get the number of barcodes (if using `-a AUTO`)
-###       b) defining `NumbCoresToUse`
+### load marker gene matrix
 ####################################
-writeLines("\n*** Define library(future) strategy for parallelization ***\n")
 
-NumberOfBarcodes <- ncol(input.matrix)
+StopWatchStart$LoadMarkerGeneMatrix <- Sys.time()
+marker.matrix <- as.matrix(data.frame(fread(InputMarkers, check.names = F), row.names = 1, check.names = F))
+StopWatchEnd$LoadMarkerGeneMatrix <- Sys.time()
 
-if (regexpr("^AUTO$", MaxGlobalVariables, ignore.case = T)[1] == 1) {
-  if (NumberOfBarcodes <= DefaultParameters$MaxNumbCellsSmallForGlobVars) {
-    MaxGlobalVariablesToUse <- DefaultParameters$NumbGlobVarsSmall
-  }else{
-    MaxGlobalVariablesToUse <- DefaultParameters$NumbGlobVarsMedOrLarge
-  }
-}else if (regexpr("^[0-9]+$", MaxGlobalVariables, ignore.case = T)[1] == 1) {
-  MaxGlobalVariablesToUse <- as.numeric(MaxGlobalVariables)
-}else{
-  stop(paste0("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript ", ThisScriptName, " -h\n\n"))
-}
+####################################
+### Subset the expression matrix with marker genes and transpose
+####################################
 
-### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
-### allocate 4Gb of RAM (4000*1024^2), use:
+StopWatchStart$RemoveNonMarkerGenes <- Sys.time()
+input.matrix.final <- t(as.matrix(input.matrix[as.character(row.names(marker.matrix)),])) 
+StopWatchEnd$RemoveNonMarkerGenes <- Sys.time()
 
-writeLines(paste0("\nUsing ", MaxGlobalVariablesToUse, " global variables\n"))
+####################################
+### Run cellassign 
+####################################
 
-options(future.globals.maxSize = MaxGlobalVariablesToUse * 1024^2)
+StopWatchStart$CellAssign <- Sys.time()
+cell.fit <- cellassign(exprs_obj = input.matrix.final, 
+                        marker_gene_info = marker.matrix,
+                        s = size.factors,
+                        learning_rate = LearningRate,
+                        verbose = )
+cell.results <- data.frame(celltypes(cell.fit))
+row.names(cell.results) <- row.names(input.matrix.final)
 
-plan(strategy = "multicore", workers = NumbCoresToUse)
+StopWatchEnd$CellAssign <- Sys.time()
 
-
-
-
+####################################
+### Write cell annotations 
+####################################
 
 
 
