@@ -75,7 +75,7 @@ option_list <- list(
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-m", "--input_markers"), default="NA",
-              help="Path/name to a binary marker by cell type matrix in 'CSV' format.
+              help="Path/name to a binary marker by cell type matrix in 'TSV' format.
               Default = 'No default. It's mandatory to specify this parameter'"), 
   #
   make_option(c("-x", "--design_matrix"), default="NA",
