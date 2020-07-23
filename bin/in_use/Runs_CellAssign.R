@@ -106,7 +106,7 @@ opt <- parse_args(OptionParser(option_list=option_list))
 Input                   <- opt$input
 InputType               <- opt$input_type
 InputMarkers            <- opt$input_markers
-LearningRate            <- opt$learning_rate
+LearningRate            <- as.numeric(opt$learning_rate)
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
 SaveRObject             <- opt$save_r_object
@@ -145,7 +145,6 @@ for (param in ListMandatory) {
 ####################################
 ### Define outdirs and CWL parameters
 ####################################
-#TODO Modify the output files
 writeLines("\n*** Create outdirs ***\n")
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
@@ -161,24 +160,12 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     "CRESCENT_CLOUD/frontend_markers",
     "CRESCENT_CLOUD/frontend_qc",
     "CRESCENT_CLOUD/frontend_groups",
-    "AVERAGE_GENE_EXPRESSION_TABLES", 
-    "CELL_CLUSTER_IDENTITIES", 
-    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
-    "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
-    "DIMENSION_REDUCTION_COORDINATE_TABLES",
-    "DIMENSION_REDUCTION_PLOTS",
-    "FILTERED_DATA_MATRICES",
     "LOG_FILES",
-    "QC_PLOTS", 
-    "QC_TABLES", 
-    "R_OBJECTS", 
-    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
-    "SUMMARY_PLOTS",
-    "UNFILTERED_DATA_MATRICES"
+    "ANNOTATIONS"
   )
   
 }else{
-  PrefixOutfiles <- c(paste0(PrefixOutfiles,"_res",Resolution))
+  #PrefixOutfiles <- c(paste0(PrefixOutfiles,"_res",Resolution))
   ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
   ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
@@ -197,20 +184,8 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
   FILE_TYPE_OUT_DIRECTORIES = c(
-    "AVERAGE_GENE_EXPRESSION_TABLES", 
-    "CELL_CLUSTER_IDENTITIES", 
-    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
-    "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
-    "DIMENSION_REDUCTION_COORDINATE_TABLES",
-    "DIMENSION_REDUCTION_PLOTS",
-    "FILTERED_DATA_MATRICES",
     "LOG_FILES",
-    "QC_PLOTS", 
-    "QC_TABLES", 
-    "R_OBJECTS", 
-    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
-    "SUMMARY_PLOTS",
-    "UNFILTERED_DATA_MATRICES"
+    "ANNOTATIONS"
   )
 }
 
@@ -288,6 +263,7 @@ StopWatchEnd$LoadScRNAseqData  <- Sys.time()
 ### Calculate Size Factors 
 ####################################
 
+writeLines("\n*** Computing Size Factors ***\n")
 StopWatchStart$ComputeSizeFactors <- Sys.time()
 size.factors <- calculateSumFactors(input.matrix, min.mean = 1)
 StopWatchEnd$ComputeSizeFactors <- Sys.time()
@@ -296,6 +272,7 @@ StopWatchEnd$ComputeSizeFactors <- Sys.time()
 ### load marker gene matrix
 ####################################
 
+writeLines("\n*** Loading Marker Gene Matrix ***\n")
 StopWatchStart$LoadMarkerGeneMatrix <- Sys.time()
 marker.matrix <- as.matrix(data.frame(fread(InputMarkers, check.names = F), row.names = 1, check.names = F))
 StopWatchEnd$LoadMarkerGeneMatrix <- Sys.time()
@@ -304,6 +281,7 @@ StopWatchEnd$LoadMarkerGeneMatrix <- Sys.time()
 ### Subset the expression matrix with marker genes and transpose
 ####################################
 
+writeLines("\n*** Removing Non Marker Genes ***\n")
 StopWatchStart$RemoveNonMarkerGenes <- Sys.time()
 input.matrix.final <- t(as.matrix(input.matrix[as.character(row.names(marker.matrix)),])) 
 StopWatchEnd$RemoveNonMarkerGenes <- Sys.time()
@@ -312,22 +290,25 @@ StopWatchEnd$RemoveNonMarkerGenes <- Sys.time()
 ### Run cellassign 
 ####################################
 
+writeLines("\n*** Running CellAssign ***\n")
 StopWatchStart$CellAssign <- Sys.time()
 cell.fit <- cellassign(exprs_obj = input.matrix.final, 
                         marker_gene_info = marker.matrix,
                         s = size.factors,
                         learning_rate = LearningRate,
-                        verbose = )
-cell.results <- data.frame(celltypes(cell.fit))
-row.names(cell.results) <- row.names(input.matrix.final)
-
+                        verbose = FALSE)
+cell.results <- data.frame(row.names(input.matrix.final), celltypes(cell.fit))
+colnames(cell.results) <- c('cell', 'annotation')
 StopWatchEnd$CellAssign <- Sys.time()
 
 ####################################
 ### Write cell annotations 
 ####################################
 
-
+StopWatchStart$WriteAnnos <- Sys.time()
+OutDirAnnos <- paste0(Tempdir, '/ANNOTATIONS/', PrefixOutfiles, '.', ProgramOutdir,'_Annotations.tsv')
+write.table(cell.results, OutDirAnnos, sep='\t', quote = FALSE, row.names = FALSE)
+StopWatchEnd$WriteAnnos <- Sys.time()
 
 ##
 ## EVERYTHING AFTER THIS IS REQUIRED
@@ -342,7 +323,7 @@ writeLines("\n*** Obtain computing time used***\n")
 StopWatchEnd$Overall  <- Sys.time()
 
 OutfileCPUusage<-paste0(Tempdir, "/LOG_FILES/" , PrefixOutfiles, ".", ProgramOutdir, "_CPUusage.txt")
-write(file = OutfileCPUusage, x = paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
+#write(file = OutfileCPUusage, x = paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
 Headers<-paste("Step", "Time(minutes)", sep="\t")
 write.table(Headers,file = OutfileCPUusage, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 
@@ -397,7 +378,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
       OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
       print(OutdirFinal)
       dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
-      sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(EachFileName) {
+      sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(EachFileName) { #TODO not moving my output files correctly
         file.copy(from=paste0(TempdirWithData, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
         file.remove(paste0(TempdirWithData, "/", EachFileName))
       })
