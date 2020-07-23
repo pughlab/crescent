@@ -121,7 +121,7 @@ option_list <- list(
                 the following 12 columns specifying filters/details for each dataset:
                 1) unique dataset ID (e.g. 'd1')
                 2) /path_to/dataset
-                3) dataset type (e.g. 'control' or 'treatment') or use 'NA' to skip using dataset types
+                3) dataset type (e.g. 'control' or 'treatment') or use 'type' to skip using dataset types
                 4) dataset format (either 'MTX', 'TSV' or 'HDF5')
                 5) dataset minimum mitochondrial fraction (e.g. '0')
                 6) dataset maximum mitochondrial fraction (e.g. '0.05' for NucSeq or '0.2' for whole cell scRNA-seq)
@@ -236,11 +236,11 @@ option_list <- list(
                 '5' = using global cell clusers, for each dataset type, compares each cell cluster vs. the same cluster from other dataset types. Needs `-v 1`.
                 '6' = using re-clustered cells, for each dataset, compares each cell cluster vs. the rest of cells. Needs `-v 2`.
                 '7' = using re-clustered cells, for each dataset type, compares each cell cluster vs. the rest of cells. Needs `-v 3`.
-                '8' = using metadata annotations, compares each cell class specified by `-a` and `-c` vs. the rest of cells
-                '9' = using metadata annotations, for each dataset, compares each cell class specified by `-a` and `-c` vs. the rest of cells
-                '10' = using metadata annotations, for each dataset, compares each cell class specified by `-a` and `-c` vs. the same class from other datasets
-                '11' = using metadata annotations, for each dataset type, compares each cell class specified by `-a` and `-c` vs. the rest of cells
-                '12' = using metadata annotations, for each dataset type, compares each cell class specified by `-a` and `-c` vs. the same class from other dataset types
+                '8' = using metadata annotations, compares each cell class specified by `-b` and `-c` vs. the rest of cells
+                '9' = using metadata annotations, for each dataset, compares each cell class specified by `-b` and `-c` vs. the rest of cells
+                '10' = using metadata annotations, for each dataset, compares each cell class specified by `-b` and `-c` vs. the same class from other datasets
+                '11' = using metadata annotations, for each dataset type, compares each cell class specified by `-b` and `-c` vs. the rest of cells
+                '12' = using metadata annotations, for each dataset type, compares each cell class specified by `-b` and `-c` vs. the same class from other dataset types
                 Default = '1'"),
   #
   make_option(c("-b", "--metadata_column_names_for_dge"), default="NA",
@@ -428,14 +428,14 @@ RequestedApplySelectedGenes      = unlist(strsplit(ApplySelectedGenes, ","))
 DefaultParameters <- list(
   ### Parameters for QC plots
   CellPropertiesToQC = c("nFeature_RNA", "nCount_RNA", "mito.fraction", "ribo.fraction"),
-
+  
   ### Parameters for Seurat filters
   MinCells = 3,
-
+  
   ### Parameters for Cluster Biomarkers
   FindAllMarkers.MinPct     =  0.25,
   FindAllMarkers.ThreshUse  =  0.25,
-
+  
   ### Parameters for dimmension reduction plots
   MinNumberOfCellsToReducePerplexity = 150,
   ReducedPerplexity = 7,
@@ -444,10 +444,10 @@ DefaultParameters <- list(
   BaseSizeMultiplePlotPdfWidth  = 3.7,
   BaseSizeMultiplePlotPdfHeight = 3,
   MaxNumbLabelsPerRowInLegend   = 4,
-
+  
   ### Parameters for datasets integration
   IntegrationNFeatures = 3000
-
+  
 )
 
 ### Colour definitions
@@ -514,7 +514,7 @@ if (6 %in% RequestedDiffGeneExprComparisons == T) {
   if (2 %in% RequestedClusteringInputs == T) {
     writeLines("\nOk\n")
   }else{
-    stop("ERROR!!! options `-f 6` needs option `-v 1`")
+    stop("ERROR!!! options `-f 6` needs option `-v 2`")
   }
 }
 
@@ -539,7 +539,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
     (10 %in% RequestedDiffGeneExprComparisons == T) |
     (11 %in% RequestedDiffGeneExprComparisons == T) | 
     (12 %in% RequestedDiffGeneExprComparisons == T)
-    )  {
+)  {
   if (length(grep('^NA$', InfileMetadata, perl = T))) {
     stop("ERROR!!! options `-f [8|9|10|11|12] and -c NA` are incompatible with each other")
   }else if (length(grep('^NA$', MetadataColNamesForDge, perl = T))) {
@@ -551,12 +551,12 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
   }
   
   #### Check that requested metadata columns exist in InfileMetadata
-
+  
   writeLines(paste0("\n*** Check that requested --metadata_column_names_for_dge exist in --infile_metadata ***\n"))
   
   MetadataColNamesForDge.list  = unlist(strsplit(MetadataColNamesForDge, ","))
   if (sum(MetadataColNamesForDge.list %in% colnames(CellPropertiesFromMetadata)) == length(MetadataColNamesForDge.list)) {
-  writeLines("\nOk\n")
+    writeLines("\nOk\n")
   }else{
     stop(paste("ERROR!!! couldnt find all '", length(MetadataColNamesForDge.list), "' requested properties in --infile_metadata", sep = "", collapse = "\n"))
   }
@@ -595,7 +595,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   for (i in seq_along(MinioPaths)) {
     MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
   }
-
+  
   InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
   
   MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
@@ -606,7 +606,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   colnames(MergedInputsTableFilteredFinal) <-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
   
   InputsTable <- MergedInputsTableFilteredFinal
-
+  
 } else {
   InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
@@ -637,15 +637,15 @@ for (dataset in rownames(InputsTable)) {
   NumberOfDatasets <- NumberOfDatasets + 1
   print(NumberOfDatasets)
   Dataset.SO <-paste0(dataset, ".so")
-
+  
   if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     PathToDataset <- InputsTable[dataset,"PathToDataset"]
   } else {
     PathToDataset <- gsub("^~/",paste0(UserHomeDirectory,"/"), InputsTable[dataset,"PathToDataset"])
   }
-
+  
   DatasetType   <- InputsTable[dataset,"DatasetType"]
-
+  
   list_DatasetToType[[dataset]]      <- DatasetType
   list_DatasetToFormat[[dataset]]    <- InputsTable[dataset,"DatasetFormat"]
   list_TypeToDatasets[[DatasetType]] <- append(list_TypeToDatasets[[DatasetType]], dataset)
@@ -657,15 +657,15 @@ for (dataset in rownames(InputsTable)) {
   list_MaxNGenes[[dataset]]          <- as.numeric(InputsTable[dataset,"MaxNGenes"])
   list_MinNReads[[dataset]]          <- as.numeric(InputsTable[dataset,"MinNReads"])
   list_MaxNReads[[dataset]]          <- as.numeric(InputsTable[dataset,"MaxNReads"])
-
+  
   if (regexpr("^MTX$|^TSV$|^HDF5$", list_DatasetToFormat[[dataset]], ignore.case = T, perl = T)[1] == 1) {
-
+    
     ####################################
     ### Loading MTX or TSV infiles
     ####################################
-  
+    
     StopWatchStart$LoadScRNAseqData$dataset <- Sys.time()
-  
+    
     if (regexpr("^MTX$", list_DatasetToFormat[[dataset]], ignore.case = T)[1] == 1) {
       writeLines(paste0("\n*** Loading MTX infiles for ", dataset, " from: ", PathToDataset, " ***\n"))
       expression_matrix <- Read10X(data.dir = PathToDataset)
@@ -680,7 +680,7 @@ for (dataset in rownames(InputsTable)) {
       stop(paste0("Unexpected type of input: ", InputType, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n"))
     }
     dim(expression_matrix)
-  
+    
     StopWatchEnd$LoadScRNAseqData$dataset  <- Sys.time()
     
     ####################################
@@ -704,7 +704,7 @@ for (dataset in rownames(InputsTable)) {
       StopWatchEnd$SaveUnFilteredData$dataset  <- Sys.time()
       
     }
-
+    
     ####################################
     ### Create seurat object
     ####################################
@@ -715,7 +715,7 @@ for (dataset in rownames(InputsTable)) {
     seurat.object.u  <- CreateSeuratObject(counts = expression_matrix, min.cells = DefaultParameters$MinCells, min.features = list_MinNGenes[[dataset]], project = paste0(PrefixOutfiles, "_", dataset))
     
     StopWatchEnd$CreateSeuratObject$dataset  <- Sys.time()
-
+    
     ####################################
     ### Add dataset label
     ####################################
@@ -726,7 +726,7 @@ for (dataset in rownames(InputsTable)) {
     seurat.object.u[['dataset.label']] <- dataset
     
     StopWatchEnd$AddDatasetLabel$dataset  <- Sys.time()
-
+    
     ####################################
     ### Add dataset type label
     ####################################
@@ -737,7 +737,7 @@ for (dataset in rownames(InputsTable)) {
     seurat.object.u[['dataset_type.label']] <- list_DatasetToType[[dataset]]
     
     StopWatchEnd$AddDatasetLabel$dataset_type  <- Sys.time()
-
+    
     ####################################
     ### Get mitochondrial genes
     ####################################
@@ -795,7 +795,7 @@ for (dataset in rownames(InputsTable)) {
                               & mito.fraction <= list_MaxMitoFrac[[dataset]]
                               & ribo.fraction >= list_MinRiboFrac[[dataset]]
                               & ribo.fraction <= list_MaxRiboFrac[[dataset]])
-
+      
     }else{
       seurat.object.f<-subset(x = seurat.object.u, subset = 
                                 nFeature_RNA >= list_MinNGenes[[dataset]]
@@ -810,14 +810,14 @@ for (dataset in rownames(InputsTable)) {
     NumberOfBarcodesExcludedByNReads          <- length(setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nCount_RNA    >= list_MinNReads[[dataset]] & nCount_RNA   <= list_MaxNReads[[dataset]]))))
     NumberOfBarcodesExcludedByMito            <- length(setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = mito.fraction >= list_MinMitoFrac[[dataset]] & mito.fraction <= list_MaxMitoFrac[[dataset]]))))
     NumberOfBarcodesExcludedByRibo            <- length(setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = ribo.fraction >= list_MinRiboFrac[[dataset]] & ribo.fraction <= list_MaxRiboFrac[[dataset]]))))
-
+    
     print(paste0("NumberOfBarcodesExcludedByNFeature=", NumberOfBarcodesExcludedByNFeature))
     print(paste0("NumberOfBarcodesExcludedByNReads=", NumberOfBarcodesExcludedByNReads))
     print(paste0("NumberOfBarcodesExcludedByMito=", NumberOfBarcodesExcludedByMito))
     print(paste0("NumberOfBarcodesExcludedByRibo=", NumberOfBarcodesExcludedByRibo))
     
     StopWatchEnd$FilterCells$dataset  <- Sys.time()
-       
+    
     ### Just reporting the summary of the UNfiltered and filtered objects
     print(paste0(dataset, "  unfiltered"))
     print(seurat.object.u)
@@ -881,7 +881,7 @@ for (dataset in rownames(InputsTable)) {
     NumberOfCells[["filtered"]]   <- nrow(seurat.object.f@meta.data)
     LabelUnfiltered    <-paste0("Before filters: No. of cells = ", NumberOfCells[["unfiltered"]])
     LabelFiltered      <-paste0("After filters:  No. of cells = ", NumberOfCells[["filtered"]])
-
+    
     ### Commands for violin ggplot's
     DataForHeader.df<-data.frame(forx = c(0.4,0.4), fory = c(0.09,0.03), label = c(LabelFiltered,LabelUnfiltered))
     Headers.plot<-ggplot(data=DataForHeader.df, aes(x = forx, y = fory)) + theme_void() + 
@@ -905,7 +905,7 @@ for (dataset in rownames(InputsTable)) {
       labs(x=paste0("No. of reads", "\n", "Filter: ", "min=", list_MinNReads[[dataset]], " max=", list_MaxNReads[[dataset]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByNReads)) +
       annotate("text", x = 1 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.f, col = ColoursQCViolinPlots[[2]])
-
+    
     mito.fraction.plot<-ggplot(data=mito.fraction.m.df, aes(x = factor(mito.fraction), y = Expression_level)) +
       geom_violin(aes(fill = factor(mito.fraction))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
@@ -924,7 +924,7 @@ for (dataset in rownames(InputsTable)) {
       labs(x=paste0("Ribosomal protein genes (fraction)", "\n", "Filter: ", "min=", list_MinRiboFrac[[dataset]], " max=", list_MaxRiboFrac[[dataset]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByRibo)) +
       annotate("text", x = 1 , y = max(ribo.fraction.m.df$Expression_level)*1.1, label = ribo.fraction.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(ribo.fraction.m.df$Expression_level)*1.1, label = ribo.fraction.f, col = ColoursQCViolinPlots[[2]])
-
+    
     bottom_row<-plot_grid(nFeature_RNA.plot, nCount_RNA.plot, mito.fraction.plot, ribo.fraction.plot, ncol = 4)
     
     ### Create a *pdf file with the violin ggplot's
@@ -980,17 +980,17 @@ for (dataset in rownames(InputsTable)) {
     write.table(Headers, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F)
     
     FilterDetails.nFeature_RNA  <- paste("nFeature_RNA", list_MinNGenes[[dataset]], list_MaxNGenes[[dataset]],
-                                      mean_nFeature_RNAStats.u, median_nFeature_RNAStats.u, mean_nFeature_RNAStats.f, median_nFeature_RNAStats.f, 
-                                      NumberOfBarcodesExcludedByNFeature, sep = "\t", collapse = "")
+                                         mean_nFeature_RNAStats.u, median_nFeature_RNAStats.u, mean_nFeature_RNAStats.f, median_nFeature_RNAStats.f, 
+                                         NumberOfBarcodesExcludedByNFeature, sep = "\t", collapse = "")
     FilterDetails.nCount_RNA    <- paste("nCount_RNA", list_MinNReads[[dataset]], list_MaxNReads[[dataset]], 
-                                      mean_nCount_RNAStats.u, median_nCount_RNAStats.u, mean_nCount_RNAStats.f, median_nCount_RNAStats.f, 
-                                      NumberOfBarcodesExcludedByNReads, sep = "\t", collapse = "")
+                                         mean_nCount_RNAStats.u, median_nCount_RNAStats.u, mean_nCount_RNAStats.f, median_nCount_RNAStats.f, 
+                                         NumberOfBarcodesExcludedByNReads, sep = "\t", collapse = "")
     FilterDetails.mito.fraction <- paste("mito.fraction", list_MinMitoFrac[[dataset]], list_MaxMitoFrac[[dataset]],
-                                      mean_mito.fraction.u, median_mito.fraction.u, mean_mito.fraction.f, median_mito.fraction.f, 
-                                      NumberOfBarcodesExcludedByMito, sep = "\t", collapse = "")
+                                         mean_mito.fraction.u, median_mito.fraction.u, mean_mito.fraction.f, median_mito.fraction.f, 
+                                         NumberOfBarcodesExcludedByMito, sep = "\t", collapse = "")
     FilterDetails.ribo.fraction <- paste("ribo.fraction", list_MinRiboFrac[[dataset]], list_MaxRiboFrac[[dataset]],
-                                      mean_ribo.fraction.u, median_ribo.fraction.u, mean_ribo.fraction.f, median_ribo.fraction.f, 
-                                      NumberOfBarcodesExcludedByRibo, sep = "\t", collapse = "")
+                                         mean_ribo.fraction.u, median_ribo.fraction.u, mean_ribo.fraction.f, median_ribo.fraction.f, 
+                                         NumberOfBarcodesExcludedByRibo, sep = "\t", collapse = "")
     
     write.table(FilterDetails.nFeature_RNA,  file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
     write.table(FilterDetails.nCount_RNA,    file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
@@ -1000,9 +1000,9 @@ for (dataset in rownames(InputsTable)) {
     OutTableFilteredCells<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_NumberOfFilteredCells.tsv")
     write.table(paste("Number_of_cells_before_filters", NumberOfCells[["unfiltered"]], sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(paste("Number_of_cells_after_filters", NumberOfCells[["filtered"]],    sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-
+    
     StopWatchEnd$OutTablesFilterDetailsAndFilteredCells$dataset  <- Sys.time()
-
+    
     ####################################
     ### Assign data to Datasets lists
     ####################################
@@ -1013,9 +1013,9 @@ for (dataset in rownames(InputsTable)) {
     SeuratObjectsUnfiltered[[as.character(NumberOfDatasets)]]  <- seurat.object.u
     SeuratObjectsFiltered[[as.character(NumberOfDatasets)]]    <- seurat.object.f
     DatasetIds[[as.character(NumberOfDatasets)]]               <- dataset
-
+    
     StopWatchEnd$AssignDataToDatasets  <- Sys.time()
-
+    
     ####################################
     ### Write out QC data for each dataset
     ####################################
@@ -1029,7 +1029,7 @@ for (dataset in rownames(InputsTable)) {
     OutfileQCMetadataBeforeFilters<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "Before_filters_QC_metadata.tsv")
     write.table(Headers, file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(data.frame(BarcodeIdsWithDatasetBeforeFilters, SeuratObjectsUnfiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-
+    
     BarcodeIdsWithDatasetAfterFilters <- unlist(x = strsplit(x = paste(dataset, colnames(SeuratObjectsFiltered[[NumberOfDatasets]]), sep = "_", collapse = "\n"), split = "\n"))
     OutfileQCMetadataAfterFilters<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "After_filters_QC_metadata.tsv")
     write.table(Headers, file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F)
@@ -1044,7 +1044,7 @@ for (dataset in rownames(InputsTable)) {
     
     rm(seurat.object.u)
     rm(UnfilteredData.df)
-  
+    
   }else{
     stop(paste0("Unexpected type of input: ", DatasetType, "\n\nFor help type:\n\nRscript integrates_datasets_with_seurat.R -h\n\n"))
   }
@@ -1071,11 +1071,11 @@ if (NumberOfDatasetsTypes <= DefaultParameters$MaxNumbLabelsPerRowInLegend) {
 ####################################
 
 if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
-
-    writeLines("\n*** No barcodes are removed by option -j ***\n")
-
+  
+  writeLines("\n*** No barcodes are removed by option -j ***\n")
+  
 }else{
-
+  
   StopWatchStart$RemoveBarcodes <- Sys.time()
   
   writeLines("\n*** Removing barcodes by parameter -j ***\n")
@@ -1146,7 +1146,7 @@ for (i in 1:length(seurat.object.list)) {
   ### Save filtered data
   ####################################
   writeLines("\n*** Save filtered data ***\n")
-
+  
   StopWatchStart$SaveFilteredData$dataset  <- Sys.time()
   
   if (regexpr("^Y$", SaveFilteredData, ignore.case = T)[1] == 1) {
@@ -1154,7 +1154,7 @@ for (i in 1:length(seurat.object.list)) {
     OutDirFilteredRaw <-paste0(Tempdir, "/FILTERED_DATA_MATRICES/", dataset, "/RAW")
     dir.create(file.path(OutDirFilteredRaw), showWarnings = F, recursive = T)
     write10xCounts(path = OutDirFilteredRaw, x = seurat.object.list[[i]]@assays[["RNA"]]@counts, gene.type="Raw_Gene_Expression", overwrite=T, type="sparse", version="3")
-
+    
     OutDirFilteredNorm<-paste0(Tempdir, "/FILTERED_DATA_MATRICES/", dataset, "/NORMALIZED_SCT")
     dir.create(file.path(OutDirFilteredNorm), showWarnings = F, recursive = T)
     write10xCounts(path = OutDirFilteredNorm, x = round(seurat.object.list[[i]]@assays[["SCT"]]@data, digits = 4), gene.type="SCTransform_Gene_Expression", overwrite=T, type="sparse", version="3")
@@ -1191,11 +1191,11 @@ writeLines("\n*** Run FindIntegrationAnchors() ***\n")
 if (regexpr("^NA$", ReferenceDatasets , ignore.case = T)[1] == 1) {
   writeLines("\n*** No reference datasets will be used. Finding anchors in all-vs-all dataset pairwise comparisons ***\n")
   seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, verbose = T)
-
+  
 }else if (regexpr("[0-9]", ReferenceDatasets , ignore.case = T, perl = T)[1] == 1) {
   writeLines(paste0("\n*** Dataset number(s): ", ReferenceDatasets, " will be used as reference(s) ***\n"))
   seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, reference = c(as.numeric(unlist(strsplit(ReferenceDatasets, ",")))), verbose = T)
-
+  
 }else{
   stop(paste0("Unexpected format in --reference_datasets ", ReferenceDatasets))
 }
@@ -1236,14 +1236,14 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   writeLines("\n*** Save normalized count matrix as loom ***\n")
-
+  
   normalized_count_matrix <- as.matrix(seurat.object.integrated@assays[["RNA"]]@data)
   
   # all genes/features in matrix
   features_tsv <- data.frame(features = rownames(normalized_count_matrix))
   features_tsv_ordered <- as.data.frame(features_tsv[mixedorder(features_tsv$features),])
   write.table(features_tsv_ordered, file=paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_raw/","features.tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
-
+  
   # generating loom file of normalized count matrix
   loom_file <- paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_normalized/","normalized_counts.loom")
   create(loom_file, normalized_count_matrix)
@@ -1326,7 +1326,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   }else if ("umap" %in% dim_red_method) {
     seurat.object.integrated <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.integrated, dims = PcaDimsUse, umap.method = "uwot")
   }
-
+  
   StopWatchEnd$DimensionReduction$dim_red_method  <- Sys.time()
 }
 
@@ -1411,7 +1411,7 @@ for (DatasetId in rownames(InputsTable)) {
     res <- try(subset(x = seurat.object.each_dataset, subset = seurat_clusters == cluster_number), silent = TRUE)
     if (class(res) == "try-error") {
       # mat_for_correl_each_cluster.df[[dataset_cluster]] <- NA
-      }else{
+    }else{
       if (exists(x = "seurat.object.each_dataset.each_cluster") == T) {
         rm(seurat.object.each_dataset.each_cluster)
       }
@@ -1434,57 +1434,57 @@ StopWatchEnd$SaveSctransformClustersInColumns  <- Sys.time()
 writeLines("\n*** FOR EACH DIMENSION REDUCTION TYPE colour plots using integrated data to colour by: a) cell clusters, b) dataset, c) dataset type, d) selected genes and e) metadata  ***\n")
 
 for (dim_red_method in names(DimensionReductionMethods)) {
-
+  
   ####################################
   ### Colour dimension reduction plot by global cell clusters using integrated data
   ####################################
   writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by global cell clusters ***\n"))
-
+  
   StopWatchStart$DimRedOPlotColourByCellCluster$dim_red_method  <- Sys.time()
-
+  
   plots <- DimPlot(seurat.object.integrated, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 10)
   plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + guides(color = guide_legend(override.aes = list(size = 3))))
   IntegratedDimRedPlotPdf<-paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir,  "_GlobalClustering_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf")
   pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
   print(CombinePlots(plots))
   dev.off()
-
+  
   StopWatchEnd$DimRedOPlotColourByCellCluster$dim_red_method  <- Sys.time()
-
+  
   ####################################
   ### Write out dimension reduction plot coordinates using integrated data
   ####################################
   writeLines(paste0("\n*** Write out ", DimensionReductionMethods[[dim_red_method]][["name"]], " coordinates ***\n"))
-
+  
   StopWatchStart$DimensionReductionWriteCoords$dim_red_method  <- Sys.time()
-
+  
   OutfileCoordinates<-paste0(Tempdir, "/DIMENSION_REDUCTION_COORDINATE_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_Coordinates.tsv")
   Headers<-paste("Barcode",paste(colnames(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings), sep="", collapse="\t"), sep="\t", collapse = "\t")
   write.table(Headers,file = OutfileCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
-
+  
   if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     OutfileCoordinatesCWL<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_coordinates/",DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv")
     write.table(Headers,file = OutfileCoordinatesCWL, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinatesCWL,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
   }
-
+  
   StopWatchEnd$DimensionReductionWriteCoords$dim_red_method  <- Sys.time()
-
+  
   ####################################
   ### Colour dimension reduction plots by dataset using integrated data
   ####################################
   writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by dataset ***\n"))
-
+  
   StopWatchStart$DimRedPlotsByDataset$dim_red_method  <- Sys.time()
-
+  
   plots <- DimPlot(seurat.object.integrated, group.by = c("dataset"), combine = F, reduction = dim_red_method)
   plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = NumbRowsForLegendPerDataset, byrow = T, override.aes = list(size = 2))))
   IntegratedDimRedPlotPdf<-paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByDataset.pdf")
   pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
   print(CombinePlots(plots))
   dev.off()
-
+  
   ### This is the same plot as above, but with only two dataset labels per row in the legend to make sure that all text is printed out
   plots <- DimPlot(seurat.object.integrated, group.by = c("dataset"), combine = F, reduction = dim_red_method)
   plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(ncol = 2, byrow = T, override.aes = list(size = 1))))
@@ -1492,62 +1492,62 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   pdf(file=IntegratedDimRedPlotPdf, width = 7, height = (7 + (0.1 * NumberOfDatasets)))
   print(CombinePlots(plots))
   dev.off()
-
+  
   StopWatchEnd$DimRedPlotsByDataset$dim_red_method  <- Sys.time()
-
+  
   ####################################
   ### Colour dimension reduction plots by dataset type using integrated data
   ####################################
-
+  
   if (NumberOfDatasetsTypes >= 1) {
     writeLines("\n*** Get dataset_type assignments replacing dataset ids using list_DatasetToType() ***\n")
-
+    
     StopWatchStart$PrepareEachDatasetTypeForDimRedPlotByDatasetType <- Sys.time()
-
+    
     seurat.object.integrated$dataset_type<-seurat.object.integrated$dataset
     for (dataset in rownames(InputsTable)) {
       seurat.object.integrated$dataset_type<-mapply(gsub, pattern = dataset, replacement = list_DatasetToType[[dataset]], seurat.object.integrated$dataset_type)
     }
     DatasetTypes <- unique(seurat.object.integrated$dataset_type)
-
+    
     StopWatchEnd$PrepareEachDatasetTypeForDimRedPlotByDatasetType <- Sys.time()
-
+    
     writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by dataset type ***\n"))
-
+    
     # switch identity to dataset type global cluster
     Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$dataset_type
-
+    
     head(seurat.object.integrated@meta.data)
-
+    
     NumberOfDatasetTypes <- 0
     for (dataset_type in DatasetTypes) {
       NumberOfDatasetTypes <- NumberOfDatasetTypes + 1
       print(NumberOfDatasetTypes)
-
+      
       if (exists(x = "seurat.object.each_dataset_type") == T) {
         rm(seurat.object.each_dataset_type)
       }
       seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
-
+      
       writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " coloured by dataset_type ***\n"))
-
+      
       StopWatchStart$DimRedOPlotColourByDatasetType$dim_red_method  <- Sys.time()
-
+      
       plots <- DimPlot(seurat.object.integrated, group.by = c("dataset_type"), combine = F, reduction = dim_red_method, label = F, label.size = 10)
       plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = NumbRowsForLegendPerDatasetType, byrow = T, override.aes = list(size = 2))))
       IntegratedDimRedPlotPdf<-paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByDatasetType.pdf")
       pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
       print(CombinePlots(plots))
       dev.off()
-
+      
       StopWatchEnd$DimRedOPlotColourByDatasetType$dim_red_method  <- Sys.time()
     }
   }
-
+  
   ####################################
   ### Colour dimension reduction plots for all cells by selected genes (option -g)
   ####################################
-
+  
   if (regexpr("^NA$", InfileSelectedGenes, ignore.case = T)[1] == 1) {
     print("No selected genes for dimension reduction plots")
     
@@ -1656,7 +1656,7 @@ StopWatchEnd$AverageGeneExpressionGlobalClusters  <- Sys.time()
 if (1 %in% RequestedDiffGeneExprComparisons == T) {
   
   writeLines("\n*** Finding differentially expressed genes (1): using global cell clusers, compares each cell cluster vs. the rest of cells ***\n")
-
+  
   StopWatchStart$FindDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
   
   print(paste0("Number of clusters = ", NumberOfClusters))
@@ -1672,7 +1672,7 @@ if (1 %in% RequestedDiffGeneExprComparisons == T) {
     globalMarkersFile <- top_6_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
     write.table(globalMarkersFile, paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_markers/","TopTwoMarkersPerCluster.tsv"), row.names = F, sep="\t", quote = F)
   } 
-
+  
   StopWatchEnd$FindDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
   
 }
@@ -1687,7 +1687,7 @@ if (1 %in% RequestedDiffGeneExprComparisons == T) {
 ### FOR EACH DATASET uses integrated/normalized counts and generates dimension reduction plots for each dataset coloured by: a) QC, b) global clusters, c) selected genes and d) metadata
 ####################################
 writeLines("\n*** FOR EACH DATASET uses integrated/normalized counts and generates dimension reduction plots for each dataset coloured by: a) QC, b) global clusters, c) selected genes and d) metadata ***\n")
-  
+
 ####################################
 ### Colour dimension reduction plots for each dataset by QC (nFeature_RNA, nCount_RNA, mito.fraction and ribo.fraction)
 ####################################
@@ -1796,14 +1796,14 @@ for (dataset in rownames(InputsTable)) {
   }
   seurat.object.each_dataset <- subset(x = seurat.object.integrated, idents = dataset)
   print(seurat.object.each_dataset)
-
+  
   for (dim_red_method in names(DimensionReductionMethods)) {
     
     ####################################
     ### Colour dimension reduction plots for each dataset by global cell clusters
     ####################################
     writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot for each dataset by global cell clusters ***\n"))
-
+    
     StopWatchStart$DimRedPlotsByDatasetIntegratedCellClusters$dataset$dim_red_method  <- Sys.time()
     
     plots <- DimPlot(seurat.object.each_dataset, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 5)
@@ -1814,11 +1814,11 @@ for (dataset in rownames(InputsTable)) {
     dev.off()
     
     StopWatchEnd$DimRedPlotsByDatasetIntegratedCellClusters$dataset$dim_red_method  <- Sys.time()
-
+    
     ####################################
     ### Colour dimension reduction plots for each dataset by selected genes (option -g)
     ####################################
-
+    
     if (regexpr("^NA$", InfileSelectedGenes, ignore.case = T)[1] == 1) {
       print("No selected genes for each dataset dimension reduction plots")
       
@@ -1846,9 +1846,9 @@ for (dataset in rownames(InputsTable)) {
       StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
       
       rm(seurat.object.each_dataset.sa)
-
+      
     }
-
+    
     ####################################
     ### Colour dimension reduction plots for each dataset by -infile_metadata using integrated data
     ####################################
@@ -1970,7 +1970,7 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
     
     StopWatchEnd$FindDiffMarkersEachDatasetGlobalClustersVsRestOfCells$dataset  <- Sys.time()
     
-    }
+  }
 }
 
 ####################################
@@ -1992,7 +1992,7 @@ if (3 %in% RequestedDiffGeneExprComparisons == T) {
   write.table(HeadersOrder,file = OutfileDiffGeneExpression, row.names = F, col.names = F, sep="", quote = F)
   
   Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$EachDatasetGlobalCellClusters
-
+  
   for (cluster in unique(seurat.object.integrated$seurat_clusters)) {
     for (dataset1 in rownames(InputsTable)) {
       for (dataset2 in rownames(InputsTable)) {
@@ -2065,7 +2065,7 @@ if (2 %in% RequestedClusteringInputs == T) {
     }
     seurat.object.each_dataset <- subset(x = seurat.object.integrated, idents = dataset)
     print(seurat.object.each_dataset)
-  
+    
     StopWatchStart$ClusterEachDatasetCellsFromInteg$dataset  <- Sys.time()
     
     ####################################
@@ -2076,7 +2076,7 @@ if (2 %in% RequestedClusteringInputs == T) {
     seurat.object.each_dataset <- FindNeighbors(object = seurat.object.each_dataset, dims = PcaDimsUse)
     seurat.object.each_dataset <- FindClusters(object = seurat.object.each_dataset, resolution = Resolution)
     ClustersThisDataset <- unlist(x = strsplit(x = paste(dataset, seurat.object.each_dataset@meta.data$seurat_clusters, sep = "_c", collapse = "\n"), split = "\n"))
-  
+    
     StopWatchEnd$ClusterEachDatasetCellsFromInteg$dataset  <- Sys.time()
     
     ####################################
@@ -2089,7 +2089,7 @@ if (2 %in% RequestedClusteringInputs == T) {
     ### Cell cluster identities
     write.table(paste(colnames(seurat.object.each_dataset), ClustersThisDataset, sep = "\t", collapse = "\n"),
                 file = OutfileEachDatasetClusters, row.names = F, col.names = F, quote = F, append = T)
-  
+    
     ### Number of clusters per dataset
     CellNames<-rownames(seurat.object.each_dataset@meta.data)
     ClusterIdent <-seurat.object.each_dataset@meta.data$seurat_clusters
@@ -2100,7 +2100,7 @@ if (2 %in% RequestedClusteringInputs == T) {
     NumberOfCellPerClusterPerDataset<-table(ClusterIdent)
     rownames(NumberOfCellPerClusterPerDataset) <- paste(dataset, rownames(NumberOfCellPerClusterPerDataset), sep = "_c")
     write.table(NumberOfCellPerClusterPerDataset, file = OutfileEachDatasetNumbCellsPerCluster, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-  
+    
     StopWatchEnd$WriteClustersEachDatasetCellClusterTables$dataset <- Sys.time()
     
     ####################################
@@ -2179,7 +2179,7 @@ if (2 %in% RequestedClusteringInputs == T) {
   #
   write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-
+  
   StopWatchEnd$AverageGeneExpressionEachDatasetReclustered$dataset  <- Sys.time()
   
 }
@@ -2195,28 +2195,28 @@ if (2 %in% RequestedClusteringInputs == T) {
 ####################################
 if (NumberOfDatasetsTypes >= 1) {
   writeLines("\n*** FOR EACH DATASET TYPE uses integrated/normalized counts and generates dimension reduction plots coloured by: a) dataset type, b) global clusters, c) selected genes and d) metadata ***\n")
-
+  
   ####################################
   ### Prepares each dataset type object
   ####################################
-
+  
   StopWatchStart$PrepareEachDatasetTypeForDimRedPlotsByVariousAttributes <- Sys.time()
-
+  
   seurat.object.integrated$dataset_type<-seurat.object.integrated$dataset
   for (dataset in rownames(InputsTable)) {
     seurat.object.integrated$dataset_type<-mapply(gsub, pattern = dataset, replacement = list_DatasetToType[[dataset]], seurat.object.integrated$dataset_type)
   }
   DatasetTypes <- unique(seurat.object.integrated$dataset_type)
-
+  
   StopWatchEnd$PrepareEachDatasetTypeForDimRedPlotsByVariousAttributes <- Sys.time()
-
+  
   ####################################
   ### Write out each dataset type global cluster assignments
   ####################################
   writeLines("\n*** Write out each dataset type global cluster assignments ***\n")
-
+  
   StopWatchStart$WriteOutDatasetTypeClusterAssignments  <- Sys.time()
-
+  
   # Headers for dataset-type-specific cell clusters
   Headers<-paste("Cell_barcode", paste0("seurat_cluster_r", Resolution), sep="\t")
   OutfileEachDatasetTypeGlobalClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "EachDatasetType_CellClusters.tsv")
@@ -2233,18 +2233,18 @@ if (NumberOfDatasetsTypes >= 1) {
     groupsMergedDataframeString <- sapply(groupsMergedDataframe, as.character)
     groupsMergedDataframeStringTYPE <- rbind(data.frame(NAME = "TYPE", Seurat_Global_Clusters = "group", Seurat_Datasets_Global_Clusters = "group"), groupsMergedDataframeString)
     colnames(groupsMergedDataframeStringTYPE) <- c("NAME", paste("Seurat_Global_Clusters_Resolution", Resolution, sep = "", collapse = ""), paste("Seurat_Datasets_Global_Clusters_Resolution", Resolution, sep = "", collapse = ""))
-
+    
     OutfileClustersMerged<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_groups/","groups.tsv")
     write.table(data.frame(groupsMergedDataframeStringTYPE), file = OutfileClustersMerged, row.names = F, col.names = T, sep="\t", quote = F, append = T)
   }
-
+  
   OutfileNumbCellsPerClusterPerDatasetType<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDatasetType.tsv")
   Headers<-paste("Cluster", "Number_of_cells", sep="\t", collapse = "")
   write.table(Headers, file = OutfileNumbCellsPerClusterPerDatasetType, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(table(GlobalClustersByDatasetType),file = OutfileNumbCellsPerClusterPerDatasetType, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-
+  
   StopWatchEnd$WriteOutDatasetTypeClusterAssignments  <- Sys.time()
-
+  
   ####################################
   ### Loops each dataset type
   ####################################
@@ -2260,38 +2260,38 @@ if (NumberOfDatasetsTypes >= 1) {
       rm(seurat.object.each_dataset_type)
     }
     seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
-
+    
     for (dim_red_method in names(DimensionReductionMethods)) {
       
       ####################################
       ### Colour dimension reduction plots for each dataset type by global clusters
       ####################################
-
+      
       writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot for ", dataset_type, " using global cell clusters ***\n"))
-
+      
       StopWatchStart$DimRedOPlotDatasetTypeColourByCellCluster$dataset_type$dim_red_method  <- Sys.time()
-
+      
       plots <- DimPlot(seurat.object.each_dataset_type, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 10)
       plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + guides(color = guide_legend(override.aes = list(size = 3))))
       IntegratedDimRedPlotPdf<-paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", dataset_type,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf")
       pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
       print(CombinePlots(plots))
       dev.off()
-
+      
       StopWatchEnd$DimRedOPlotDatasetTypeColourByCellCluster$dataset_type$dim_red_method  <- Sys.time()
-
+      
       ####################################
       ### Colour dimension reduction plots for each dataset type by selected genes (option -g)
       ####################################
-
+      
       if (regexpr("^NA$", InfileSelectedGenes, ignore.case = T)[1] == 1) {
         print("No selected genes for each dataset type dimension reduction plots")
-
+        
       }else if (3 %in% RequestedApplySelectedGenes == T) {
         writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot for each dataset type by selected genes (option -g) ***\n"))
-
+        
         StopWatchStart$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
-
+        
         ### Making a new Seurat object `seurat.object.each_dataset_type.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
         ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
         seurat.object.each_dataset_type.sa <- CreateSeuratObject(seurat.object.each_dataset_type@assays$RNA@data)
@@ -2307,58 +2307,58 @@ if (NumberOfDatasetsTypes >= 1) {
                             reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
           dev.off()
         })
-
+        
         StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
-
+        
         rm(seurat.object.each_dataset_type.sa)
       }
-
+      
       ####################################
       ### Colour dimension reduction plots for each dataset type by -infile_metadata using integrated data
       ####################################
-
+      
       if (regexpr("^NA$", InfileMetadata, ignore.case = T)[1] == 1) {
         print("No metadata will be used for dimension reduction plots")
       }else{
         writeLines("\n*** Colour dimension reduction plots for each dataset type by -infile_metadata using integrated data ***\n")
-
+        
         # Note: needs data.frame(CellPropertiesFromMetadata) preloaded
         
         # This is because Seurat removes the last '-digit' from barcode ID's when all barcodes finish with the same digit (i.e. come from the same dataset_type)
         # so that barcodes from --infile_metadata and --input can match each other
         rownames(CellPropertiesFromMetadata)<-gsub(x =rownames(CellPropertiesFromMetadata), pattern = "-[0-9]+$", perl = T, replacement = "")
         seurat.object.each_dataset_type <- AddMetaData(object = seurat.object.each_dataset_type, metadata = CellPropertiesFromMetadata)
-
+        
         StopWatchStart$DimRedPlotsByMetadata$dataset_type$dim_red_method  <- Sys.time()
-
+        
         # Generating outfile
         # Note DimPlot() takes the entire current device (pdf)
         # even if using layout(matrix(...)) or  par(mfrow=())
         # Thus each property plot is written to a separate page of a single *pdf outfile
         for (property in colnames(CellPropertiesFromMetadata)) {
-
+          
           if (sum(is.na(seurat.object.each_dataset_type[[property]]==T)) == ncol(seurat.object.each_dataset_type)) {
-
+            
             print(paste0("No extra barcode-attributes '", property, "' found for dataset_type ", dataset_type))
-
+            
           }else{
-
+            
             IntegratedDimRedPlotPdf <- paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourBy_", property, ".pdf")
             pdf(file=IntegratedDimRedPlotPdf, width = DefaultParameters$BaseSizeSinglePlotPdf, height = (DefaultParameters$BaseSizeSinglePlotPdf + (0.12 * length(unique(CellPropertiesFromMetadata[,property])))))
-
+            
             if ( (sum(CellPropertiesFromMetadata[,property] %in% 0:1 == T)) == (nrow(CellPropertiesFromMetadata)) ) { ## is binary
               CellsToHighlight <- rownames(CellPropertiesFromMetadata)[CellPropertiesFromMetadata[,property]==1]
               plots <- DimPlot(seurat.object.each_dataset_type, group.by = property, combine = F, reduction = dim_red_method, label = F, cells.highlight = CellsToHighlight)
               plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + labs(title = property) + guides(color = guide_legend(ncol = 3, override.aes = list(size = 3))))
               print(CombinePlots(plots))
-
+              
             }else{
               plots <- DimPlot(seurat.object.each_dataset_type, group.by = property, combine = F, reduction = dim_red_method, label = T)
               plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top", legend.text.align = 0) + labs(title = property) + guides(color = guide_legend(ncol = 3, override.aes = list(size = 3))))
               print(CombinePlots(plots))
-
+              
             }
-
+            
             dev.off()
           }
         }
@@ -2366,31 +2366,31 @@ if (NumberOfDatasetsTypes >= 1) {
       }
     }
   }
-
+  
   ####################################
   ### Load each dataset type global cluster assignments
   ####################################
   writeLines("\n*** Load each dataset type global cluster assignments ***\n")
-
+  
   StopWatchStart$LoadOutDatasetTypeClusterAssignments  <- Sys.time()
-
+  
   EachDatasetTypeGlobalCellClusters <- data.frame(read.table(OutfileEachDatasetTypeGlobalClusters, header = T, row.names = 1, sep = "\t"))
   seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = EachDatasetTypeGlobalCellClusters, col.name = "EachDatasetTypeGlobalCellClusters")
-
+  
   # switch the identity class of all cells to reflect each dataset clusters
   Idents(object = seurat.object.integrated) <- seurat.object.integrated$EachDatasetTypeGlobalCellClusters
-
+  
   StopWatchEnd$LoadOutDatasetTypeClusterAssignments  <- Sys.time()
-
+  
   ####################################
   ### Get average gene expression for each dataset type using global clusters
   ####################################
   writeLines("\n*** Get average gene expression for each dataset type using global clusters ***\n")
-
+  
   StopWatchStart$AverageGeneExpressionEachDatasetTypeGlobalClusters  <- Sys.time()
-
+  
   cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F)
-
+  
   OutfileClusterAveragesRNA<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDatasetType_AverageGeneExpression_RNA.tsv")
   OutfileClusterAveragesSCT<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDatasetType_AverageGeneExpression_SCT.tsv")
   OutfileClusterAveragesINT<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "PerDatasetType_AverageGeneExpression_INT.tsv")
@@ -2405,38 +2405,38 @@ if (NumberOfDatasetsTypes >= 1) {
   #
   write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-
+  
   StopWatchEnd$AverageGeneExpressionEachDatasetTypeGlobalClusters  <- Sys.time()
-
-
+  
+  
   ####################################
   ### Finding differentially expressed genes (4): using global cell clusers, for each dataset type, compares each cell cluster vs. the rest of cells
   ####################################
   if (4 %in% RequestedDiffGeneExprComparisons == T) {
-
+    
     writeLines("\n*** Finding differentially expressed genes (4): using global cell clusers, for each dataset type, compares each cell cluster vs. the rest of cells ***\n")
-
+    
     # switch identity to dataset type global cluster
     Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$dataset_type
-
+    
     NumberOfDatasetTypes <- 0
     for (dataset_type in DatasetTypes) {
       NumberOfDatasetTypes <- NumberOfDatasetTypes + 1
       print(NumberOfDatasetTypes)
-
+      
       if (exists(x = "seurat.object.each_dataset_type") == T) {
         rm(seurat.object.each_dataset_type)
       }
       seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
-
+      
       StopWatchStart$FindDiffMarkersEachDatasetTypeGlobalClustersVsRestOfCells$dataset_type  <- Sys.time()
-
+      
       NumberOfClusters <- length(unique(seurat.object.each_dataset_type$seurat_clusters))
-
+      
       print(paste0("Number of clusters = ", NumberOfClusters))
-
+      
       Idents(object = seurat.object.each_dataset_type) <- seurat.object.each_dataset_type@meta.data$EachDatasetTypeGlobalCellClusters
-
+      
       FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
       seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
       SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
@@ -2446,30 +2446,30 @@ if (NumberOfDatasetsTypes >= 1) {
       StopWatchEnd$FindDiffMarkersEachDatasetTypeGlobalClustersVsRestOfCells$dataset_type  <- Sys.time()
     }
   }
-
+  
   ####################################
   ### Finding differentially expressed genes (5): using global cell clusers, for each dataset type, compares each cell cluster vs. the same cluster from other dataset types
   ####################################
-
+  
   if (5 %in% RequestedDiffGeneExprComparisons == T) {
-
+    
     writeLines("\n*** Finding differentially expressed genes (5): using global cell clusers, compares each cell cluster from each dataset type vs. the same cluster from other dataset types ***\n")
-
+    
     StopWatchStart$FindDiffMarkersEachDatasetTypeGlobalClustersVsSameClusterInOtherDatasets  <- Sys.time()
-
+    
     NumberOfClusters <- length(unique(seurat.object.integrated$seurat_clusters))
-
+    
     print(paste0("Number of clusters = ", NumberOfClusters))
-
+    
     # switch the identity class of all cells to reflect each dataset clusters
     Idents(object = seurat.object.integrated) <- seurat.object.integrated$EachDatasetTypeGlobalCellClusters
-
+    
     FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
-
+    
     OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "MarkersPerDatasetTypeEquivalentClusters.tsv")
     HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
     write.table(HeadersOrder,file = OutfileDiffGeneExpression, row.names = F, col.names = F, sep="", quote = F)
-
+    
     for (cluster in unique(seurat.object.integrated$seurat_clusters)) {
       for (dataset_type1 in unique(InputsTable[,"DatasetType"])) {
         for (dataset_type2 in unique(InputsTable[,"DatasetType"])) {
@@ -2491,7 +2491,7 @@ if (NumberOfDatasetsTypes >= 1) {
         }
       }
     }
-
+    
     StopWatchEnd$FindDiffMarkersEachDatasetTypeGlobalClustersVsSameClusterInOtherDatasets  <- Sys.time()
   }
 }
@@ -2512,7 +2512,7 @@ if (NumberOfDatasetsTypes >= 1) {
   ####################################
   ### Prepares each dataset type object
   ####################################
-
+  
   StopWatchStart$PrepareEachDatasetTypeForRecusterAndDimRedPlots <- Sys.time()
   
   seurat.object.integrated$dataset_type<-seurat.object.integrated$dataset
@@ -2522,12 +2522,12 @@ if (NumberOfDatasetsTypes >= 1) {
   DatasetTypes <- unique(seurat.object.integrated$dataset_type)
   
   StopWatchEnd$PrepareEachDatasetTypeForRecusterAndDimRedPlots <- Sys.time()
-
+  
   ####################################
   ### Reclusters each dataset type cells and gets DGE
   ####################################
   if (3 %in% RequestedClusteringInputs == T) {
-
+    
     ####################################
     ### Prepares outfile headers
     ####################################
@@ -2551,14 +2551,14 @@ if (NumberOfDatasetsTypes >= 1) {
       }
       
       Idents(object = seurat.object.integrated) <- seurat.object.integrated$dataset_type
-
+      
       seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
       print(seurat.object.each_dataset_type)
       
       ####################################
       ### Re-clusters each dataset type
       ####################################
-
+      
       StopWatchStart$ReclusterEachDatasetTypeCellsFromInteg$dataset_type  <- Sys.time()
       
       options(scipen=10) ## Needed to avoid an 'Error in file(file, "rt") : cannot open the connection'
@@ -2572,7 +2572,7 @@ if (NumberOfDatasetsTypes >= 1) {
       ### Write out each dataset type re-clustered cell clusters
       ####################################
       writeLines("\n*** Write out each dataset type re-clustered cell clusters ***\n")
-    
+      
       StopWatchStart$WriteReClustersEachDatasetTypeTables$dataset_type <- Sys.time()
       
       write.table(paste(colnames(seurat.object.each_dataset_type), ClustersThisDatasetType, sep = "\t", collapse = "\n"),
@@ -2585,7 +2585,7 @@ if (NumberOfDatasetsTypes >= 1) {
       write(x=NumberOfClusters,file = OutfileNumbClusters)
       
       StopWatchEnd$WriteReClustersEachDatasetTypeTables$dataset_type <- Sys.time()
-
+      
       ####################################
       ### Colour dimension reduction plots by each dataset type re-clustered cells
       ####################################
@@ -2645,7 +2645,7 @@ if (NumberOfDatasetsTypes >= 1) {
     writeLines("\n*** Get average expression for each dataset type re-clustered clusters ***\n")
     
     StopWatchStart$AverageGeneExpressionEachDatasetTypeReCluster <- Sys.time()
-
+    
     cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F)
     
     OutfileClusterAveragesRNA<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "PerDatasetType_AverageGeneExpression_RNA.tsv")
@@ -2662,9 +2662,9 @@ if (NumberOfDatasetsTypes >= 1) {
     #
     write.table(Headers,file = OutfileClusterAveragesINT, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(data.frame(cluster.averages$integrated),file = OutfileClusterAveragesINT, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-  
+    
     StopWatchEnd$AverageGeneExpressionEachDatasetTypeReCluster <- Sys.time()
-
+    
   }
 }else{
   writeLines("\n*** No dataset type analyzes will be conducted because only '1' dataset type was found in -inputs_list ***\n")
@@ -2693,7 +2693,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
   writeLines(paste0("\n*** Define metadata for DGE ***\n"))
   
   StopWatchStart$LoadMetadataForDGE  <- Sys.time()
-
+  
   MetadataColNamesForDge.list  = unlist(strsplit(MetadataColNamesForDge, ","))
   
   # Note: needs data.frame(CellPropertiesFromMetadata) preloaded
@@ -2702,26 +2702,26 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
   # so that barcodes from --infile_metadata and --input can match each other
   rownames(CellPropertiesFromMetadata)<-gsub(x =rownames(CellPropertiesFromMetadata), pattern = "-[0-9]+$", perl = T, replacement = "")
   seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = CellPropertiesFromMetadata)
-
+  
   StopWatchEnd$LoadMetadataForDGE  <- Sys.time()
   
   ####################################
   ### Finding differentially expressed genes (8): using metadata, compares each cell class vs. the rest of cells
   ####################################
   if (8 %in% RequestedDiffGeneExprComparisons == T) {
-
-  writeLines("\n*** Finding differentially expressed genes (8): using metadata, compares each cell class vs. the rest of cells ***\n")
-
-  StopWatchStart$FindDiffMarkersEachMetadataClassVsRestOfCells  <- Sys.time()
-
+    
+    writeLines("\n*** Finding differentially expressed genes (8): using metadata, compares each cell class vs. the rest of cells ***\n")
+    
+    StopWatchStart$FindDiffMarkersEachMetadataClassVsRestOfCells  <- Sys.time()
+    
     for (property in MetadataColNamesForDge.list) {
-
+      
       NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
-
+      
       print(paste0("Number of classes in '", property, "' = ", NumberOfClassesInThisProperty))
-
+      
       if (NumberOfClassesInThisProperty > 1) {
-
+        
         ####################################
         ### Subsets seurat object per property
         ####################################
@@ -2731,7 +2731,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
         # switch the identity class of all cells to reflect property identities
         Idents(object = seurat.object.integrated) <- seurat.object.integrated[[property]]
         seurat.object.each_property <- seurat.object.integrated
-
+        
         ####################################
         ### Finding differentially expressed genes
         ####################################
@@ -2743,11 +2743,11 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
         write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
       }
     }
-
-  StopWatchEnd$FindDiffMarkersEachMetadataClassVsRestOfCells  <- Sys.time()
-
+    
+    StopWatchEnd$FindDiffMarkersEachMetadataClassVsRestOfCells  <- Sys.time()
+    
   }
-
+  
   ####################################
   ### Finding differentially expressed genes (9): using metadata annotations, for each dataset, compares each cell class vs. the rest of cells
   ####################################
@@ -2774,16 +2774,16 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
       Idents(object = seurat.object.integrated) <- seurat.object.integrated$seurat_clusters
       Idents(object = seurat.object.each_dataset) <- seurat.object.each_dataset@meta.data[[property]]
       print(seurat.object.each_dataset)
-
+      
       for (property in MetadataColNamesForDge.list) {
         NumberOfClassesInThisProperty <- length(unique(seurat.object.each_dataset@meta.data[[property]]))
-          
+        
         print(paste0("Number of classes in '", property, " in dataset ", dataset, " = ", NumberOfClassesInThisProperty))
-  
+        
         if (NumberOfClassesInThisProperty > 1) {
           print(paste0("**** ", property, " ****\n"))
           print(table(seurat.object.each_dataset@active.ident))
-              
+          
           FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
           seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
           SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
@@ -2794,28 +2794,28 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
       }
       
       StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetVsRestOfCells$dataset <- Sys.time()
-
+      
     }
   }
-
+  
   ####################################
   ### Finding differentially expressed genes (10): using metadata annotations, for each dataset, compares each cell class specified vs. the same class from other datasets
   ####################################
   if (10 %in% RequestedDiffGeneExprComparisons == T) {
-
+    
     writeLines("\n*** Finding differentially expressed genes (10): using metadata annotations, for each dataset, compares each cell class specified vs. the same class from other datasets ***\n")
-
+    
     StopWatchStart$FindDiffMarkersEachMetadataClassEachDatasetVsSameClassInOtherDatasets  <- Sys.time()
-
+    
     for (property in MetadataColNamesForDge.list) {
-
+      
       NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
-
+      
       print(paste0("Number of classes in '", property, "' = ", NumberOfClassesInThisProperty))
       print(paste0("Number of datasets = ", nrow(InputsTable)))
-
+      
       if (NumberOfClassesInThisProperty > 1) {
-
+        
         ####################################
         ### Subsets seurat object per property
         ####################################
@@ -2826,11 +2826,11 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
         seurat.object.each_property <- seurat.object.integrated
         DatasetAndProperty <- unlist(x = strsplit(x = paste(seurat.object.each_property@meta.data$dataset, seurat.object.each_property@meta.data[[property]], sep = "_", collapse = "\n"), split = "\n"))
         seurat.object.each_property <- AddMetaData(object = seurat.object.each_property, metadata = DatasetAndProperty, col.name = "DatasetAndProperty")
-
+        
         Idents(object = seurat.object.each_property) <- DatasetAndProperty
         
         FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
-    
+        
         OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_EachMetadataClass_", property, "_MarkersPerDatasetEquivalentClasses.tsv")
         HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
         write.table(HeadersOrder,file = OutfileDiffGeneExpression, row.names = F, col.names = F, sep="", quote = F)
@@ -2842,7 +2842,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
               Class_Dataset2 <- paste(dataset_2, class, sep = "_")
               N_Class_Dataset1 <- sum(seurat.object.each_property$DatasetAndProperty == Class_Dataset1)
               N_Class_Dataset2 <- sum(seurat.object.each_property$DatasetAndProperty == Class_Dataset2)
-
+              
               if (Class_Dataset1 == Class_Dataset2) {
                 ### Skip
               }else if (N_Class_Dataset1 >= 3 & N_Class_Dataset2 >= 3) {
@@ -2863,14 +2863,14 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
     }
     StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetVsSameClassInOtherDatasets  <- Sys.time()
   }
-
+  
   ####################################
   ### Finding differentially expressed genes (11): using metadata annotations, for each dataset_type, compares each cell class vs. the rest of cells
   ####################################
   if (11 %in% RequestedDiffGeneExprComparisons == T) {
     
     writeLines("\n*** Finding differentially expressed genes (10): using metadata annotations, for each dataset_type, compares each cell class vs. the rest of cells ***\n")
-
+    
     ####################################
     ### Loops each dataset_type
     ####################################
@@ -2890,7 +2890,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
       Idents(object = seurat.object.integrated) <- seurat.object.integrated$seurat_clusters
       Idents(object = seurat.object.each_dataset_type) <- seurat.object.each_dataset_type@meta.data[[property]]
       print(seurat.object.each_dataset_type)
-
+      
       for (property in MetadataColNamesForDge.list) {
         NumberOfClassesInThisProperty <- length(unique(seurat.object.each_dataset_type@meta.data[[property]]))
         
@@ -2912,7 +2912,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
       StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetTypeVsRestOfCells$dataset_type <- Sys.time()
     }
   }
-
+  
   ####################################
   ### Finding differentially expressed genes (12): using metadata annotations, for each dataset type, compares each cell class vs. the same class from other dataset types
   ####################################
@@ -2923,11 +2923,11 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
     StopWatchStart$FindDiffMarkersEachMetadataClassEachDatasetTypeVsSameClassInOtherDatasetTypes  <- Sys.time()
     
     if (NumberOfDatasetsTypes > 1) {
-
+      
       for (property in MetadataColNamesForDge.list) {
         
         NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
-
+        
         print(paste0("Number of classes in '", property, "' = ", NumberOfClassesInThisProperty))
         print(paste0("Number of dataset types = ", NumberOfDatasetsTypes))
         
@@ -2996,7 +2996,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
 ####################################
 
 if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
-
+  
   writeLines("\n*** Saving the full R object ***\n")
   
   StopWatchStart$SaveRDSFull  <- Sys.time()
@@ -3005,7 +3005,7 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDSFull  <- Sys.time()
-
+  
 }else{
   
   writeLines("\n*** Not saving the full R object ***\n")
