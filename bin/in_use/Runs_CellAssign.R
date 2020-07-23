@@ -28,11 +28,15 @@
 ####################################
 ### Required libraries
 ####################################
-suppressPackageStartupMessages(library(cellassign))   # (GitHub Irrationone/cellassign) to assign scRNA-seq data to known cell types
-suppressPackageStartupMessages(library(scran))        # (Bioconductor) to compute cell size factors
+suppressPackageStartupMessages(library(DropletUtils)) # (Bioconductor) to handle MTX/H5 format files. Note it has about the same speed than library(earlycross) which can't handle H5
+suppressPackageStartupMessages(library(Seurat))       # (CRAN) to run QC, differential gene expression and clustering analyses
+suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables quicker than read.table
+suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
 suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`.
+suppressPackageStartupMessages(library(scran))        # (Bioconductor) to compute cell size factors
+suppressPackageStartupMessages(library(cellassign))   # (GitHub Irrationone/cellassign) to assign scRNA-seq data to known cell types
 ####################################
 
 ####################################
@@ -226,17 +230,10 @@ writeLines("\n*** Report R sessionInfo ***\n")
 OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/" , PrefixOutfiles, ".", ProgramOutdir, "_RSessionInfo.txt")
 writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
 
-#TODO confirm that all preceding code is correct
-##
-## EVERYTHING ABOVE THIS IS REQUIRED FOR CRESCENT AS PER JAVIER'S EMAIL
-##
-
-
-
 
 
 ####################################
-### Load scRNA-seq data #TODO make sure these extra formats will work for cellassign
+### Load scRNA-seq data 
 ####################################
 writeLines("\n*** Load scRNA-seq data ***\n")
 
@@ -244,14 +241,14 @@ StopWatchStart$LoadScRNAseqData  <- Sys.time()
 
 if (regexpr("^MTX$", InputType, ignore.case = T)[1] == 1) {
   writeLines(paste0("\n*** Loading MTX infiles ***\n"))
-  input.matrix <- Read10X(data.dir = Input)
+  input.matrix <- Read10X(data.dir = Input) 
 }else if (regexpr("^TSV$", InputType, ignore.case = T)[1] == 1) {
   writeLines(paste0("\n*** Loading matrix of genes (rows) vs. barcodes (columns) ***\n"))
   ## Note `check.names = F` is needed for both `fread` and `data.frame`
   input.matrix <- as.matrix(data.frame(fread(Input, check.names = F), row.names=1, check.names = F))
 }else if (regexpr("^HDF5$", InputType, ignore.case = T)[1] == 1) {
   writeLines(paste0("\n*** Loading HDF5 infile ***\n"))
-  input.matrix <- Read10X_h5(filename = Input, use.names = T, unique.features = T)
+  input.matrix <- Read10X_h5(filename = Input, use.names = T, unique.features = T) 
 }else{
   stop(paste0("Unexpected type of input: ", InputType, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n"))
 }
@@ -283,7 +280,7 @@ StopWatchEnd$LoadMarkerGeneMatrix <- Sys.time()
 
 writeLines("\n*** Removing Non Marker Genes ***\n")
 StopWatchStart$RemoveNonMarkerGenes <- Sys.time()
-input.matrix.final <- t(as.matrix(input.matrix[as.character(row.names(marker.matrix)),])) 
+input.matrix.final <- as.matrix(t(input.matrix[as.character(row.names(marker.matrix)),]))
 StopWatchEnd$RemoveNonMarkerGenes <- Sys.time()
 
 ####################################
@@ -291,7 +288,7 @@ StopWatchEnd$RemoveNonMarkerGenes <- Sys.time()
 ####################################
 
 writeLines("\n*** Running CellAssign ***\n")
-StopWatchStart$CellAssign <- Sys.time()
+StopWatchStart$RunCellAssign <- Sys.time()
 cell.fit <- cellassign(exprs_obj = input.matrix.final, 
                         marker_gene_info = marker.matrix,
                         s = size.factors,
@@ -299,21 +296,17 @@ cell.fit <- cellassign(exprs_obj = input.matrix.final,
                         verbose = FALSE)
 cell.results <- data.frame(row.names(input.matrix.final), celltypes(cell.fit))
 colnames(cell.results) <- c('cell', 'annotation')
-StopWatchEnd$CellAssign <- Sys.time()
+StopWatchEnd$RunCellAssign <- Sys.time()
 
 ####################################
 ### Write cell annotations 
 ####################################
 
-StopWatchStart$WriteAnnos <- Sys.time()
+StopWatchStart$WriteAnnotations <- Sys.time()
 OutDirAnnos <- paste0(Tempdir, '/ANNOTATIONS/', PrefixOutfiles, '.', ProgramOutdir,'_Annotations.tsv')
 write.table(cell.results, OutDirAnnos, sep='\t', quote = FALSE, row.names = FALSE)
-StopWatchEnd$WriteAnnos <- Sys.time()
+StopWatchEnd$WriteAnnotationss <- Sys.time()
 
-##
-## EVERYTHING AFTER THIS IS REQUIRED
-##
-#TODO see if any of this stuff needs changing
 
 ####################################
 ### Obtain computing time used
@@ -378,7 +371,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
       OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
       print(OutdirFinal)
       dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
-      sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(EachFileName) { #TODO not moving my output files correctly
+      sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(EachFileName) { 
         file.copy(from=paste0(TempdirWithData, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
         file.remove(paste0(TempdirWithData, "/", EachFileName))
       })
