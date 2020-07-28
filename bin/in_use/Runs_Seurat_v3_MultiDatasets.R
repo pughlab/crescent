@@ -935,6 +935,37 @@ for (dataset in rownames(InputsTable)) {
     dev.off()
     
     StopWatchEnd$QCviolinplots$dataset  <- Sys.time()
+
+
+    ####################################
+    ### CWL interactive qc plots
+    ####################################
+    writeLines("\n*** CWL interactive qc plots ***\n")
+
+    if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+      # unfiltered
+      interactive_qc_plot_u  <-data.frame(Barcodes = row.names(seurat.object.u@meta.data), Number_of_Genes = seurat.object.u@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.u@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.u@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.u@meta.data$ribo.fraction)
+      interactive_qc_plot_u$Mitochondrial_Genes_Percentage <- interactive_qc_plot_u$Mitochondrial_Genes_Percentage * 100
+      interactive_qc_plot_u$Ribosomal_Protein_Genes_Percentage <- interactive_qc_plot_u$Ribosomal_Protein_Genes_Percentage * 100
+      colnames(interactive_qc_plot_u) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Percentage","Ribosomal Protein Genes Percentage")
+      write.table(interactive_qc_plot_u, paste(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/",dataset,"_BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+      
+      # filtered
+      interactive_qc_plot_f  <-data.frame(Barcodes = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
+      interactive_qc_plot_f$Mitochondrial_Genes_Percentage <- interactive_qc_plot_f$Mitochondrial_Genes_Percentage * 100
+      interactive_qc_plot_f$Ribosomal_Protein_Genes_Percentage <- interactive_qc_plot_f$Ribosomal_Protein_Genes_Percentage * 100
+      colnames(interactive_qc_plot_f) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Percentage","Ribosomal Protein Genes Percentage")
+      write.table(interactive_qc_plot_f, paste(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/",dataset,"_AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+      
+      qc_tsv <- data.frame(NAME = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
+      qc_tsv$Mitochondrial_Genes_Percentage <- qc_tsv$Mitochondrial_Genes_Percentage * 100
+      qc_tsv$Ribosomal_Protein_Genes_Percentage <- qc_tsv$Ribosomal_Protein_Genes_Percentage * 100
+      qc_tsv_string <- sapply(qc_tsv, as.character)
+      qc_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", Number_of_Genes = "numeric", Number_of_Reads = "numeric", Mitochondrial_Genes_Percentage = "numeric", Ribosomal_Protein_Genes_Percentage = "numeric"), qc_tsv_string)
+      
+      qc_outfile <-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/",dataset,"_qc_data.tsv")
+      write.table(data.frame(qc_tsv_string_TYPE),file = qc_outfile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
+    } 
     
     ####################################
     ### Feature-vs-feature scatter plot
