@@ -888,14 +888,14 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   interactive_qc_plot_u$Mitochondrial_Genes_Percentage <- interactive_qc_plot_u$Mitochondrial_Genes_Percentage * 100
   interactive_qc_plot_u$Ribosomal_Protein_Genes_Percentage <- interactive_qc_plot_u$Ribosomal_Protein_Genes_Percentage * 100
   colnames(interactive_qc_plot_u) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Percentage","Ribosomal Protein Genes Percentage")
-  write.table(interactive_qc_plot_u, paste(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/","BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+  write.table(interactive_qc_plot_u, paste(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/",PrefixOutfiles,"_BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
   
   # filtered
   interactive_qc_plot_f  <-data.frame(Barcodes = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
   interactive_qc_plot_f$Mitochondrial_Genes_Percentage <- interactive_qc_plot_f$Mitochondrial_Genes_Percentage * 100
   interactive_qc_plot_f$Ribosomal_Protein_Genes_Percentage <- interactive_qc_plot_f$Ribosomal_Protein_Genes_Percentage * 100
   colnames(interactive_qc_plot_f) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Percentage","Ribosomal Protein Genes Percentage")
-  write.table(interactive_qc_plot_f, paste(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/","AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
+  write.table(interactive_qc_plot_f, paste(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/",PrefixOutfiles,"_AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
   
   qc_tsv <- data.frame(NAME = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
   qc_tsv$Mitochondrial_Genes_Percentage <- qc_tsv$Mitochondrial_Genes_Percentage * 100
@@ -903,7 +903,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   qc_tsv_string <- sapply(qc_tsv, as.character)
   qc_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", Number_of_Genes = "numeric", Number_of_Reads = "numeric", Mitochondrial_Genes_Percentage = "numeric", Ribosomal_Protein_Genes_Percentage = "numeric"), qc_tsv_string)
   
-  qc_outfile <-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/","qc_data.tsv")
+  qc_outfile <-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/",PrefixOutfiles,"_qc_data.tsv")
   write.table(data.frame(qc_tsv_string_TYPE),file = qc_outfile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
 } 
 
@@ -984,7 +984,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   qc_metrics_mito <- data.frame(Step = "Percentage of Mitochondrial Genes", Filter_min = as.numeric(ListPMito[[1]])*100, Filter_max = as.numeric(ListPMito[[2]])*100, Excluded_cells = NumberOfBarcodesExcludedByMito)
   qc_metrics_ribo <- data.frame(Step = "Percentage of Ribsomal Protein Genes", Filter_min = as.numeric(ListPRibo[[1]])*100, Filter_max = as.numeric(ListPRibo[[2]])*100, Excluded_cells = NumberOfBarcodesExcludedByRibo)
   
-  qc_metrics <-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/","qc_metrics.tsv")
+  qc_metrics <-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/",PrefixOutfiles,"_qc_metrics.tsv")
   write.table(qc_metrics_genes, file = qc_metrics, row.names = F, col.names = T, sep="\t", quote = F, append = T)
   write.table(qc_metrics_reads, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
   write.table(qc_metrics_mito, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
