@@ -114,7 +114,7 @@ ProgramOutdir  <- "SEURAT"
 ####################################
 ### Get inputs from command line argumets
 ####################################
-#
+#####
 option_list <- list(
   make_option(c("-i", "--inputs_list"), default="NA",
               help="Path/name to a <tab> delimited file with one dataset per row and
@@ -163,9 +163,9 @@ option_list <- list(
                 Default = 'N'"),
   #
   make_option(c("-z", "--reference_datasets"), default="NA",
-              help="A list of <comma> delimited number of row(s) from --inputs_list of datasets to be used as reference(s) for integration
+              help="A list of <comma> delimited unique dataset ID's from --inputs_list column 1, indicating dataset(s) to be used as reference for integration
                 Or type 'NA' to run all-vs-all dataset pairwise comparisons (this is more time and memory consuming than using references).
-                If references are used, then references will be integrated and anchors identified between non-reference and reference datasets,
+                If references are used, then they will be integrated and anchors identified between non-reference and reference datasets,
                 but not anchors will be identified between non-reference datasets (this saves time and memory)
                 Default = 'NA'"),
   #
@@ -404,7 +404,7 @@ if (regexpr("^MAX$", NumbCores, ignore.case = T)[1] == 1) {
 }else if (regexpr("^[0-9]+$", NumbCores, ignore.case = T)[1] == 1) {
   NumbCoresToUse <- as.numeric(NumbCores)
 }else{
-  stop(paste0("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nintegrates_datasets_with_seurat_dev.R -h\n\n"))
+  stop(paste0("Unexpected format for --number_cores: ", NumbCores, "\n\nFor help type:\n\nRscript ", ThisScriptName, " -h\n\n"))
 }
 
 cat("Using ", NumbCoresToUse, "cores")
@@ -567,7 +567,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
 if ((1 %in% RequestedApplySelectedGenes == T) | 
     (2 %in% RequestedApplySelectedGenes == T) | 
     (3 %in% RequestedApplySelectedGenes == T)
-    ) {
+) {
   if (length(grep('^NA$', InfileSelectedGenes, perl = T))) {
     stop("ERROR!!! options `-l [1|2|3] and -g NA` are incompatible with each other")
   }else{
@@ -612,6 +612,25 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
   colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
 }
+
+####################################
+### Determine reference dataset indices
+####################################
+
+if (regexpr("^NA$", ReferenceDatasets , ignore.case = T)[1] == 1) {
+  
+}else{
+  writeLines("\n*** Determine reference dataset indices ***\n")
+  
+  ReferenceDatasets.list <- unlist(strsplit(ReferenceDatasets, ","))
+  NumberOfFoundReferenceDatasetIDs <- sum(ReferenceDatasets.list %in% rownames(InputsTable))
+  if (NumberOfFoundReferenceDatasetIDs == length(ReferenceDatasets.list)) {
+    ReferenceDatasets.indices <- match(ReferenceDatasets.list, rownames(InputsTable))
+  }else{
+    stop(paste0("Requested ", length(ReferenceDatasets.list), " datasets as references by parameter `-z`, but found ", NumberOfFoundReferenceDatasetIDs, " in --inputs_list row headers"))
+  }
+}
+
 ####################################
 ### Load scRNA-seq data and generate QC plots and tables
 ####################################
@@ -661,7 +680,7 @@ for (dataset in rownames(InputsTable)) {
   if (regexpr("^MTX$|^TSV$|^HDF5$", list_DatasetToFormat[[dataset]], ignore.case = T, perl = T)[1] == 1) {
     
     ####################################
-    ### Loading MTX or TSV infiles
+    ### Load scRNA-seq data
     ####################################
     
     StopWatchStart$LoadScRNAseqData$dataset <- Sys.time()
@@ -677,7 +696,7 @@ for (dataset in rownames(InputsTable)) {
       writeLines(paste0("\n*** Loading HDF5 infile for ", dataset, " from: ", PathToDataset, " ***\n"))
       expression_matrix <- Read10X_h5(filename = PathToDataset, use.names = T, unique.features = T)
     }else{
-      stop(paste0("Unexpected type of input: ", InputType, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n"))
+      stop(paste0("Unexpected type of input: ", InputType, "\n\nFor help type:\n\nRscript ", ThisScriptName, " -h\n\n"))
     }
     dim(expression_matrix)
     
@@ -935,13 +954,13 @@ for (dataset in rownames(InputsTable)) {
     dev.off()
     
     StopWatchEnd$QCviolinplots$dataset  <- Sys.time()
-
-
+    
+    
     ####################################
     ### CWL interactive qc plots
     ####################################
     writeLines("\n*** CWL interactive qc plots ***\n")
-
+    
     if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
       # unfiltered
       interactive_qc_plot_u  <-data.frame(Barcodes = row.names(seurat.object.u@meta.data), Number_of_Genes = seurat.object.u@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.u@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.u@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.u@meta.data$ribo.fraction)
@@ -1136,6 +1155,7 @@ if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
   
 }
 
+
 ####################################
 ### Merge Seurat objects
 ####################################
@@ -1222,13 +1242,9 @@ writeLines("\n*** Run FindIntegrationAnchors() ***\n")
 if (regexpr("^NA$", ReferenceDatasets , ignore.case = T)[1] == 1) {
   writeLines("\n*** No reference datasets will be used. Finding anchors in all-vs-all dataset pairwise comparisons ***\n")
   seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, verbose = T)
-  
-}else if (regexpr("[0-9]", ReferenceDatasets , ignore.case = T, perl = T)[1] == 1) {
-  writeLines(paste0("\n*** Dataset number(s): ", ReferenceDatasets, " will be used as reference(s) ***\n"))
-  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, reference = c(as.numeric(unlist(strsplit(ReferenceDatasets, ",")))), verbose = T)
-  
 }else{
-  stop(paste0("Unexpected format in --reference_datasets ", ReferenceDatasets))
+  writeLines(paste0("\n*** Dataset number(s): ", paste(ReferenceDatasets.indices, collapse = ","), " will be used as reference(s) ***\n"))
+  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, reference = ReferenceDatasets.indices, verbose = T)
 }
 
 StopWatchEnd$FindIntegrationAnchors  <- Sys.time()
@@ -1239,27 +1255,6 @@ writeLines("\n*** Run IntegrateData() ***\n")
 seurat.object.integrated <- IntegrateData(anchorset = seurat.object.anchors, normalization.method = "SCT", verbose = T)
 
 StopWatchEnd$IntegrateData  <- Sys.time()
-
-####################################
-### Saving the R object up to dataset integration
-####################################
-
-if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
-  
-  writeLines("\n*** Saving the R object up to dataset integration ***\n")
-  
-  StopWatchStart$SaveRDSUpToIntegration  <- Sys.time()
-  
-  OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_integrated_object_incl_integrated_datasets.rds")
-  saveRDS(seurat.object.integrated, file = OutfileRDS)
-  
-  StopWatchEnd$SaveRDSUpToIntegration  <- Sys.time()
-  
-}else{
-  
-  writeLines("\n*** Saving the R object up to dataset integration ***\n")
-  
-}
 
 ####################################
 ### Save normalized count matrix as loom
@@ -1596,11 +1591,15 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/ALL_CELLS/", DimensionReductionMethods[[dim_red_method]][["name"]]) 
     dir.create(path = OutDirThisOption, recursive = T)
     sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
-      OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_all_cells_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
-      pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
-      print(FeaturePlot(object = seurat.object.integrated.sa, features = eachGene, cols = c("lightgrey", "blue"),
-                        reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
-      dev.off()
+      if (eachGene %in% rownames(seurat.object.integrated.sa) == T)  {
+        OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_all_cells_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
+        pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
+        print(FeaturePlot(object = seurat.object.integrated.sa, features = eachGene, cols = c("lightgrey", "blue"),
+                          reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
+        dev.off()
+      }else{
+        print(paste0("Missing ", eachGene))
+      }
     })
     
     StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
@@ -1728,15 +1727,9 @@ StopWatchStart$DimRedPlotsQC  <- Sys.time()
 
 Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$dataset
 
+AllQCMetadata <- data.frame()
 NumberOfDatasets <- 0
 for (dataset in rownames(InputsTable)) {
-  
-  ### Note: need to AddMetaData() mito.fraction and ribo.fraction from OutfileQCMetadata to generate FeaturePlot()
-  ### because they are not inherited in seurat.object.integrated by IntegrateData()
-  InfileQCMetadataAfterFilters<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "After_filters_QC_metadata.tsv")
-  
-  QCMetadata <- data.frame(read.table(InfileQCMetadataAfterFilters, header = T, row.names = 1))
-  seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = QCMetadata)
   
   NumberOfDatasets <- NumberOfDatasets + 1
   print(NumberOfDatasets)
@@ -1745,14 +1738,26 @@ for (dataset in rownames(InputsTable)) {
     rm(seurat.object.each_dataset)
   }
   seurat.object.each_dataset <- subset(x = seurat.object.integrated, idents = dataset)
-  print(seurat.object.each_dataset)
   
+  ### Note: need to AddMetaData() mito.fraction and ribo.fraction from OutfileQCMetadata to generate FeaturePlot()
+  ### because they are not inherited in seurat.object.integrated by IntegrateData()
+  InfileQCMetadataAfterFilters<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset, "_", "After_filters_QC_metadata.tsv")
+  QCMetadata <- data.frame(read.table(InfileQCMetadataAfterFilters, header = T, row.names = 1))
+  AllQCMetadata <- rbind(AllQCMetadata, QCMetadata)
+  seurat.object.each_dataset <- AddMetaData(object = seurat.object.each_dataset, metadata = QCMetadata)
+  seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = QCMetadata)
+  print(seurat.object.each_dataset)
+
   for (dim_red_method in names(DimensionReductionMethods)) {
     pdf(file=paste0(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset,"_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByQC.pdf"), width = DefaultParameters$BaseSizeSinglePlotPdf * 1.5, height = DefaultParameters$BaseSizeSinglePlotPdf * 1.5)
     print(FeaturePlot(object = seurat.object.each_dataset, label = F, order = T, features = DefaultParameters$CellPropertiesToQC, cols = c("lightgrey", "blue"), reduction = dim_red_method, ncol = 2, pt.size = 1.5))
     dev.off()
   }
 }
+
+### Adding nCount_RNA, nFeature_RNA, mito.fraction and ribo.fraction to seurat.object.integrated
+### because they are not inherited by IntegrateData() and the loop above would add only one sample at a time and make the rest 'NA'
+seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = AllQCMetadata)
 
 StopWatchEnd$DimRedPlotsQC  <- Sys.time()
 
@@ -1867,11 +1872,15 @@ for (dataset in rownames(InputsTable)) {
       OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/DATASETS/", DimensionReductionMethods[[dim_red_method]][["name"]]) 
       dir.create(path = OutDirThisOption, recursive = T)
       sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
-        OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
-        pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
-        print(FeaturePlot(object = seurat.object.each_dataset.sa, features = eachGene, cols = c("lightgrey", "blue"),
-                          reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
-        dev.off()
+        if (eachGene %in% rownames(seurat.object.each_dataset.sa) == T)  {
+          OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
+          pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
+          print(FeaturePlot(object = seurat.object.each_dataset.sa, features = eachGene, cols = c("lightgrey", "blue"),
+                            reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
+          dev.off()
+        }else{
+          print(paste0("Missing ", eachGene))
+        }
       })
       
       StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
@@ -1934,7 +1943,6 @@ for (dataset in rownames(InputsTable)) {
     
   }
 }
-
 
 ####################################
 ### Get average gene expression for each dataset based on global clusters
@@ -2332,11 +2340,15 @@ if (NumberOfDatasetsTypes >= 1) {
         OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/DATASET_TYPES/", DimensionReductionMethods[[dim_red_method]][["name"]])
         dir.create(path = OutDirThisOption, recursive = T)
         sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
-          OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
-          pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
-          print(FeaturePlot(object = seurat.object.each_dataset_type.sa, features = eachGene, cols = c("lightgrey", "blue"),
-                            reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
-          dev.off()
+          if (eachGene %in% rownames(seurat.object.each_dataset_type.sa) == T)  {
+            OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
+            pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
+            print(FeaturePlot(object = seurat.object.each_dataset_type.sa, features = eachGene, cols = c("lightgrey", "blue"),
+                              reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
+            dev.off()
+          }else{
+            print(paste0("Missing ", eachGene))
+          }
         })
         
         StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
@@ -2715,7 +2727,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
     (10 %in% RequestedDiffGeneExprComparisons == T) |
     (11 %in% RequestedDiffGeneExprComparisons == T) | 
     (12 %in% RequestedDiffGeneExprComparisons == T)
-    )  {
+)  {
   
   ####################################
   ### Define metadata for DGE
@@ -3029,7 +3041,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
 if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
   writeLines("\n*** Saving the full R object ***\n")
-  
+
   StopWatchStart$SaveRDSFull  <- Sys.time()
   
   OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_integrated_object_full.rds")
@@ -3046,7 +3058,7 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
 ####################################
 ### Obtain computing time used
 ####################################
-writeLines("\n*** Obtain computing time used***\n")
+writeLines("\n*** Obtain computing time used ***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
