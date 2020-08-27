@@ -2007,6 +2007,22 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
     OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", dataset, "_MarkersPerCluster.tsv")
     write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
     
+    if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+      # top 6 markers per dataset
+      top_6_genes_by_cluster<-(seurat.object.each_dataset.markers %>% group_by(cluster) %>% top_n(6, avg_logFC))
+      datasetMarkersFile <- top_6_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
+      write.table(datasetMarkersFile, paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_markers/",dataset,"_TopTwoMarkersPerCluster.tsv"), row.names = F, sep="\t", quote = F)
+
+      # groups.tsv per dataset
+      OutfileClustersPerDatasetDataframe  <- data.frame(NAME = rownames(seurat.object.each_dataset@meta.data), Seurat_Dataset_Clusters = seurat.object.each_dataset@meta.data$seurat_clusters)
+      groupsPerDatasetDataframeString <- sapply(OutfileClustersPerDatasetDataframe, as.character)
+      groupsPerDatasetDataframeStringTYPE <- rbind(data.frame(NAME = "TYPE", Seurat_Dataset_Clusters = "group"), groupsPerDatasetDataframeString)
+      colnames(groupsPerDatasetDataframeStringTYPE) <- c("NAME", paste("Seurat_",dataset,"_Clusters_Resolution", Resolution, sep = "", collapse = ""))
+      
+      OutfileClustersPerDatasetFile<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_groups/",dataset,"_groups.tsv")
+      write.table(data.frame(groupsPerDatasetDataframeStringTYPE), file = OutfileClustersPerDatasetFile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
+    } 
+
     StopWatchEnd$FindDiffMarkersEachDatasetGlobalClustersVsRestOfCells$dataset  <- Sys.time()
     
   }
