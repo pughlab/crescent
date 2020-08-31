@@ -1052,7 +1052,20 @@ for (dataset in rownames(InputsTable)) {
     write.table(paste("Number_of_cells_after_filters", NumberOfCells[["filtered"]],    sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F, append = T)
     
     StopWatchEnd$OutTablesFilterDetailsAndFilteredCells$dataset  <- Sys.time()
-    
+
+    if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+      qc_metrics_genes <- data.frame(Step = "Number of Genes", Filter_min = list_MinNGenes[[dataset]], Filter_max = list_MaxNGenes[[dataset]], Excluded_cells = NumberOfBarcodesExcludedByNFeature)
+      qc_metrics_reads <- data.frame(Step = "Number of Reads", Filter_min = list_MinNReads[[dataset]], Filter_max = list_MaxNReads[[dataset]], Excluded_cells = NumberOfBarcodesExcludedByNReads)
+      qc_metrics_mito <- data.frame(Step = "Percentage of Mitochondrial Genes", Filter_min = as.numeric(list_MinMitoFrac[[dataset]])*100, Filter_max = as.numeric(list_MaxMitoFrac[[dataset]])*100, Excluded_cells = NumberOfBarcodesExcludedByMito)
+      qc_metrics_ribo <- data.frame(Step = "Percentage of Ribsomal Protein Genes", Filter_min = as.numeric(list_MinRiboFrac[[dataset]])*100, Filter_max = as.numeric(list_MaxRiboFrac[[dataset]])*100, Excluded_cells = NumberOfBarcodesExcludedByRibo)
+      
+      qc_metrics <-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/",dataset,"_qc_metrics.tsv")
+      write.table(qc_metrics_genes, file = qc_metrics, row.names = F, col.names = T, sep="\t", quote = F, append = T)
+      write.table(qc_metrics_reads, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+      write.table(qc_metrics_mito, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+      write.table(qc_metrics_ribo, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    } 
+
     ####################################
     ### Assign data to Datasets lists
     ####################################
