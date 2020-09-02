@@ -977,6 +977,7 @@ for (dataset in rownames(InputsTable)) {
       write.table(interactive_qc_plot_f, paste(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/",dataset,"_AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
       
       qc_tsv <- data.frame(NAME = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
+      qc_tsv$NAME <- paste0(dataset, "_", qc_tsv$NAME)
       qc_tsv$Mitochondrial_Genes_Percentage <- qc_tsv$Mitochondrial_Genes_Percentage * 100
       qc_tsv$Ribosomal_Protein_Genes_Percentage <- qc_tsv$Ribosomal_Protein_Genes_Percentage * 100
       qc_tsv_string <- sapply(qc_tsv, as.character)
