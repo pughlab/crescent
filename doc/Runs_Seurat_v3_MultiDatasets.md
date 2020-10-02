@@ -8,7 +8,11 @@ Runs Seurat version 3 scRNA-seq data normalization, integration, batch effect co
 cell clustering and differentil gene expression. The input is a table with paths to datasets and parameters to integrate 
 datasets. Datasets can be in either MTX or TSV format (descriptions below).
 
-The pipeline is based on this Seurat tutorial https://satijalab.org/seurat/v3.1/integration.html
+The pipeline is based on these Seurat tutorials:<br />
+https://satijalab.org/seurat/v3.2/sctransform_vignette.html (SCtransform normalization)<br />
+https://satijalab.org/seurat/v3.2/integration.html (general integration)<br />
+https://satijalab.org/seurat/v3.2/immune_alignment.html (e.g. control vs. treatment)<br />
+https://carmonalab.github.io/STACAS/tutorial.html (alternative anchor finder)<br />
 
 It allows the user provide parameters as one-line commands via R library(optparse).
 
@@ -43,7 +47,7 @@ To display help commands type: <br />
 `Rscript Runs_Seurat_v3_MultiDatasets.R -h`
 
 To run the script type something like:<br />
-`Rscript ~/r_programs/Runs_Seurat_v3_MultiDatasets.R -i ~/path_to/list_of_datasets_and_params.tsv -j ~/path_to/list_of_barcodes_to_remove -k reference_datasets_list -r 0.4 -v 1,2,3 -o ~/path_to/outdir -p outfiles_prefix  -c ~/path_to/metadata.tsv -g GENE1,GENE2 -d 10 -e 0.01 -f 1,2,3,4,5,6,7,8,9,10,11,12 -b r0.4_cell_type -u MAX -s Y -w N -a 4000`
+`Rscript ~/r_programs/Runs_Seurat_v3_MultiDatasets.R -i ~/path_to/list_of_datasets_and_params.tsv -j ~/path_to/list_of_barcodes_to_remove -k N -l N -y Seurat -z list_of_referece_datasets -r 0.4 -v 1,2,3 -o ~/path_to/outdir -p outfiles_prefix  -c ~/path_to/metadata.tsv -g /path_to/infile_selected_genes -m 1,2,3 -d 10 -e 0.01 -f 1,2,3,4,5,6,7,8,9,10,11,12 -b r0.4_cell_type -u MAX -s Y -w N -x NA -a 4000`
 
 Inputs Description
 ================
@@ -65,11 +69,15 @@ Outputs Description
 | DIFFERENTIAL_GENE_EXPRESSION_TABLES      | table with DGE for each cell cluster vs. rest of cells in the dataset | 
 | DIMENSION_REDUCTION_COORDINATE_TABLES    | tables underlying DIMENSION_REDUCTION_PLOTS | 
 | DIMENSION_REDUCTION_PLOTS                | t-SNE/UMAP plots showing cell clusters and metadata | 
+| FILTERED_DATA_MATRICES                   | tables with raw and normalized counts, after filtering datasets by QC parameters in -i | 
 | LOG_FILES                                | tables with run commands, computing times and R libraries used |
 | QC_PLOTS                                 | violin and t-SNE/UMAP plots showing QC metrics         | 
 | QC_TABLES                                | tables underlying QC_PLOTS |
 | R_OBJECTS                                | R object files | 
-| SELECTED_GENE_DIMENSION_REDUCTION_PLOTS  | t-SNE/UMAP plots showing selected genes| 
+| PSEUDO_BULK                              | tables with marginal counts for each gene in each dataset |
+| SELECTED_GENE_DIMENSION_REDUCTION_PLOTS  | t-SNE/UMAP plots showing selected genes|
+| STACAS                                   | results from using library(STACAS) to select anchors for dataset integration |
+| UNFILTERED_DATA_MATRICES                 | similar to FILTERED_DAT_MATRICES, but for unfiltered datasets |
 
 Note: if the run uses `-w Y` then other directories with prefix `frontend_` needed by CReSCENT's graphic user interface will be produced. 
 
@@ -78,47 +86,12 @@ Authors
 
 **Javier Diaz (https://github.com/jdime)**
 
-Dependencies [brackets indicate tested versions]
+Dependencies
 ================
 
-**R [3.6.1] and the following R packages** <br /><br />
-**Seurat [3.1.1]** <br />
-Can be installed in R console with: <br />
-`install.packages('devtools')`<br />
-`devtools::install_github("satijalab/seurat@v3.1.1")`<br /><br />
-**DropletUtils [1.6.1]** <br />
-Can be installed in R console with: <br />
-`if (!requireNamespace("BiocManager", quietly = TRUE))`<br />
-`install.packages("BiocManager")`<br />
-`BiocManager::install("DropletUtils")`<br /><br />
-**dplyr [0.8.3]** <br />
-Can be installed in R console with: <br />
-`install.packages('dplyr')`<br /><br />
-**optparse [1.6.4]**<br />
-Can be installed in R console with: <br />
-`install.packages('optparse')`<br />
-It's used to handle one-line commands<br /><br />
-**data.table [1.12.2]**<br />
-Can be installed in R console with: <br />
-`install.packages('data.table')`<br />
-It's used to read Gene Expression matrices faster than read.table()<br /><br />
-**fmsb [0.6.3]**<br />
-Can be installed in R console with: <br />
-`install.packages('fmsb')`<br />
-It's used to calculate the percentages of extra properties to be t-SNE plotted<br /><br />
-**ggplot2 [3.2.1]**<br />
-Can be installed in R console with: <br />
-`install.packages('ggplot2')`<br />
-It's used to generate QC violin plots<br /><br />
-**cowplot [1.0.0]**<br />
-Can be installed in R console with: <br />
-`install.packages('cowplot')`<br />
-It's used arrange QC violin plots and top legend<br /><br />
-**future [1.15.1]**<br />
-Can be installed in R console with: <br />
-`install.packages('future')`<br />
-It's used parallelize time consuming functions like: RunPCA<br /><br />
-**loomR [0.2.0]**<br />
-Can be installed in R console with: <br />
-`devtools::install_github(repo = "mojaveazure/loomR")` <br />
-It's needed for front-end display of data. Only needed if using `-w Y`
+**R [4.0.2] and the following R packages** <br /><br />
+Base packages:<br />
+"parallel", "stats4", "stats", "graphics", "grDevices", "utils", "datasets", "methods", "base"
+
+Other attached packages:<br />
+"cluster_2.1.0", "tidyr_1.1.2", "STACAS_1.0.1", "loomR_0.2.0", "itertools_0.1-3", "iterators_1.0.12", "hdf5r_1.3.3", "R6_2.4.1", "gtools_3.8.2", "future_1.19.1", "cowplot_1.1.0", "ggplot2_3.3.2", "data.table_1.13.0", "fmsb_0.7.0", "optparse_1.6.6", "dplyr_1.0.2", "Seurat_3.2.1", "DropletUtils_1.8.0", "SingleCellExperiment_1.10.1", "SummarizedExperiment_1.18.2", "DelayedArray_0.14.1", "matrixStats_0.57.0", "Biobase_2.48.0", "GenomicRanges_1.40.0", "GenomeInfoDb_1.24.2", "IRanges_2.22.2", "S4Vectors_0.26.1", "BiocGenerics_0.34.0"
