@@ -679,24 +679,31 @@ if ((1 %in% RequestedApplySelectedGenes == T) |
 writeLines("\n*** Load --inputs_list ***\n")
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
-  MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
+  if (regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1) {
   
-  for (i in seq_along(MinioPaths)) {
-    MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
+    InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
+    colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+    
+  } else {
+
+    MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
+    MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
+    
+    for (i in seq_along(MinioPaths)) {
+      MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
+    }
+    
+    InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
+    
+    MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
+    MergeFilter <- c("name", "dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
+    MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
+    MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
+    rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
+    colnames(MergedInputsTableFilteredFinal) <-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+    
+    InputsTable <- MergedInputsTableFilteredFinal
   }
-  
-  InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
-  
-  MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-  MergeFilter <- c("name", "dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
-  MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
-  MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
-  rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-  colnames(MergedInputsTableFilteredFinal) <-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
-  
-  InputsTable <- MergedInputsTableFilteredFinal
-  
 } else {
   InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
