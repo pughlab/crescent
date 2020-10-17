@@ -6,7 +6,7 @@
 ####################################
 ### Required libraries
 ####################################
-suppressPackageStartupMessages(library(DropletUtils)) # (Bioconductor) to handle reading and writing mtx files
+suppressPackageStartupMessages(library(DropletUtils)) # (Bioconductor) to handle MTX/H5 format files. Note it has about the same speed than library(earlycross) which can't handle H5
 suppressPackageStartupMessages(library(Seurat))       # (CRAN) to run QC, differential gene expression and clustering analyses
 ### Seurat v3 can be installed like:
 ### install.packages('devtools')
@@ -131,7 +131,7 @@ writeLines("\n*** Load MTX files ***\n")
 StopWatchStart$LoadScRNAseqData  <- Sys.time()
 
 print("Loading MTX infiles")
-input.matrix <- Read10X(data.dir = Input)
+input.matrix <- Read10X(data.dir = Input, strip.suffix = T) ### Note `strip.suffix = T` applies to Seurat v3.2 or higher
 dim(input.matrix)
 
 StopWatchEnd$LoadScRNAseqData  <- Sys.time()
@@ -152,7 +152,7 @@ StopWatchEnd$CreateSeuratObject  <- Sys.time()
 ####################################
 ### Determine barcodes to subsample and subsamples Seurat object
 ####################################
-writeLines("\n*** Determine barcodes to subsample and subsamples Seurat object ***\n")
+writeLines("\n*** Determine barcodes to subsample from Seurat object ***\n")
 
 StopWatchStart$DetermineBarcodesToSubsampleAndSubsample  <- Sys.time()
 
@@ -162,23 +162,26 @@ if ((grepl(pattern = "^[0-9]+$", x = SelectBarcodes)) == TRUE) {
   seurat.object.subsampled.barcodes <- seurat.object.u
 }else{
   sampled.barcodes <- data.frame(read.table(SelectBarcodes, header = F, row.names = NULL, check.names = FALSE))
+  
+  # This is because we are using Read10X(..., strip.suffix = T), which removes the last '-digit' from barcode ID's
   if ((grepl(pattern = "^barcode", ignore.case = T, x = sampled.barcodes[1,"V1"])) == TRUE) {
     sampled.barcodes <- sampled.barcodes[-1,]
-    sampled.barcodes<-gsub("-1$", "", sampled.barcodes)
+    sampled.barcodes<-gsub(x =sampled.barcodes, pattern = "-[0-9]+$", perl = T, replacement = "")
   }else{
-    sampled.barcodes<-gsub("-1$", "", as.factor(sampled.barcodes[,1]))
+    sampled.barcodes<-gsub(x = as.factor(sampled.barcodes[,1]), pattern = "-[0-9]+$", perl = T, replacement = "")
   }
   
   seurat.object.subsampled.barcodes <- SubsetData(object = seurat.object.u, cells = as.vector(sampled.barcodes))
-  seurat.object.subsampled.barcodes
 }
+print("Seurat object with subsampled barcodes:")
+seurat.object.subsampled.barcodes
 
 StopWatchEnd$DetermineBarcodesToSubsampleAndSubsample  <- Sys.time()
 
 ####################################
 ### Determine genes to subsample and subsample Seurat object
 ####################################
-writeLines("\n*** Determine genes to subsample and subsample Seurat object ***\n")
+writeLines("\n*** Determine genes to subsample from Seurat object ***\n")
 
 StopWatchStart$DetermineGenesToSubsampleAndSubsample  <- Sys.time()
 
@@ -187,14 +190,13 @@ if ((grepl(pattern = "^[0-9]+$", x = SelectGenes)) == TRUE) {
 }else if ((grepl(pattern = "^ALL$", x = SelectGenes)) == TRUE) {
   seurat.object.subsampled.barcodes.genes <- seurat.object.subsampled.barcodes
 }else{
-  sampled.genes <- data.frame(read.table(SelectGenes, header = F, row.names = NULL, check.names = FALSE))
+  sampled.genes <- data.frame(read.table(SelectGenes, header = F, row.names = NULL, check.names = FALSE, sep = "\t"))
   sampled.genes <- as.character(sampled.genes[,1])
   sampled.genes <- gsub(x=sampled.genes, pattern = "_", replacement = "-") ## Because CreateSeuratObject() will do the same
-  
   seurat.object.subsampled.barcodes.genes <- CreateSeuratObject(counts = seurat.object.subsampled.barcodes@assays$RNA@counts[sampled.genes,], project = PrefixOutfiles)
-  seurat.object.subsampled.barcodes.genes
-
 }
+print("Seurat object with subsampled barcodes and genes:")
+seurat.object.subsampled.barcodes.genes
 
 StopWatchEnd$DetermineGenesToSubsampleAndSubsample  <- Sys.time()
 
