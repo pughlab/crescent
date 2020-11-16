@@ -4,6 +4,8 @@
 ### https://satijalab.org/seurat/v3.2/sctransform_vignette.html (SCtransform normalization)
 ### https://satijalab.org/seurat/v3.2/integration.html (general integration)
 ### https://satijalab.org/seurat/v3.2/immune_alignment.html (control vs. treatment)
+### https://carmonalab.github.io/STACAS/tutorial.html (alternative anchor finder)
+
 ####################################
 
 ####################################
@@ -26,7 +28,7 @@
 ####################################
 
 ####################################
-### HOW TO RUN THIS SCRIPT 
+### HOW TO RUN THIS SCRIPT
 ### Using one-line-commands in a console or terminal type:
 ### 'Rscript ~/path_to_this_file/Runs_Seurat_v3_MultiDatasets.R -h'
 ### for help
@@ -46,7 +48,7 @@
 ###   When it should be:
 ###   SMTR_res1.SEURAT_GlobalClustering_Rad_unknown_TSNEPlot_ColourByCellClusters.pdf
 ### 3) To program a loop to avoid an error when integrating very heretogeneous datasets--where few anchors are expected:
-###    Error in nn2(data = c(-0.0268782296438318, -0.0333332648557412, -0.032492403275445,  : 
+###    Error in nn2(data = c(-0.0268782296438318, -0.0333332648557412, -0.032492403275445,  :
 ###       Cannot find more nearest neighbours than there are points
 ###    To avoid this error one can modify `k.filter` from 200 (default) to lower values, e.g. `k.filter = 160` worked out for
 ###    Pugh/dePerrot labe SMARTER datasets, where sample SMTR05t1_NonRad integrated vs. SMTR0[2-4] produced the above error
@@ -147,8 +149,10 @@ option_list <- list(
                 Notes:
                 (a) The order of the list of datasets in --inputs_list may influence the results, including number of clusters,
                 t-SNE/UMAP and differentially expressed genes. List datasets better measured first.
-                
-                (b) Column 4 indicates the dataset format. It must be in either:
+
+                (b) middle dashes '-' are not allowed in columns 1 or 3, if ocurring they will be replaced by low dashes '_'
+
+                (c) Column 4 indicates the dataset format. It must be in either:
                 'MTX'  and column 2 must be the path/name to an MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files
                        'MTX' files can be the outputs from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
                        Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
@@ -162,28 +166,28 @@ option_list <- list(
                 d1  AAACCTGAGCTCCCAG
                 d2  AAACCTGTCACCATAG
                 d3  AAACCTGTCAGCTTAG
-                
+
                 Note: the first column must be dataset ID and the second column the barcode
                 Or type 'NA' to include all barcodes
-                
+
                 Default = 'NA'"),
   #
   make_option(c("-k", "--save_filtered_data"), default="N",
               help="Indicates if filtered raw and normalized data should be saved as MTX files. Type 'y/Y' or 'n/N'.
-              
+
                 Default = 'N'"),
   #
   make_option(c("-l", "--save_unfiltered_data"), default="N",
               help="Indicates if unfiltered raw data (exactly as inputted by --inputs_list) should be saved as MTX files. Type 'y/Y' or 'n/N'.
                 This may be useful to share with collaborators along results in a single zipped file.
-                
+
                 Default = 'N'"),
   #
   make_option(c("-y", "--anchors_function"), default="Seurat",
               help="Indicates function to find integration anchors:
                 'STACAS' = use function FindAnchors.STACAS() from library(STACAS)
                 'Seurat' = use function FindIntegrationAnchors() from library(Seurat)
-                
+
                 Default = 'Seurat'"),
   #
   make_option(c("-z", "--reference_datasets"), default="NA",
@@ -195,12 +199,12 @@ option_list <- list(
 
                 Note: If option '<d1,d2,...etc>' is used, anchors are first found between each non-reference and each reference dataset.
                       The references are then integrated through pairwise integration. Each non-reference is then mapped to the integrated reference.
-                
+
                 Default = 'NA'"),
   #
   make_option(c("-r", "--resolution"), default="1",
               help="Value of the resolution parameter, use a value above (below) 1.0 if you want to obtain a larger (smaller) number of cell clusters
-              
+
                 Default = '1'"),
   #
   make_option(c("-v", "--clustering_inputs"), default="1",
@@ -208,17 +212,17 @@ option_list <- list(
                 '1' = globaly clusters the integrated datasets (mandatory in this script)
                 '2' = re-clusters each datasets split from the integrated datasets. Needed for `-f 6`
                 '3' = re-clusters each dataset type (column 3 from -inputs_list) from the integrated datasets. Needed for `-f 7`
-                
+
                 Default = '1'"),
   #
   make_option(c("-o", "--outdir"), default="NA",
               help="A path/name for the results directory
-              
+
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-p", "--prefix_outfiles"), default="NA",
               help="A prefix for outfile names, e.g. your project ID
-              
+
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-c", "--infile_metadata"), default="NA",
@@ -228,12 +232,12 @@ option_list <- list(
                 d2_AAACCTGAGTCGAGTG-1   1            no
                 d3_AAACCTGCAAAGGAAG-1   2            yes
                 Note: the barcode id must include the dataset ID
-                
+
                 Default = 'NA' (i.e. no metadata to be used for plots or DGE detection)"),
   #
   make_option(c("-g", "--infile_selected_genes"), default="NA",
               help="A path/name to a file with a list of gene identifiers (one-per-row) whose expression will be mapped into the dimension reduction plots
-              
+
                 Default = 'NA' (i.e. no genes to be plotted)"),
   #
   make_option(c("-m", "--apply_list_genes"), default="0",
@@ -242,7 +246,7 @@ option_list <- list(
                 '1' = using cells from all integrated datasets to map genes requested by `-g`
                 '2' = using cells from each dataset to map genes requested by `-g`
                 '3' = using cells from each dataset type to map genes requested by `-g`
-                
+
                 Default = '0'"),
   #
   make_option(c("-d", "--pca_dimensions"), default="10",
@@ -250,19 +254,19 @@ option_list <- list(
                 FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
                 Typically '10' is enough, if unsure use '10' and afterwards check file:
                 *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
-                
+
                 Default = '10'"),
   #
   make_option(c("-n", "--k_filter"), default="200",
               help="Integrating highly heterogenous datasets can lead to a too small number of anchors,
                 resulting in an error 'Cannot find more nearest neighbours than there are points'
                 This can be avoided by using a -k_filter value smaller than the default (e.g. '150')
-                
+
                 Default = '200'"),
   #
   make_option(c("-e", "--return_threshold"), default="0.01",
               help="For each differentially expressed genes test returns only hits that have an UNcorrected p-value < return_thresh
-              
+
                 Default = '0.01'"),
   #
   make_option(c("-f", "--diff_gene_expr_comparisons"), default="1",
@@ -280,41 +284,41 @@ option_list <- list(
                 '10' = using metadata annotations, for each dataset, compares each cell class specified by `-b` and `-c` vs. the same class from other datasets
                 '11' = using metadata annotations, for each dataset type, compares each cell class specified by `-b` and `-c` vs. the rest of cells
                 '12' = using metadata annotations, for each dataset type, compares each cell class specified by `-b` and `-c` vs. the same class from other dataset types
-                
+
                 Default = '1'"),
   #
   make_option(c("-b", "--metadata_column_names_for_dge"), default="NA",
               help="Only needed if using -f 8 to 12. It indicates <comma> delimited column names of --infile_metadata to be used for differential gene expression
                 Type 'NA' if not using -f 8 to 12
-                
+
                 Default = 'NA'"),
   #
   make_option(c("-u", "--number_cores"), default="MAX",
               help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
-              
+
                 Default = 'MAX'"),
   #
   make_option(c("-s", "--save_r_object"), default="N",
               help="Indicates if a R object with the data and analyzes from the run should be saved
                 Note that this may be time consuming. Type 'y/Y' or 'n/N'
-                
+
                 Default = 'N'"),
   #
   make_option(c("-w", "--run_cwl"), default="N",
               help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME' . Type 'y/Y' or 'n/N'.
                 Note, if using 'y/Y' this supersedes option -o
-                
+
                 Default = 'N'"),
   #
   make_option(c("-x", "--minio_path"), default="NA",
               help="Used with the 'run_cwl' option above for mounting input data files in 'inputs_list' to CWL containers
-              
+
                 Default = 'NA'"),
   #
-  make_option(c("-a", "--max_global_variables"), default="4000",
+  make_option(c("-a", "--max_global_variables"), default="10000",
               help="Indicates maximum allowed total size (in bytes) of global variables identified. Used by library(future) to prevent too large exports
-              
-                Default = '4000' for 4000 MiB")
+
+                Default = '10000' for 10000 MiB")
 )
 
 #####
@@ -324,7 +328,7 @@ opt <- parse_args(OptionParser(option_list=option_list))
 InputsList              <- opt$inputs_list
 InfileRemoveBarcodes    <- opt$inputs_remove_barcodes
 SaveFilteredData        <- opt$save_filtered_data
-SaveUnFilteredData      <- opt$save_unfiltered_data 
+SaveUnFilteredData      <- opt$save_unfiltered_data
 ReferenceDatasets       <- opt$reference_datasets
 AnchorsFunction         <- opt$anchors_function
 Resolution              <- as.numeric(opt$resolution)
@@ -370,8 +374,8 @@ writeLines("\n*** Create outdirs ***\n")
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
   Tempdir         <- ProgramOutdir
-  dir.create(file.path(Tempdir), showWarnings = F) 
-  
+  dir.create(file.path(Tempdir), showWarnings = F)
+
   FILE_TYPE_OUT_DIRECTORIES = c(
     "CRESCENT_CLOUD",
     "CRESCENT_CLOUD/frontend_normalized",
@@ -382,28 +386,28 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     "CRESCENT_CLOUD/frontend_qc",
     "CRESCENT_CLOUD/frontend_groups",
     "AVERAGE_GENE_EXPRESSION_TABLES",
-    "CELL_CLUSTER_IDENTITIES", 
-    "CELL_FRACTIONS", 
-    "DIFFERENTIAL_GENE_EXPRESSION_TABLES", 
-    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
+    "CELL_CLUSTER_IDENTITIES",
+    "CELL_FRACTIONS",
+    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
+    "DIMENSION_REDUCTION_COORDINATE_TABLES",
     "DIMENSION_REDUCTION_PLOTS",
     "FILTERED_DATA_MATRICES",
     "LOG_FILES",
-    "QC_PLOTS", 
-    "QC_TABLES", 
+    "QC_PLOTS",
+    "QC_TABLES",
     "R_OBJECTS",
     "PSEUDO_BULK",
     "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS",
     "STACAS",
     "UNFILTERED_DATA_MATRICES"
   )
-  
+
 }else{
   PrefixOutfiles <- c(paste0(PrefixOutfiles,"_res",Resolution))
   ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
   ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
-  Tempdir        <- "~/temp" 
+  Tempdir        <- "~/temp"
   #
   UserHomeDirectory <- Sys.getenv("HOME")[[1]]
   #
@@ -416,18 +420,18 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
-  
+
   FILE_TYPE_OUT_DIRECTORIES = c(
     "AVERAGE_GENE_EXPRESSION_TABLES",
-    "CELL_CLUSTER_IDENTITIES", 
-    "CELL_FRACTIONS", 
-    "DIFFERENTIAL_GENE_EXPRESSION_TABLES", 
-    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
-    "DIMENSION_REDUCTION_PLOTS", 
+    "CELL_CLUSTER_IDENTITIES",
+    "CELL_FRACTIONS",
+    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
+    "DIMENSION_REDUCTION_COORDINATE_TABLES",
+    "DIMENSION_REDUCTION_PLOTS",
     "FILTERED_DATA_MATRICES",
     "LOG_FILES",
-    "QC_PLOTS", 
-    "QC_TABLES", 
+    "QC_PLOTS",
+    "QC_TABLES",
     "R_OBJECTS",
     "PSEUDO_BULK",
     "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS",
@@ -508,10 +512,10 @@ RequestedApplySelectedGenes      = unlist(strsplit(ApplySelectedGenes, ","))
 DefaultParameters <- list(
   ### Parameters for QC plots
   CellPropertiesToQC = c("nFeature_RNA", "nCount_RNA", "mito.fraction", "ribo.fraction"),
-  
+
   ### Parameters for Seurat filters
   MinCells = 3,
-  
+
   ### Parameters for STACAS
   StacasDistPct = 0.8,
   StacasVarGenesIntegratedN = 500,
@@ -520,7 +524,7 @@ DefaultParameters <- list(
   ### Parameters for Cluster Biomarkers
   FindAllMarkers.MinPct     =  0.25,
   FindAllMarkers.ThreshUse  =  0.25,
-  
+
   ### Parameters for dimmension reduction plots
   MinNumberOfCellsToReducePerplexity = 150,
   ReducedPerplexity = 7,
@@ -529,10 +533,10 @@ DefaultParameters <- list(
   BaseSizeMultiplePlotPdfWidth  = 3.7,
   BaseSizeMultiplePlotPdfHeight = 3,
   MaxNumbLabelsPerRowInLegend   = 4,
-  
+
   ### Parameters for datasets integration
   IntegrationNFeatures = 3000,
-  
+
   ### Parameters for datasets comparison
   DatsetComparisonOutlierPercentDown = 1,
   DatsetComparisonOutlierPercentUp = 99,
@@ -624,10 +628,10 @@ if (length(grep('^NA$', InfileMetadata, perl = T))) {
   rownames(CellPropertiesFromMetadata)<-gsub(x =rownames(CellPropertiesFromMetadata), pattern = "-[0-9]+$", perl = T, replacement = "")
 }
 
-if ((8 %in% RequestedDiffGeneExprComparisons == T) | 
-    (9 %in% RequestedDiffGeneExprComparisons == T) | 
+if ((8 %in% RequestedDiffGeneExprComparisons == T) |
+    (9 %in% RequestedDiffGeneExprComparisons == T) |
     (10 %in% RequestedDiffGeneExprComparisons == T) |
-    (11 %in% RequestedDiffGeneExprComparisons == T) | 
+    (11 %in% RequestedDiffGeneExprComparisons == T) |
     (12 %in% RequestedDiffGeneExprComparisons == T)
 )  {
   if (length(grep('^NA$', InfileMetadata, perl = T))) {
@@ -639,11 +643,11 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
   }else{
     stop(paste("ERROR!!! couldnt find file:", InfileMetadata, " for option `-f [8|9|10|11|12]`", sep = "", collapse = "\n"))
   }
-  
+
   #### Check that requested metadata columns exist in InfileMetadata
-  
+
   writeLines(paste0("\n*** Check that requested --metadata_column_names_for_dge exist in --infile_metadata ***\n"))
-  
+
   MetadataColNamesForDge.list  = unlist(strsplit(MetadataColNamesForDge, ","))
   if (sum(MetadataColNamesForDge.list %in% colnames(CellPropertiesFromMetadata)) == length(MetadataColNamesForDge.list)) {
     writeLines("\nOk\n")
@@ -654,15 +658,15 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
 
 #### Gene mapping into dimension reduction plot options
 
-if ((1 %in% RequestedApplySelectedGenes == T) | 
-    (2 %in% RequestedApplySelectedGenes == T) | 
+if ((1 %in% RequestedApplySelectedGenes == T) |
+    (2 %in% RequestedApplySelectedGenes == T) |
     (3 %in% RequestedApplySelectedGenes == T)
 ) {
   if (length(grep('^NA$', InfileSelectedGenes, perl = T))) {
-    stop("ERROR!!! options `-l [1|2|3] and -g NA` are incompatible with each other")
+    stop("ERROR!!! options `-m [1|2|3] and -g NA` are incompatible with each other")
   }else{
     writeLines(paste0("\n*** Get list of genes to map in dimension reduction plots ***\n"))
-    
+
     ListOfGenesForDimRedPlots<-unique(readLines(con = InfileSelectedGenes, skipNul = T))
   }
 }
@@ -680,35 +684,38 @@ writeLines("\n*** Load --inputs_list ***\n")
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   if (regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1) {
-  
+
     InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
     colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
-    
-  } else {
 
-    MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
-    MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
-    
-    for (i in seq_along(MinioPaths)) {
+    } else {
+      MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
+      MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
+
+      for (i in seq_along(MinioPaths)) {
       MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
-    }
-    
-    InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
-    
-    MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name", "dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
-    MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
-    MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
-    rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
-    
-    InputsTable <- MergedInputsTableFilteredFinal
+      }
+
+      InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
+
+      MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
+      MergeFilter <- c("name", "dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
+      MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
+      MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
+      rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
+      colnames(MergedInputsTableFilteredFinal) <-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+
+      InputsTable <- MergedInputsTableFilteredFinal
   }
 } else {
   InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
   colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
 }
+
+##### Replace low dashes by dots in rownames(InputsTable) or DatasetType
+rownames(InputsTable) <- gsub(x=rownames(InputsTable), pattern = "-", replacement = "_")
+InputsTable[,"DatasetType"] <- gsub(x=InputsTable[,"DatasetType"], pattern = "-", replacement = "_")
 
 ####################################
 ### Load scRNA-seq data and generate QC plots and tables
@@ -735,15 +742,15 @@ for (dataset in rownames(InputsTable)) {
   NumberOfDatasets <- NumberOfDatasets + 1
   print(NumberOfDatasets)
   Dataset.SO <-paste0(dataset, ".so")
-  
+
   if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     PathToDataset <- InputsTable[dataset,"PathToDataset"]
   } else {
     PathToDataset <- gsub("^~/",paste0(UserHomeDirectory,"/"), InputsTable[dataset,"PathToDataset"])
   }
-  
+
   DatasetType   <- InputsTable[dataset,"DatasetType"]
-  
+
   list_DatasetToType[[dataset]]      <- DatasetType
   list_DatasetToFormat[[dataset]]    <- InputsTable[dataset,"DatasetFormat"]
   list_TypeToDatasets[[DatasetType]] <- append(list_TypeToDatasets[[DatasetType]], dataset)
@@ -755,15 +762,15 @@ for (dataset in rownames(InputsTable)) {
   list_MaxNGenes[[dataset]]          <- as.numeric(InputsTable[dataset,"MaxNGenes"])
   list_MinNReads[[dataset]]          <- as.numeric(InputsTable[dataset,"MinNReads"])
   list_MaxNReads[[dataset]]          <- as.numeric(InputsTable[dataset,"MaxNReads"])
-  
+
   if (regexpr("^MTX$|^TSV$|^HDF5$", list_DatasetToFormat[[dataset]], ignore.case = T, perl = T)[1] == 1) {
-    
+
     ####################################
     ### Load scRNA-seq data
     ####################################
-    
+
     StopWatchStart$LoadScRNAseqData[[dataset]] <- Sys.time()
-    
+
     if (regexpr("^MTX$", list_DatasetToFormat[[dataset]], ignore.case = T)[1] == 1) {
       writeLines(paste0("\n*** Loading MTX infiles for ", dataset, " from: ", PathToDataset, " ***\n"))
       expression_matrix <- Read10X(data.dir = PathToDataset, strip.suffix = T) ### Note `strip.suffix = T` applies to Seurat v3.2 or higher
@@ -778,74 +785,75 @@ for (dataset in rownames(InputsTable)) {
       stop(paste0("Unexpected type of input: ", InputType, "\n\nFor help type:\n\nRscript ", ThisScriptName, " -h\n\n"))
     }
     dim(expression_matrix)
-    
+
     StopWatchEnd$LoadScRNAseqData[[dataset]]  <- Sys.time()
-    
+
     ####################################
     ### Save unfiltered data
     ####################################
-    
+
     if (regexpr("^Y$", SaveUnFilteredData, ignore.case = T)[1] == 1) {
       writeLines("\n*** Save unfiltered data ***\n")
-      
+
       StopWatchStart$SaveUnFilteredData[[dataset]]  <- Sys.time()
-      
+
       ### This is to write out the input data with no filters at all
       seurat.object.tmp  <- CreateSeuratObject(counts = expression_matrix, min.cells = 0, min.features = 0, project = paste0(PrefixOutfiles, "_", dataset))
-      
+
       OutDirUnfilteredRaw <-paste0(Tempdir, "/UNFILTERED_DATA_MATRICES/", dataset, "/RAW")
       dir.create(file.path(OutDirUnfilteredRaw), showWarnings = F, recursive = T)
       write10xCounts(path = OutDirUnfilteredRaw, x = seurat.object.tmp@assays[["RNA"]]@counts, gene.type="Raw_Gene_Expression", overwrite=T, type="sparse", version="3")
-      
+
       rm(seurat.object.tmp)
-      
+
       StopWatchEnd$SaveUnFilteredData[[dataset]]  <- Sys.time()
-      
+
     }
-    
+
     ####################################
     ### Create seurat object
     ####################################
-    
+
     StopWatchStart$CreateSeuratObject[[dataset]]  <- Sys.time()
-    
+
     writeLines(paste0("\n*** Create seurat object for ", dataset, " ***\n"))
-    seurat.object.u  <- CreateSeuratObject(counts = expression_matrix, min.cells = DefaultParameters$MinCells, min.features = list_MinNGenes[[dataset]], project = paste0(PrefixOutfiles, "_", dataset))
-    
+    seurat.object.u <- CreateSeuratObject(counts = expression_matrix, min.cells = DefaultParameters$MinCells, min.features = list_MinNGenes[[dataset]], project = paste0(PrefixOutfiles, "_", dataset))
+    seurat.object.u <- AddMetaData(object = seurat.object.u, metadata = colnames(seurat.object.u), col.name = 'barcode_sequence')
+
     StopWatchEnd$CreateSeuratObject[[dataset]]  <- Sys.time()
-    
+
     ####################################
     ### Add dataset label
     ####################################
     writeLines(paste0("\n*** Add dataset label for ", dataset, " ***\n"))
-    
+
     StopWatchStart$AddDatasetLabel[[dataset]]  <- Sys.time()
-    
+
     seurat.object.u[['dataset.label']] <- dataset
-    
+
     StopWatchEnd$AddDatasetLabel[[dataset]]  <- Sys.time()
-    
+
     ####################################
     ### Add dataset type label
     ####################################
     writeLines(paste0("\n*** Add dataset type label for ", dataset, " ***\n"))
-    
+
     StopWatchStart$AddDatasetTypeLabel[[dataset]]  <- Sys.time()
-    
+
     seurat.object.u[['dataset_type.label']] <- list_DatasetToType[[dataset]]
-    
+
     StopWatchEnd$AddDatasetTypeLabel[[dataset]]  <- Sys.time()
-    
+
     ####################################
     ### Get mitochondrial genes
     ####################################
     writeLines(paste0("\n*** Get  mitochondrial genes for ", dataset, " ***\n"))
-    
+
     StopWatchStart$GetMitoGenes[[dataset]]  <- Sys.time()
-    
+
     mitoRegExpressions<- paste(c("^MT-"), collapse = "|")
     mito.features <- grep(pattern = mitoRegExpressions, ignore.case = T, x = rownames(x = seurat.object.u), value = T)
-    
+
     if (length(mito.features)[[1]] > 0) {
       mito.fraction <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[mito.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
       seurat.object.u[['mito.fraction']] <- mito.fraction
@@ -853,19 +861,19 @@ for (dataset in rownames(InputsTable)) {
       mito.fraction <- 0 / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
       seurat.object.u[['mito.fraction']] <- mito.fraction
     }
-    
+
     StopWatchEnd$GetMitoGenes[[dataset]]  <- Sys.time()
-    
+
     ####################################
     ### Get ribosomal protein genes
     ####################################
     writeLines(paste0("\n*** Get ribosomal protein genes for ", dataset, " ***\n"))
-    
+
     StopWatchStart$GetRiboGenes[[dataset]]  <- Sys.time()
-    
+
     riboRegExpressions<- paste(c("^MRPL", "^MRPS", "^RPL", "^RPS"), collapse = "|")
     ribo.features <- grep(pattern = riboRegExpressions, ignore.case = T, x = rownames(x = seurat.object.u), value = T)
-    
+
     if (length(ribo.features)[[1]] > 0) {
       ribo.fraction <- Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts')[ribo.features, ]) / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
       seurat.object.u[['ribo.fraction']] <- ribo.fraction
@@ -873,31 +881,31 @@ for (dataset in rownames(InputsTable)) {
       ribo.fraction <- 0 / Matrix::colSums(x = GetAssayData(object = seurat.object.u, slot = 'counts'))
       seurat.object.u[['ribo.fraction']] <- ribo.fraction
     }
-    
+
     StopWatchEnd$GetRiboGenes[[dataset]]  <- Sys.time()
-    
+
     ####################################
     ### Filter cells based gene counts, number of reads, ribosomal and mitochondrial representation
     ####################################
     writeLines(paste0("\n*** Filter cells based gene counts, number of reads, ribosomal and mitochondrial representation for ", dataset, " ***\n"))
-    
+
     StopWatchStart$FilterCells[[dataset]]  <- Sys.time()
-    
+
     if (length(mito.features)[[1]] > 0) {
-      seurat.object.f<-subset(x = seurat.object.u, subset = 
+      seurat.object.f<-subset(x = seurat.object.u, subset =
                                 nFeature_RNA >= list_MinNGenes[[dataset]]
-                              & nFeature_RNA <= list_MaxNGenes[[dataset]] 
+                              & nFeature_RNA <= list_MaxNGenes[[dataset]]
                               & nCount_RNA   >= list_MinNReads[[dataset]]
                               & nCount_RNA   <= list_MaxNReads[[dataset]]
                               & mito.fraction >= list_MinMitoFrac[[dataset]]
                               & mito.fraction <= list_MaxMitoFrac[[dataset]]
                               & ribo.fraction >= list_MinRiboFrac[[dataset]]
                               & ribo.fraction <= list_MaxRiboFrac[[dataset]])
-      
+
     }else{
-      seurat.object.f<-subset(x = seurat.object.u, subset = 
+      seurat.object.f<-subset(x = seurat.object.u, subset =
                                 nFeature_RNA >= list_MinNGenes[[dataset]]
-                              & nFeature_RNA <= list_MaxNGenes[[dataset]] 
+                              & nFeature_RNA <= list_MaxNGenes[[dataset]]
                               & nCount_RNA   >= list_MinNReads[[dataset]]
                               & nCount_RNA   <= list_MaxNReads[[dataset]]
                               & ribo.fraction >= list_MinRiboFrac[[dataset]]
@@ -908,27 +916,27 @@ for (dataset in rownames(InputsTable)) {
     NumberOfBarcodesExcludedByNReads          <- length(setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = nCount_RNA    >= list_MinNReads[[dataset]] & nCount_RNA   <= list_MaxNReads[[dataset]]))))
     NumberOfBarcodesExcludedByMito            <- length(setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = mito.fraction >= list_MinMitoFrac[[dataset]] & mito.fraction <= list_MaxMitoFrac[[dataset]]))))
     NumberOfBarcodesExcludedByRibo            <- length(setdiff(colnames(seurat.object.u), colnames(subset(x = seurat.object.u, subset = ribo.fraction >= list_MinRiboFrac[[dataset]] & ribo.fraction <= list_MaxRiboFrac[[dataset]]))))
-    
+
     print(paste0("NumberOfBarcodesExcludedByNFeature=", NumberOfBarcodesExcludedByNFeature))
     print(paste0("NumberOfBarcodesExcludedByNReads=", NumberOfBarcodesExcludedByNReads))
     print(paste0("NumberOfBarcodesExcludedByMito=", NumberOfBarcodesExcludedByMito))
     print(paste0("NumberOfBarcodesExcludedByRibo=", NumberOfBarcodesExcludedByRibo))
-    
+
     StopWatchEnd$FilterCells[[dataset]]  <- Sys.time()
-    
+
     ### Just reporting the summary of the UNfiltered and filtered objects
     print(paste0(dataset, "  unfiltered"))
     print(seurat.object.u)
     print(paste0(dataset, "  filtered"))
     print(seurat.object.f)
-    
+
     ####################################
     ### QC EDA violin plots
     ####################################
     writeLines(paste0("\n*** QC EDA violin plots for ", dataset, " ***\n"))
-    
+
     StopWatchStart$QCviolinplots[[dataset]]  <- Sys.time()
-    
+
     ### Get unfiltered data QC statistics
     nFeature_RNA.u.df   <-data.frame(Expression_level = seurat.object.u@meta.data$nFeature_RNA, nGenes = 1)
     nCount_RNA.u.df     <-data.frame(Expression_level = seurat.object.u@meta.data$nCount_RNA,   nCount_RNA = 1)
@@ -948,7 +956,7 @@ for (dataset in rownames(InputsTable)) {
     nCount_RNAStats.u   <-paste0(c("mean = ", mean_nCount_RNAStats.u,   "\n", "median = ", median_nCount_RNAStats.u))
     mito.fraction.u     <-paste0(c("mean = ", mean_mito.fraction.u,     "\n", "median = ", median_mito.fraction.u))
     ribo.fraction.u     <-paste0(c("mean = ", mean_ribo.fraction.u,     "\n", "median = ", median_ribo.fraction.u))
-    
+
     ### Get filtered data QC statistics
     nFeature_RNA.f.df   <-data.frame(Expression_level = seurat.object.f@meta.data$nFeature_RNA, nGenes = 2)
     nCount_RNA.f.df     <-data.frame(Expression_level = seurat.object.f@meta.data$nCount_RNA,   nCount_RNA = 2)
@@ -968,7 +976,7 @@ for (dataset in rownames(InputsTable)) {
     nCount_RNAStats.f   <-paste0(c("mean = ", mean_nCount_RNAStats.f,   "\n", "median = ", median_nCount_RNAStats.f))
     mito.fraction.f     <-paste0(c("mean = ", mean_mito.fraction.f,     "\n", "median = ", median_mito.fraction.f))
     ribo.fraction.f     <-paste0(c("mean = ", mean_ribo.fraction.f,     "\n", "median = ", median_ribo.fraction.f))
-    
+
     ### Put QC statistics together
     nFeature_RNA.m.df  <-data.frame(rbind(nFeature_RNA.u.df,nFeature_RNA.f.df))
     nCount_RNA.m.df    <-data.frame(rbind(nCount_RNA.u.df,nCount_RNA.f.df))
@@ -979,13 +987,13 @@ for (dataset in rownames(InputsTable)) {
     NumberOfCells[["filtered"]]   <- nrow(seurat.object.f@meta.data)
     LabelUnfiltered    <-paste0("Before filters: No. of cells = ", NumberOfCells[["unfiltered"]])
     LabelFiltered      <-paste0("After filters:  No. of cells = ", NumberOfCells[["filtered"]])
-    
+
     ### Commands for violin ggplot's
     DataForHeader.df<-data.frame(forx = c(0.4,0.4), fory = c(0.09,0.03), label = c(LabelFiltered,LabelUnfiltered))
-    Headers.plot<-ggplot(data=DataForHeader.df, aes(x = forx, y = fory)) + theme_void() + 
+    Headers.plot<-ggplot(data=DataForHeader.df, aes(x = forx, y = fory)) + theme_void() +
       geom_point(colour = ColoursQCViolinPlots, size = 7) + xlim(0,1) + ylim(0,0.12) +
       geom_text(hjust = -0.08, label = c(LabelUnfiltered,LabelFiltered), size = 4)
-    
+
     nFeature_RNA.plot<-ggplot(data=nFeature_RNA.m.df, aes(x = factor(nGenes), y = Expression_level)) +
       geom_violin(aes(fill = factor(nGenes))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
@@ -994,7 +1002,7 @@ for (dataset in rownames(InputsTable)) {
       labs(x=paste0("No. of genes", "\n", "Filter: ", "min=", list_MinNGenes[[dataset]], " max=", list_MaxNGenes[[dataset]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByNFeature)) +
       annotate("text", x = 1 , y = max(nFeature_RNA.m.df$Expression_level)*1.1, label = nFeature_RNAStats.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(nFeature_RNA.m.df$Expression_level)*1.1, label = nFeature_RNAStats.f, col = ColoursQCViolinPlots[[2]])
-    
+
     nCount_RNA.plot<-ggplot(data=nCount_RNA.m.df, aes(x = factor(nCount_RNA), y = Expression_level)) +
       geom_violin(aes(fill = factor(nCount_RNA))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
@@ -1003,7 +1011,7 @@ for (dataset in rownames(InputsTable)) {
       labs(x=paste0("No. of reads", "\n", "Filter: ", "min=", list_MinNReads[[dataset]], " max=", list_MaxNReads[[dataset]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByNReads)) +
       annotate("text", x = 1 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(nCount_RNA.m.df$Expression_level)*1.1, label = nCount_RNAStats.f, col = ColoursQCViolinPlots[[2]])
-    
+
     mito.fraction.plot<-ggplot(data=mito.fraction.m.df, aes(x = factor(mito.fraction), y = Expression_level)) +
       geom_violin(aes(fill = factor(mito.fraction))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
@@ -1013,7 +1021,7 @@ for (dataset in rownames(InputsTable)) {
       labs(x=paste0("Mitochondrial genes", "\n", "Filter: ", "min=", list_MinMitoFrac[[dataset]], " max=", list_MaxMitoFrac[[dataset]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByMito)) +
       annotate("text", x = 1 , y = max(mito.fraction.m.df$Expression_level)*1.1, label = mito.fraction.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(mito.fraction.m.df$Expression_level)*1.1, label = mito.fraction.f, col = ColoursQCViolinPlots[[2]])
-    
+
     ribo.fraction.plot<-ggplot(data=ribo.fraction.m.df, aes(x = factor(ribo.fraction), y = Expression_level)) +
       geom_violin(aes(fill = factor(ribo.fraction))) + geom_jitter(height = 0, width = 0.1) + theme_bw() +
       theme(panel.border = element_blank(), panel.grid.major.x = element_blank(), panel.grid.minor = element_blank(),
@@ -1022,23 +1030,25 @@ for (dataset in rownames(InputsTable)) {
       labs(x=paste0("Ribosomal protein genes (fraction)", "\n", "Filter: ", "min=", list_MinRiboFrac[[dataset]], " max=", list_MaxRiboFrac[[dataset]], "\n", "Excluded cells: ", NumberOfBarcodesExcludedByRibo)) +
       annotate("text", x = 1 , y = max(ribo.fraction.m.df$Expression_level)*1.1, label = ribo.fraction.u, col = ColoursQCViolinPlots[[1]]) +
       annotate("text", x = 2 , y = max(ribo.fraction.m.df$Expression_level)*1.1, label = ribo.fraction.f, col = ColoursQCViolinPlots[[2]])
-    
+
     bottom_row<-plot_grid(nFeature_RNA.plot, nCount_RNA.plot, mito.fraction.plot, ribo.fraction.plot, ncol = 4)
-    
+
     ### Create a *pdf file with the violin ggplot's
-    
+
     VlnPlotPdf<-paste0(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "ViolinPlots", "_", dataset, ".pdf")
     pdf(file=VlnPlotPdf, width = DefaultParameters$BaseSizeSinglePlotPdf * 1.7, height = DefaultParameters$BaseSizeSinglePlotPdf)
     print(plot_grid(Headers.plot, bottom_row, ncol = 1, rel_heights = c(0.2,1)))
     dev.off()
-    
+
     StopWatchEnd$QCviolinplots[[dataset]]  <- Sys.time()
-    
+
     if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
       ####################################
       ### Outfiles for web app: interactive qc plots
       ####################################
       writeLines("\n*** Outfiles for web app: interactive qc plots ***\n")
+
+      StopWatchStart$QCviolinplotsFrontEnd[[dataset]]  <- Sys.time()
 
       # unfiltered
       interactive_qc_plot_u  <-data.frame(Barcodes = row.names(seurat.object.u@meta.data), Number_of_Genes = seurat.object.u@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.u@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.u@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.u@meta.data$ribo.fraction)
@@ -1046,32 +1056,35 @@ for (dataset in rownames(InputsTable)) {
       interactive_qc_plot_u$Ribosomal_Protein_Genes_Percentage <- interactive_qc_plot_u$Ribosomal_Protein_Genes_Percentage * 100
       colnames(interactive_qc_plot_u) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Percentage","Ribosomal Protein Genes Percentage")
       write.table(interactive_qc_plot_u, paste(Tempdir, "/CRESCENT_CLOUD/frontend_qc/",dataset,"_BeforeFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
-      
+
       # filtered
       interactive_qc_plot_f  <-data.frame(Barcodes = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
       interactive_qc_plot_f$Mitochondrial_Genes_Percentage <- interactive_qc_plot_f$Mitochondrial_Genes_Percentage * 100
       interactive_qc_plot_f$Ribosomal_Protein_Genes_Percentage <- interactive_qc_plot_f$Ribosomal_Protein_Genes_Percentage * 100
       colnames(interactive_qc_plot_f) <- c("Barcodes","Number of Genes","Number of Reads","Mitochondrial Genes Percentage","Ribosomal Protein Genes Percentage")
       write.table(interactive_qc_plot_f, paste(Tempdir, "/CRESCENT_CLOUD/frontend_qc/",dataset,"_AfterFiltering.tsv",sep=""),row.names = F,sep="\t",quote = F)
-      
+
       qc_tsv <- data.frame(NAME = row.names(seurat.object.f@meta.data), Number_of_Genes = seurat.object.f@meta.data$nFeature_RNA, Number_of_Reads = seurat.object.f@meta.data$nCount_RNA, Mitochondrial_Genes_Percentage = seurat.object.f@meta.data$mito.fraction, Ribosomal_Protein_Genes_Percentage = seurat.object.f@meta.data$ribo.fraction)
       qc_tsv$NAME <- paste0(dataset, "_", qc_tsv$NAME)
       qc_tsv$Mitochondrial_Genes_Percentage <- qc_tsv$Mitochondrial_Genes_Percentage * 100
       qc_tsv$Ribosomal_Protein_Genes_Percentage <- qc_tsv$Ribosomal_Protein_Genes_Percentage * 100
       qc_tsv_string <- sapply(qc_tsv, as.character)
       qc_tsv_string_TYPE <- rbind(data.frame(NAME = "TYPE", Number_of_Genes = "numeric", Number_of_Reads = "numeric", Mitochondrial_Genes_Percentage = "numeric", Ribosomal_Protein_Genes_Percentage = "numeric"), qc_tsv_string)
-      
+
       qc_outfile <-paste0(Tempdir, "/CRESCENT_CLOUD/frontend_qc/",dataset,"_qc_data.tsv")
       write.table(data.frame(qc_tsv_string_TYPE), file = qc_outfile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
-    } 
-    
+
+      StopWatchEnd$QCviolinplotsFrontEnd[[dataset]]  <- Sys.time()
+
+    }
+
     ####################################
     ### Feature-vs-feature scatter plot
     ####################################
     writeLines(paste0("\n*** Feature-vs-feature scatter plot for ", dataset, " ***\n"))
-    
+
     StopWatchStart$FeatureVsFeatureplot[[dataset]]  <- Sys.time()
-    
+
     UnfilteredData.df<-data.frame(nCount_RNA = seurat.object.u@meta.data$nCount_RNA,
                                   nGene = seurat.object.u@meta.data$nFeature_RNA,
                                   mito.fraction = seurat.object.u@meta.data$mito.fraction,
@@ -1080,7 +1093,7 @@ for (dataset in rownames(InputsTable)) {
     UnfilteredData.df$DotColour<-gsub(x=UnfilteredData.df$DotColour,    pattern = F, replacement = ColoursQCViolinPlots[[2]])
     UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$filtered_out, pattern = T, replacement = 4)
     UnfilteredData.df$DotPch   <-gsub(x=UnfilteredData.df$DotPch,       pattern = F, replacement = 16)
-    
+
     FeatureVsFeaturePlotPdf<-paste0(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "NumbReadsVsNumbGenesAndMito_ScatterPlot", "_", dataset, ".pdf")
     pdf(file=FeatureVsFeaturePlotPdf, width = 10, height = 5)
     par(mfrow=c(1,2))
@@ -1088,110 +1101,115 @@ for (dataset in rownames(InputsTable)) {
     plot(x = UnfilteredData.df$nCount_RNA, UnfilteredData.df$mito.fraction, col = UnfilteredData.df$DotColour, pch = as.integer(UnfilteredData.df$DotPch),
          xlab ="No. of reads", ylab = "Mitochond. %")
     legend("topright", legend = c("No", "Yes"), title = "Filtered cells", col = ColoursQCViolinPlots, pch = c(4,16))
-    
+
     ## No. of reads vs. No. of genes
     plot(x = UnfilteredData.df$nCount_RNA, UnfilteredData.df$nGene, col = UnfilteredData.df$DotColour, pch = as.integer(UnfilteredData.df$DotPch),
          xlab ="No. of reads", ylab = "No. of genes")
     legend("topleft", legend = c("No", "Yes"), title = "Filtered cells", col = ColoursQCViolinPlots, pch = c(4,16))
     dev.off()
-    
+
     StopWatchEnd$FeatureVsFeatureplot[[dataset]]  <- Sys.time()
-    
+
     ####################################
     ### Write out filter details and number of filtered cells
     ####################################
     writeLines(paste0("\n*** Write out filter details and number of filtered cells for ", dataset, " ***\n"))
-    
+
     StopWatchStart$OutTablesFilterDetailsAndFilteredCells[[dataset]]  <- Sys.time()
-    
+
     OutTableFilterDetails<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "FilterDetails", "_", dataset, ".tsv")
     Headers<-paste("Step", "Filter_min", "Filter_max", "Mean_before_filter", "Median_before_filter", "Mean_after_filter", "Median_after_filter", "Excluded_cells", sep = "\t", collapse = "")
     write.table(Headers, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F)
-    
+
     FilterDetails.nFeature_RNA  <- paste("nFeature_RNA", list_MinNGenes[[dataset]], list_MaxNGenes[[dataset]],
-                                         mean_nFeature_RNAStats.u, median_nFeature_RNAStats.u, mean_nFeature_RNAStats.f, median_nFeature_RNAStats.f, 
+                                         mean_nFeature_RNAStats.u, median_nFeature_RNAStats.u, mean_nFeature_RNAStats.f, median_nFeature_RNAStats.f,
                                          NumberOfBarcodesExcludedByNFeature, sep = "\t", collapse = "")
-    FilterDetails.nCount_RNA    <- paste("nCount_RNA", list_MinNReads[[dataset]], list_MaxNReads[[dataset]], 
-                                         mean_nCount_RNAStats.u, median_nCount_RNAStats.u, mean_nCount_RNAStats.f, median_nCount_RNAStats.f, 
+    FilterDetails.nCount_RNA    <- paste("nCount_RNA", list_MinNReads[[dataset]], list_MaxNReads[[dataset]],
+                                         mean_nCount_RNAStats.u, median_nCount_RNAStats.u, mean_nCount_RNAStats.f, median_nCount_RNAStats.f,
                                          NumberOfBarcodesExcludedByNReads, sep = "\t", collapse = "")
     FilterDetails.mito.fraction <- paste("mito.fraction", list_MinMitoFrac[[dataset]], list_MaxMitoFrac[[dataset]],
-                                         mean_mito.fraction.u, median_mito.fraction.u, mean_mito.fraction.f, median_mito.fraction.f, 
+                                         mean_mito.fraction.u, median_mito.fraction.u, mean_mito.fraction.f, median_mito.fraction.f,
                                          NumberOfBarcodesExcludedByMito, sep = "\t", collapse = "")
     FilterDetails.ribo.fraction <- paste("ribo.fraction", list_MinRiboFrac[[dataset]], list_MaxRiboFrac[[dataset]],
-                                         mean_ribo.fraction.u, median_ribo.fraction.u, mean_ribo.fraction.f, median_ribo.fraction.f, 
+                                         mean_ribo.fraction.u, median_ribo.fraction.u, mean_ribo.fraction.f, median_ribo.fraction.f,
                                          NumberOfBarcodesExcludedByRibo, sep = "\t", collapse = "")
-    
+
     write.table(FilterDetails.nFeature_RNA,  file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
     write.table(FilterDetails.nCount_RNA,    file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
     write.table(FilterDetails.mito.fraction, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
     write.table(FilterDetails.ribo.fraction, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-    
+
     OutTableFilteredCells<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "NumberOfFilteredCells", "_", dataset, ".tsv")
     write.table(paste("Number_of_cells_before_filters", NumberOfCells[["unfiltered"]], sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(paste("Number_of_cells_after_filters", NumberOfCells[["filtered"]],    sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-    
+
     StopWatchEnd$OutTablesFilterDetailsAndFilteredCells[[dataset]]  <- Sys.time()
-    
+
     if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
       ####################################
       ### Outfiles for web app: write out QC metrics for each dataset
       ####################################
       writeLines("\n*** Outfiles for web app: write out QC metrics for each dataset ***\n")
 
+      StopWatchStart$OutTablesFilterDetailsAndFilteredCellsFrontEnd[[dataset]]  <- Sys.time()
+
       qc_metrics_genes <- data.frame(Step = "Number of Genes", Filter_min = list_MinNGenes[[dataset]], Filter_max = list_MaxNGenes[[dataset]], Excluded_cells = NumberOfBarcodesExcludedByNFeature)
       qc_metrics_reads <- data.frame(Step = "Number of Reads", Filter_min = list_MinNReads[[dataset]], Filter_max = list_MaxNReads[[dataset]], Excluded_cells = NumberOfBarcodesExcludedByNReads)
       qc_metrics_mito <- data.frame(Step = "Percentage of Mitochondrial Genes", Filter_min = as.numeric(list_MinMitoFrac[[dataset]])*100, Filter_max = as.numeric(list_MaxMitoFrac[[dataset]])*100, Excluded_cells = NumberOfBarcodesExcludedByMito)
       qc_metrics_ribo <- data.frame(Step = "Percentage of Ribsomal Protein Genes", Filter_min = as.numeric(list_MinRiboFrac[[dataset]])*100, Filter_max = as.numeric(list_MaxRiboFrac[[dataset]])*100, Excluded_cells = NumberOfBarcodesExcludedByRibo)
-      
+
       qc_metrics <-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_qc/",dataset,"_qc_metrics.tsv")
       write.table(qc_metrics_genes, file = qc_metrics, row.names = F, col.names = T, sep="\t", quote = F, append = T)
       write.table(qc_metrics_reads, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
       write.table(qc_metrics_mito, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
       write.table(qc_metrics_ribo, file = qc_metrics, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-    } 
-    
+
+      StopWatchEnd$OutTablesFilterDetailsAndFilteredCellsFrontEnd[[dataset]]  <- Sys.time()
+
+    }
+
     ####################################
     ### Assign data to Datasets lists
     ####################################
     writeLines(paste0("\n*** Assign data to Datasets lists: ", dataset, " ***\n"))
-    
+
     StopWatchStart$AssignDataToDatasets  <- Sys.time()
-    
+
     SeuratObjectsUnfiltered[[as.character(NumberOfDatasets)]]  <- seurat.object.u
     SeuratObjectsFiltered[[as.character(NumberOfDatasets)]]    <- seurat.object.f
     DatasetIds[[as.character(NumberOfDatasets)]]               <- dataset
-    
+
     StopWatchEnd$AssignDataToDatasets  <- Sys.time()
-    
+
     ####################################
     ### Write out QC data for each dataset
     ####################################
     writeLines("\n*** Write out QC data for each dataset ***\n")
-    
+
     StopWatchStart$WriteOutQCData  <- Sys.time()
-    
+
     Headers<-paste("Cell_barcode", paste(DefaultParameters$CellPropertiesToQC, sep = "", collapse = "\t") ,sep="\t")
-    
-    BarcodeIdsWithDatasetBeforeFilters <- unlist(x = strsplit(x = paste(dataset, colnames(SeuratObjectsUnfiltered[[NumberOfDatasets]]), sep = "_", collapse = "\n"), split = "\n"))
+
+    BarcodeIdsWithDatasetBeforeFilters <- paste(dataset, colnames(SeuratObjectsUnfiltered[[NumberOfDatasets]]), sep = "_")
     OutfileQCMetadataBeforeFilters<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "Before_filters_QC_metadata", "_", dataset, ".tsv")
     write.table(Headers, file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(data.frame(BarcodeIdsWithDatasetBeforeFilters, SeuratObjectsUnfiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-    
-    BarcodeIdsWithDatasetAfterFilters <- unlist(x = strsplit(x = paste(dataset, colnames(SeuratObjectsFiltered[[NumberOfDatasets]]), sep = "_", collapse = "\n"), split = "\n"))
+
+    BarcodeIdsWithDatasetAfterFilters <- paste(dataset, colnames(SeuratObjectsFiltered[[NumberOfDatasets]]), sep = "_")
     OutfileQCMetadataAfterFilters<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "After_filters_QC_metadata", "_", dataset, ".tsv")
     write.table(Headers, file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(data.frame(BarcodeIdsWithDatasetAfterFilters, SeuratObjectsFiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-    
+
     StopWatchEnd$WriteOutQCData  <- Sys.time()
-    
+
     ####################################
     ### Remove the Unfiltered seurat object
     ####################################
     writeLines(paste0("\n*** Remove the Unfiltered seurat object for ", dataset, " ***\n"))
-    
+
     rm(seurat.object.u)
     rm(UnfilteredData.df)
-    
+
   }else{
     stop(paste0("Unexpected type of input: ", DatasetType, "\n\nFor help type:\n\nRscript integrates_datasets_with_seurat.R -h\n\n"))
   }
@@ -1218,15 +1236,15 @@ if (NumberOfDatasetsTypes <= DefaultParameters$MaxNumbLabelsPerRowInLegend) {
 ####################################
 
 if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
-  
+
   writeLines("\n*** No barcodes are removed by option -j ***\n")
-  
+
 }else{
-  
+
   StopWatchStart$RemoveBarcodes <- Sys.time()
-  
+
   writeLines("\n*** Removing barcodes by parameter -j ***\n")
-  
+
   InfileAllBarcodesToRemove<-gsub("^~/",paste0(UserHomeDirectory,"/"), InfileRemoveBarcodes)
   AllBarcodesToRemove.tab<-read.table(InfileAllBarcodesToRemove, header = F, row.names = NULL, stringsAsFactors = FALSE)
   if (ncol(AllBarcodesToRemove.tab) == 2) {
@@ -1234,7 +1252,7 @@ if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
   }else{
     stop(paste0("Unexpected format in file:\n", InfileAllBarcodesToRemove, "\nfor parameter -j, 2 columns were expected but found ", ncol(AllBarcodesToRemove.tab)))
   }
-  
+
   for (SeuratObjNumb in c(1:NumberOfDatasets)) {
     print(paste0("Removing cells from:", DatasetIds[[SeuratObjNumb]]))
     seurat.object.full <- SeuratObjectsFiltered[[SeuratObjNumb]]
@@ -1247,9 +1265,9 @@ if (regexpr("^NA$", InfileRemoveBarcodes , ignore.case = T)[1] == 1) {
     SeuratObjectsFiltered[[SeuratObjNumb]] <- seurat.object.subset
     print(paste(DatasetId, paste0("Before:", ncol(seurat.object.full)), paste0("After:", ncol(seurat.object.subset)), sep = "  ", collapse = "\n"))
   }
-  
+
   StopWatchEnd$RemoveBarcodes <- Sys.time()
-  
+
 }
 
 ####################################
@@ -1262,7 +1280,7 @@ FirstSeuratObject   <- SeuratObjectsFiltered[[1]]
 RestOfSeuratObjectsFiltered <- SeuratObjectsFiltered[c(2:NumberOfDatasets)]
 RestOfDatasetsIds    <- unlist(DatasetIds[c(2:NumberOfDatasets)])
 
-seurat.object.merged <- merge(FirstSeuratObject, y = RestOfSeuratObjectsFiltered, 
+seurat.object.merged <- merge(FirstSeuratObject, y = RestOfSeuratObjectsFiltered,
                               add.cell.ids = DatasetIds,
                               project = PrefixOutfiles)
 
@@ -1282,31 +1300,31 @@ writeLines("\n*** Running SCTransform ***\n")
 StopWatchStart$SCTransform  <- Sys.time()
 
 for (i in 1:length(seurat.object.list)) {
-  
+
   dataset <- rownames(InputsTable)[[i]]
   print(dataset)
   seurat.object.list[[i]] <- SCTransform(seurat.object.list[[i]], verbose = T)
-  
+
   ####################################
   ### Save filtered data as MTX files
   ####################################
   writeLines("\n*** Save filtered data as MTX files ***\n")
-  
+
   StopWatchStart$SaveFilteredData[[dataset]]  <- Sys.time()
-  
+
   if (regexpr("^Y$", SaveFilteredData, ignore.case = T)[1] == 1) {
-    
+
     OutDirFilteredRaw <-paste0(Tempdir, "/FILTERED_DATA_MATRICES/", dataset, "/RAW")
     dir.create(file.path(OutDirFilteredRaw), showWarnings = F, recursive = T)
     write10xCounts(path = OutDirFilteredRaw, x = seurat.object.list[[i]]@assays[["RNA"]]@counts, gene.type="Raw_Gene_Expression", overwrite=T, type="sparse", version="3")
-    
+
     OutDirFilteredNorm<-paste0(Tempdir, "/FILTERED_DATA_MATRICES/", dataset, "/NORMALIZED_SCT")
     dir.create(file.path(OutDirFilteredNorm), showWarnings = F, recursive = T)
     write10xCounts(path = OutDirFilteredNorm, x = round(seurat.object.list[[i]]@assays[["SCT"]]@data, digits = 4), gene.type="SCTransform_Gene_Expression", overwrite=T, type="sparse", version="3")
   }
-  
+
   StopWatchEnd$SaveFilteredData[[dataset]]  <- Sys.time()
-  
+
 }
 
 StopWatchEnd$SCTransform  <- Sys.time()
@@ -1329,14 +1347,14 @@ FirstSeuratObject   <- SeuratObjectsFilteredAndNormalized[[1]]
 RestOfSeuratObjectsFiltered <- SeuratObjectsFilteredAndNormalized[c(2:NumberOfDatasets)]
 RestOfDatasetsIds    <- unlist(DatasetIds[c(2:NumberOfDatasets)])
 
-seurat.object.merged.normalized <- merge(FirstSeuratObject, y = RestOfSeuratObjectsFiltered, 
+seurat.object.merged.normalized <- merge(FirstSeuratObject, y = RestOfSeuratObjectsFiltered,
                               add.cell.ids = DatasetIds,
                               project = PrefixOutfiles)
 
 seurat.object.list.normalized <- SplitObject(seurat.object.merged.normalized, split.by = "dataset")
 
 for (assay_expression in DefaultParameters$AssaysForPseudoBulk) {
-  
+
   ### Get pseudo-bulk matrices
   mat_for_correl_all_cells.df <- data.frame(row.names = rownames(seurat.object.list.normalized[[1]]@assays[[assay_expression]]))
   for (dataset in rownames(InputsTable)) {
@@ -1347,7 +1365,7 @@ for (assay_expression in DefaultParameters$AssaysForPseudoBulk) {
   Headers<-paste(paste0("PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]]), paste(colnames(mat_for_correl_all_cells.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
   write.table(Headers, file = OutfilePseudoBulk, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(mat_for_correl_all_cells.df,  file = OutfilePseudoBulk, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-  
+
   ### Get correlation
   mat_for_correl_all_cells.cor <- round(cor(mat_for_correl_all_cells.df), digits = 3)
   OutfilePseudoBulkCor <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor", ".tsv")
@@ -1398,14 +1416,14 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   StopWatchStart$FindIntegrationAnchorsStacas  <- Sys.time()
 
   seurat.object.anchors.unfiltered <- FindAnchors.STACAS(object.list = seurat.object.list, dims=PcaDimsUse, anchor.features=DefaultParameters$StacasVarGenesIntegratedN, reference = ReferenceDatasets.indices, verbose = T)
-  
+
   StopWatchEnd$FindIntegrationAnchorsStacas  <- Sys.time()
 
   ####################################
   ### Get STACAS distances between dataset anchors
   ####################################
   writeLines("\n*** Get STACAS distances between dataset anchors ***\n")
-  
+
   StopWatchStart$GetDistancesStacas <- Sys.time()
 
   DensityPlots <- PlotAnchors.STACAS(seurat.object.anchors.unfiltered, obj.names=names(seurat.object.list))
@@ -1419,12 +1437,12 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   })
 
   StopWatchEnd$GetDistancesStacas <- Sys.time()
-  
+
   ####################################
   ### Get median of STACAS dist.mean between dataset anchors
   ####################################
   writeLines("\n*** Get median of STACAS dist.mean between dataset anchors ***\n")
-  
+
   StopWatchStart$GetMedianDistMeanStacas <- Sys.time()
 
   Distances.df <- read.table(file = OutfilesTsv, header = T, sep = "\t", row.names = NULL)
@@ -1453,17 +1471,17 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   ### Get list of STACAS anchors
   ####################################
   writeLines("\n*** Get list of STACAS anchors ***\n")
-  
+
   StopWatchStart$GetListAnchorsStacas <- Sys.time()
-  
+
   TableAnchorNumbers <- function(so.anchors,sos.list,OutfilesTsv,OutfilePdf,HeaderPlot) {
     anchor.stats<-table(so.anchors@anchors[,c("dataset1","dataset2")])
     rownames(anchor.stats) <- names(sos.list)
     colnames(anchor.stats) <- names(sos.list)
-    
+
     write(x=paste0("Dataset", "\t", paste(names(sos.list), sep = "\t", collapse = "\t")), file=OutfilesTsv)
     write.table(x=anchor.stats, file=OutfilesTsv, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-    
+
     pdf(file=OutfilePdf, width = DefaultParameters$BaseSizeSinglePlotPdf, height = DefaultParameters$BaseSizeSinglePlotPdf)
     anchor.stats.norm <- apply(anchor.stats, 1, function(x) {x/sum(x)})
     toplot <- melt(anchor.stats.norm, varnames=c("Dataset1","Dataset2"), value.name = "Fraction")
@@ -1474,16 +1492,16 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
     )
     dev.off()
   }
-  
+
   StopWatchEnd$GetListAnchorsStacas <- Sys.time()
-  
+
   ####################################
   ### Get all anchors
   ####################################
   writeLines("\n*** Get all anchors ***\n")
-  
+
   StopWatchStart$GetAllAnchorsStacas <- Sys.time()
-  
+
   OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.tsv")
   OutfilePdf  <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.pdf")
   so.anchors  <- seurat.object.anchors.unfiltered
@@ -1491,14 +1509,14 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   TableAnchorNumbers(so.anchors,sos.list,OutfilesTsv,OutfilePdf,"BEFORE")
 
   StopWatchEnd$GetAllAnchorsStacas <- Sys.time()
-  
+
   ####################################
   ### Get filtered anchors
   ####################################
   writeLines("\n*** Get filtered anchors ***\n")
-  
+
   StopWatchStart$GetFilteredAnchorsStacas <- Sys.time()
-  
+
   seurat.object.anchors <- FilterAnchors.STACAS(seurat.object.anchors.unfiltered)
   print(seurat.object.anchors)
 
@@ -1509,14 +1527,14 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   TableAnchorNumbers(so.anchors,sos.list,OutfilesTsv,OutfilePdf,"AFTER")
 
   StopWatchEnd$GetFilteredAnchorsStacas <- Sys.time()
-  
+
   ####################################
   ### Get optimal integration tree
   ####################################
   writeLines("\n*** Get optimal integration tree ***\n")
 
   StopWatchStart$GetOptimalIntegrationTreeStacas <- Sys.time()
-  
+
   all.genes <- row.names(seurat.object.list[[1]])
   lapply(2:length(seurat.object.list), function(DatasetNumber) {
     all.genes <- intersect(all.genes, row.names(seurat.object.list[[DatasetNumber]]))
@@ -1527,35 +1545,35 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   StopWatchEnd$GetOptimalIntegrationTreeStacas <- Sys.time()
 
 } else if (regexpr("^Seurat$", AnchorsFunction , ignore.case = T)[1] == 1) {
-  
+
   ####################################
   ### Get anchors with Seurat
   ####################################
   writeLines("\n*** Get anchors with Seurat ***\n")
-  
+
   StopWatchStart$SelectIntegrationFeatures  <- Sys.time()
-  
+
   writeLines("\n*** Run SelectIntegrationFeatures() ***\n")
   seurat.object.integratedfeatures <- SelectIntegrationFeatures(object.list = seurat.object.list, nfeatures = DefaultParameters$IntegrationNFeatures)
-  
+
   StopWatchEnd$SelectIntegrationFeatures  <- Sys.time()
-  
+
   StopWatchStart$PrepSCTIntegration  <- Sys.time()
-  
+
   writeLines("\n*** Run PrepSCTIntegration() ***\n")
   seurat.object.list <- PrepSCTIntegration(object.list = seurat.object.list, anchor.features = seurat.object.integratedfeatures, verbose = T)
-  
+
   StopWatchEnd$PrepSCTIntegration  <- Sys.time()
 
   StopWatchStart$FindIntegrationAnchors  <- Sys.time()
-  
+
   writeLines("\n*** Run FindIntegrationAnchors() ***\n")
   print(paste0("Using k.filter = ", KFilter))
   seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, reference = ReferenceDatasets.indices, verbose = T)
   SampleTree <- NULL
-  
+
   StopWatchEnd$FindIntegrationAnchors  <- Sys.time()
-  
+
   print(seurat.object.anchors)
 
 }
@@ -1572,11 +1590,13 @@ seurat.object.integrated <- IntegrateData(anchorset = seurat.object.anchors, nor
 
 StopWatchEnd$IntegrateData  <- Sys.time()
 
+####################################
+### Outfiles for web app: save normalized count matrix as loom
+####################################
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  ####################################
-  ### Outfiles for web app: save normalized count matrix as loom
-  ####################################
   writeLines("\n*** Outfiles for web app: save normalized count matrix as loom ***\n")
+
+  StopWatchStart$OutNormalizedTablesLoomFrontEnd  <- Sys.time()
 
   normalized_count_matrix <- as.matrix(seurat.object.integrated@assays[["RNA"]]@data)
 
@@ -1587,7 +1607,9 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
 
   # generating loom file of normalized count matrix
   loom_file <- paste0(Tempdir, "/CRESCENT_CLOUD/frontend_normalized/","normalized_counts.loom")
-  create(loom_file, normalized_count_matrix)
+  create(loom_file, normalized_count_matrix, overwrite = T)
+
+  StopWatchEnd$OutNormalizedTablesLoomFrontEnd <- Sys.time()
 
 }
 
@@ -1664,7 +1686,6 @@ writeLines("\n*** Globally cluster cells using integrated data ***\n")
 
 StopWatchStart$ClusterAllCells  <- Sys.time()
 
-## Uncomment this once fixed
 options(scipen=10) ## Needed to avoid an 'Error in file(file, "rt") : cannot open the connection'
 seurat.object.integrated <- FindNeighbors(object = seurat.object.integrated, dims = PcaDimsUse)
 seurat.object.integrated <- FindClusters(object = seurat.object.integrated, resolution = Resolution)
@@ -1683,12 +1704,6 @@ clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
 OutfileClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "CellClusters", ".tsv")
 write.table(Headers, file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F)
 write.table(data.frame(clusters_data), file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-
-# dataframe to merge for groups.tsv
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  OutfileClustersDataframe  <- data.frame(NAME = rownames(seurat.object.integrated@meta.data), Seurat_Global_Clusters = seurat.object.integrated@meta.data$seurat_clusters)
-}
-
 #
 OutfileNumbClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellClusters", ".tsv")
 write(x=NumberOfClusters, file = OutfileNumbClusters)
@@ -1699,6 +1714,23 @@ write.table(Headers, file = OutfileNumbCellsPerCluster, row.names = F, col.names
 write.table(table(ClusterIdent), file = OutfileNumbCellsPerCluster, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 #
 StopWatchEnd$AllCellClusterTables  <- Sys.time()
+
+## Creates dataframe to merge for groups.tsv
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  writeLines("\n*** Creates dataframe to merge for groups.tsv ***\n")
+
+  StopWatchStart$SaveGlobalCellClusterIdentitiesFrontEnd  <- Sys.time()
+
+  OutfileClustersDataframe  <- data.frame(NAME = rownames(seurat.object.integrated@meta.data),
+                                          Seurat_Global_Clusters = seurat.object.integrated@meta.data$seurat_clusters,
+                                          monochrome = 1,
+                                          dataset_id = seurat.object.integrated@meta.data$dataset,
+                                          dataset_type = as.character(list_DatasetToType[c(seurat.object.integrated@meta.data$dataset)])
+  )
+
+  StopWatchEnd$SaveGlobalCellClusterIdentitiesFrontEnd  <- Sys.time()
+
+}
 
 ####################################
 ### Saving global cell cluster identities
@@ -1780,11 +1812,13 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   writeLines(paste0("\n*** Write out ", DimensionReductionMethods[[dim_red_method]][["name"]], " coordinates ***\n"))
 
   StopWatchStart$DimensionReductionWriteCoords[[dim_red_method]]  <- Sys.time()
-  
+
   OutfileCoordinates<-paste0(Tempdir, "/DIMENSION_REDUCTION_COORDINATE_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_Coordinates", ".tsv")
   Headers<-paste("Barcode",paste(colnames(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings), sep="", collapse="\t"), sep="\t", collapse = "\t")
   write.table(Headers, file = OutfileCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
+
+  StopWatchEnd$DimensionReductionWriteCoords[[dim_red_method]]  <- Sys.time()
 
   if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     ####################################
@@ -1792,12 +1826,15 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     ####################################
     writeLines("\n*** Outfiles for web app: dimension reduction coordinates ***\n")
 
+    StopWatchStart$DimensionReductionWriteCoordsFrontEnd[[dim_red_method]]  <- Sys.time()
+
     OutfileCoordinatesCWL<-paste0(Tempdir, "/CRESCENT_CLOUD/frontend_coordinates/",DimensionReductionMethods[[dim_red_method]][["name"]], "Coordinates.tsv")
     write.table(Headers, file = OutfileCoordinatesCWL, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinatesCWL,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
-  }
 
-  StopWatchEnd$DimensionReductionWriteCoords[[dim_red_method]]  <- Sys.time()
+    StopWatchEnd$DimensionReductionWriteCoordsFrontEnd[[dim_red_method]]  <- Sys.time()
+
+  }
 
   ####################################
   ### Colour dimension reduction plots by dataset using integrated data
@@ -1843,8 +1880,6 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by dataset type ***\n"))
 
     Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$dataset_type
-
-    head(seurat.object.integrated@meta.data)
 
     NumberOfDatasetTypes <- 0
     for (dataset_type in DatasetTypes) {
@@ -1919,7 +1954,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     StopWatchStart$DimRedPlotsColuredByMetadata[[dim_red_method]]  <- Sys.time()
 
     # Note: needs data.frame(CellPropertiesFromMetadata) preloaded
-    
+
     seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = CellPropertiesFromMetadata)
 
     # Generating outfile
@@ -1961,7 +1996,7 @@ Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$
 for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
   cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
   OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_AllDatasets_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
-  Headers<-paste("AVERAGE_GENE_EXPRESSION", paste(names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+  Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
   write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 }
@@ -1986,19 +2021,23 @@ if (1 %in% RequestedDiffGeneExprComparisons == T) {
   OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", ".tsv")
   write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
 
+  StopWatchEnd$FindDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
+
   if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     ####################################
     ### Outfiles for web app: top differentially expressed genes
     ####################################
     writeLines("\n*** Outfiles for web app: top differentially expressed genes ***\n")
 
+    StopWatchStart$OutTopDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
+
     top_6_genes_by_cluster<-(seurat.object.integrated.markers %>% group_by(cluster) %>% top_n(6, avg_logFC))
     globalMarkersFile <- top_6_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
     write.table(globalMarkersFile, paste0(Tempdir, "/CRESCENT_CLOUD/frontend_markers/","TopTwoMarkersPerCluster.tsv"), row.names = F, sep="\t", quote = F)
+
+    StopWatchEnd$OutTopDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
+
   }
-
-  StopWatchEnd$FindDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
-
 }
 
 ################################################################################################################################################
@@ -2037,10 +2076,8 @@ for (dataset in rownames(InputsTable)) {
   ### because they are not inherited in seurat.object.integrated by IntegrateData()
   InfileQCMetadataAfterFilters<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "After_filters_QC_metadata", "_", dataset, ".tsv")
   QCMetadata <- data.frame(read.table(InfileQCMetadataAfterFilters, header = T, row.names = 1))
-  AllQCMetadata <- rbind(AllQCMetadata, QCMetadata)
   seurat.object.each_dataset <- AddMetaData(object = seurat.object.each_dataset, metadata = QCMetadata)
-  seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = QCMetadata)
-  print(seurat.object.each_dataset)
+  AllQCMetadata <- rbind(AllQCMetadata, QCMetadata)
 
   for (dim_red_method in names(DimensionReductionMethods)) {
     OutfileDimRedPlotQc <- paste0(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plots", "_", dataset, ".pdf")
@@ -2137,7 +2174,7 @@ for (dataset in rownames(InputsTable)) {
 
     plots <- DimPlot(seurat.object.each_dataset, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 5)
     plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "top") + guides(color = guide_legend(nrow = 2, byrow = T, override.aes = list(size = 3))))
-    IntegratedDimRedPlotPdf<-paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_", "GlobalClustering", "_", dataset, "_", ".pdf")
+    IntegratedDimRedPlotPdf<-paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_", "GlobalClustering", "_", dataset, ".pdf")
     pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
     print(CombinePlots(plots))
     dev.off()
@@ -2246,7 +2283,7 @@ Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$
 for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
   cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
   OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
-  Headers<-paste("AVERAGE_GENE_EXPRESSION", paste(names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+  Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
   write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 }
@@ -2290,11 +2327,15 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
     OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", dataset, ".tsv")
     write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = OutfileDiffGeneExpression, row.names = F, sep="\t", quote = F)
 
+    StopWatchEnd$FindDiffMarkersEachDatasetGlobalClustersVsRestOfCells[[dataset]]  <- Sys.time()
+
     if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
       ####################################
       ### Outfiles for web app: top differentially expressed genes oer dataset
       ####################################
       writeLines("\n*** Outfiles for web app: top differentially expressed genes per dataset ***\n")
+
+      StopWatchStart$OutDiffMarkersEachDatasetGlobalClustersVsRestOfCellsFrontEnd[[dataset]]  <- Sys.time()
 
       # top 6 markers per dataset
       top_6_genes_by_cluster<-(seurat.object.each_dataset.markers %>% group_by(cluster) %>% top_n(6, avg_logFC))
@@ -2305,14 +2346,14 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
       OutfileClustersPerDatasetDataframe  <- data.frame(NAME = rownames(seurat.object.each_dataset@meta.data), Seurat_Dataset_Clusters = seurat.object.each_dataset@meta.data$seurat_clusters)
       groupsPerDatasetDataframeString <- sapply(OutfileClustersPerDatasetDataframe, as.character)
       groupsPerDatasetDataframeStringTYPE <- rbind(data.frame(NAME = "TYPE", Seurat_Dataset_Clusters = "group"), groupsPerDatasetDataframeString)
-      colnames(groupsPerDatasetDataframeStringTYPE) <- c("NAME", paste("Seurat_",dataset,"_Clusters_Resolution", Resolution, sep = "", collapse = ""))
+      colnames(groupsPerDatasetDataframeStringTYPE) <- c("NAME", paste("Seurat_",dataset,"_Clusters_Resolution_", Resolution, sep = "", collapse = ""))
 
       OutfileClustersPerDatasetFile<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_groups/",dataset,"_groups.tsv")
       write.table(data.frame(groupsPerDatasetDataframeStringTYPE), file = OutfileClustersPerDatasetFile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
+
+      StopWatchEnd$OutDiffMarkersEachDatasetGlobalClustersVsRestOfCellsFrontEnd[[dataset]]  <- Sys.time()
+
     }
-
-    StopWatchEnd$FindDiffMarkersEachDatasetGlobalClustersVsRestOfCells[[dataset]]  <- Sys.time()
-
   }
 }
 
@@ -2502,7 +2543,7 @@ if (2 %in% RequestedClusteringInputs == T) {
     cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
 
     OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "EachDatasetReclustered", "_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
-    Headers<-paste("AVERAGE_GENE_EXPRESSION", paste(names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+    Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
     write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
   }
@@ -2552,29 +2593,38 @@ if (NumberOfDatasetsTypes >= 1) {
   write.table(paste(colnames(seurat.object.integrated), GlobalClustersByDatasetType, sep = "\t", collapse = "\n"),
               file = OutfileEachDatasetTypeGlobalClusters, row.names = F, col.names = F, quote = F, append = T)
 
-  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-    ####################################
-    ### Outfiles for web app: cluster identities
-    ####################################
-    writeLines("\n*** Outfiles for web app: cluster identities ***\n")
-
-    OutfileEachDatasetTypeGlobalClustersDataframe  <- data.frame(NAME = colnames(seurat.object.integrated), Seurat_Datasets_Global_Clusters = GlobalClustersByDatasetType)
-
-    groupsMergedDataframe <- merge(OutfileClustersDataframe, OutfileEachDatasetTypeGlobalClustersDataframe, by="NAME")
-    groupsMergedDataframeString <- sapply(groupsMergedDataframe, as.character)
-    groupsMergedDataframeStringTYPE <- rbind(data.frame(NAME = "TYPE", Seurat_Global_Clusters = "group", Seurat_Datasets_Global_Clusters = "group"), groupsMergedDataframeString)
-    colnames(groupsMergedDataframeStringTYPE) <- c("NAME", paste0("Seurat_Global_Clusters_Resolution", Resolution), paste0("Seurat_Datasets_Global_Clusters_Resolution", Resolution))
-
-    OutfileClustersMerged<-paste0(Tempdir, "/CRESCENT_CLOUD/frontend_groups/","groups.tsv")
-    write.table(data.frame(groupsMergedDataframeStringTYPE), file = OutfileClustersMerged, row.names = F, col.names = T, sep="\t", quote = F, append = T)
-  }
-
   OutfileNumbCellsPerClusterPerDatasetType<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDatasetType", ".tsv")
   Headers<-paste("Cluster", "Number_of_cells", sep="\t", collapse = "")
   write.table(Headers, file = OutfileNumbCellsPerClusterPerDatasetType, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(table(GlobalClustersByDatasetType), file = OutfileNumbCellsPerClusterPerDatasetType, row.names = F, col.names = F, sep="\t", quote = F, append = T)
 
   StopWatchEnd$WriteOutDatasetTypeClusterAssignments  <- Sys.time()
+
+  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    ####################################
+    ### Outfiles for web app: each dataset type global cluster assignments
+    ####################################
+    writeLines("\n*** Outfiles for web app: each dataset type global cluster assignments ***\n")
+
+    StopWatchStart$OutDatasetTypeClusterAssignmentsFrontEnd  <- Sys.time()
+
+    OutfileEachDatasetTypeGlobalClustersDataframe  <- data.frame(NAME = rownames(seurat.object.integrated@meta.data), Seurat_Datasets_Global_Clusters = GlobalClustersByDatasetType)
+
+    groupsMergedDataframe <- merge(OutfileClustersDataframe, OutfileEachDatasetTypeGlobalClustersDataframe, by="NAME")
+    groupsMergedDataframeString <- sapply(groupsMergedDataframe, as.character)
+    groupsMergedDataframeStringTYPE <- rbind(data.frame(NAME = "TYPE", Seurat_Global_Clusters = "group", monochrome = "group", dataset_id = "group", dataset_type = "group", Seurat_Datasets_Global_Clusters = "group"), groupsMergedDataframeString)
+    colnames(groupsMergedDataframeStringTYPE) <- c("NAME", paste0("Seurat_Global_Clusters_Resolution_", Resolution),
+                                                   "monochrome",
+                                                   "dataset_id",
+                                                   "dataset_type",
+                                                   paste0("Seurat_Datasets_Global_Clusters_Resolution_", Resolution))
+
+    OutfileClustersMerged<-paste0(Tempdir, "/CRESCENT_CLOUD/frontend_groups/","groups.tsv")
+    write.table(data.frame(groupsMergedDataframeStringTYPE), file = OutfileClustersMerged, row.names = F, col.names = T, sep="\t", quote = F, append = T)
+
+    StopWatchEnd$OutDatasetTypeClusterAssignmentsFrontEnd  <- Sys.time()
+
+  }
 
   ####################################
   ### Loops each dataset type
@@ -2603,7 +2653,7 @@ if (NumberOfDatasetsTypes >= 1) {
 
       plots <- DimPlot(seurat.object.each_dataset_type, group.by = c("seurat_clusters"), combine = F, reduction = dim_red_method, label = T, label.size = 10)
       plots <- lapply(X = plots, FUN = function(x) x + theme(legend.position = "right") + guides(color = guide_legend(override.aes = list(size = 3))))
-      IntegratedDimRedPlotPdf<-paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_", "GlobalClustering", "_", dataset_type, "_", ".pdf")
+      IntegratedDimRedPlotPdf<-paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_", "GlobalClustering", "_", dataset_type, ".pdf")
       pdf(file=IntegratedDimRedPlotPdf, width = 7, height = 8)
       print(CombinePlots(plots))
       dev.off()
@@ -2721,7 +2771,7 @@ if (NumberOfDatasetsTypes >= 1) {
     cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
 
     OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_EachDatasetType_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
-    Headers<-paste("AVERAGE_GENE_EXPRESSION", paste(names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+    Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
     write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
@@ -2967,7 +3017,7 @@ if (NumberOfDatasetsTypes >= 1) {
       cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
 
       OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "EachDatasetTypeReclustered_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
-      Headers<-paste("AVERAGE_GENE_EXPRESSION", paste(names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+      Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
       write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
       write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
     }
@@ -3043,7 +3093,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
           cluster.averages<-AverageExpression(object = seurat.object.each_property, use.scale = F, use.counts = F, assays = assay_expression)
 
           OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "Metadata", "_", property, "_", "AllDatasets", "_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
-          Headers<-paste("AVERAGE_GENE_EXPRESSION", paste(names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+          Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
           write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
           write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
         }
@@ -3112,7 +3162,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
             cluster.averages<-AverageExpression(object = seurat.object.each_dataset, use.scale = F, use.counts = F, assays = assay_expression)
 
             OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "Metadata", "_", property, "_", dataset, "_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
-            Headers<-paste("AVERAGE_GENE_EXPRESSION", paste(names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+            Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
             write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
             write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
           }
@@ -3354,42 +3404,10 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
 }
 
 ####################################
-### Obtain computing time used
-####################################
-writeLines("\n*** Obtain computing time used ***\n")
-
-StopWatchEnd$Overall  <- Sys.time()
-
-OutfileCPUtimes<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "CPUtimes", ".txt")
-write(file = OutfileCPUtimes, x = paste("#Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
-write(file = OutfileCPUtimes, x = paste("#MaxGlobalVariables", MaxGlobalVariables, sep = "\t", collapse = ""), append = T)
-
-Headers<-paste("Step", "Time(minutes)", sep="\t")
-write.table(Headers, file = OutfileCPUtimes, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-
-lapply(names(StopWatchStart), function(stepToClock) {
-  if (regexpr("POSIXct", class(StopWatchStart[[stepToClock]]), ignore.case = T)[1] == 1) {
-    TimeStart <- StopWatchStart[[stepToClock]]
-    TimeEnd   <- StopWatchEnd[[stepToClock]]
-    TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
-    ReportTime<-c(paste(stepToClock, TimeDiff, sep = "\t", collapse = ""))
-    write(file = OutfileCPUtimes, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
-  }else{
-    lapply(names(StopWatchStart[[stepToClock]]), function(substep) {
-      if (regexpr("POSIXct", class(StopWatchStart[[stepToClock]][[substep]]), ignore.case = T)[1] == 1) {
-        TimeStart <- StopWatchStart[[stepToClock]][[substep]]
-        TimeEnd   <- StopWatchEnd[[stepToClock]][[substep]]
-        TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
-        ReportTime<-c(paste(paste0(stepToClock, "-", substep), TimeDiff, sep = "\t", collapse = ""))
-        write(file = OutfileCPUtimes, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
-      }
-    })
-  }
-})
-
-####################################
 ### Moving outfiles into outdir or keeping them at tempdir (if using CWL)
 ####################################
+
+StopWatchStart$MoveOutfilesToFinalDestination  <- Sys.time()
 
 ### using two steps to copy files (`file.copy` and `file.remove`) instead of just `file.rename` to avoid issues with path to Tempdir in cluster systems
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
@@ -3432,6 +3450,42 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     }
   })
 }
+
+StopWatchEnd$MoveOutfilesToFinalDestination  <- Sys.time()
+
+####################################
+### Obtain computing time used
+####################################
+writeLines("\n*** Obtain computing time used ***\n")
+
+StopWatchEnd$Overall  <- Sys.time()
+
+OutfileCPUtimes<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "CPUtimes", ".txt")
+write(file = OutfileCPUtimes, x = paste("#Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
+write(file = OutfileCPUtimes, x = paste("#MaxGlobalVariables", MaxGlobalVariables, sep = "\t", collapse = ""), append = T)
+
+Headers<-paste("Step", "Time(minutes)", sep="\t")
+write.table(Headers, file = OutfileCPUtimes, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
+lapply(names(StopWatchStart), function(stepToClock) {
+  if (regexpr("POSIXct", class(StopWatchStart[[stepToClock]]), ignore.case = T)[1] == 1) {
+    TimeStart <- StopWatchStart[[stepToClock]]
+    TimeEnd   <- StopWatchEnd[[stepToClock]]
+    TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
+    ReportTime<-c(paste(stepToClock, TimeDiff, sep = "\t", collapse = ""))
+    write(file = OutfileCPUtimes, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
+  }else{
+    lapply(names(StopWatchStart[[stepToClock]]), function(substep) {
+      if (regexpr("POSIXct", class(StopWatchStart[[stepToClock]][[substep]]), ignore.case = T)[1] == 1) {
+        TimeStart <- StopWatchStart[[stepToClock]][[substep]]
+        TimeEnd   <- StopWatchEnd[[stepToClock]][[substep]]
+        TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
+        ReportTime<-c(paste(paste0(stepToClock, "-", substep), TimeDiff, sep = "\t", collapse = ""))
+        write(file = OutfileCPUtimes, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
+      }
+    })
+  }
+})
 
 ####################################
 ### Turning warnings on
