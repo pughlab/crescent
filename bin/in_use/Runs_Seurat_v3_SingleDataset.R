@@ -1,7 +1,8 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
-### Script made based on https://satijalab.org/seurat/v3.0/pbmc3k_tutorial.html
-### and https://satijalab.org/seurat/v3.0/sctransform_vignette.html
+### Script based on:
+### https://satijalab.org/seurat/v3.2/sctransform_vignette.html
+### https://satijalab.org/seurat/v3.2/pbmc3k_tutorial.html
 ####################################
 
 ####################################
@@ -38,26 +39,6 @@
 ###    and the script may crash at step 'Perform linear dimensional reduction by PCA'
 ###    because the filtered matrix will be too sparse and small to get the gene PC's
 ### 6) Make *MarkersPerCluster.tsv and *TopTwoMarkersPerCluster.tsv a single file
-###
-### THINGS NICE TO HAVE:
-### 1) Assigning cell type identity to clusters (needs supervised annotations, maybe based on GSVA)
-### 2) Use knitr() to produce html plot layouts (https://yihui.name/knitr/demo/stitch/)
-### 3) In "Load data" we use Seurat's Read10X() function. In this command, when all barcodes come from the same sample (i.e. finish with the same digit), like:
-###    CTCTACGCAAGAGGCT-1
-###    CTGAAACCAAGAGGCT-1
-###    CTGAAACCAAGAGGCT-1
-###    ... etc
-###    Read10X will remove the '-digit'
-###
-###    Hence we need to implement code to remove the '-digit' from --input_clusters barcode ID's as well WHEN all barcodes come from the same sample
-###    For now, this script is removing the digit always. And user must provide the inputs like:
-###    1-CTCTACGCAAGAGGCT
-###    2-CTCGAAAAGCTAACAA
-###    3-CTGCCTAGTGCAGGTA
-###    Instead of:
-###    CTCTACGCAAGAGGCT-1
-###    CTCGAAAAGCTAACAA-2
-###    CTGCCTAGTGCAGGTA-3
 ####################################
 
 ####################################
@@ -98,21 +79,8 @@ suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables qu
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
-suppressPackageStartupMessages(library(staplr))       # (CRAN) to merge pdf files. Note it needs pdftk available. If not available use `SummaryPlots <- "N"`
-suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`.
-suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
-####################################
-
-####################################
-### Required external packages
-####################################
-### 'pdftk'   to merge selected *pdf files into *summary_plots.pdf using libary(staplr)
-###           and to add statistics to violin plots overlapping pdf files
-###           in Mac you can install it with something like:
-###           'sudo port install pdftk'
-###           https://www.pdflabs.com/tools/pdftk-the-pdf-toolkit/
-### 'convert' to transofrm *pdf files into *png
-###           it's part of ImageMagic (https://imagemagick.org/index.php)
+suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`
+suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`
 ####################################
 
 ####################################
@@ -127,7 +95,7 @@ ProgramOutdir  <- "SEURAT"
 ####################################
 ### Get inputs from command line argumets
 ####################################
-#
+#####
 option_list <- list(
   make_option(c("-i", "--input"), default="NA",
               help="Path/name to either a read counts matrix in either 'MTX' or 'TSV' format (see parameter -t)
@@ -255,7 +223,7 @@ Input                   <- opt$input
 InputType               <- opt$input_type
 InfileRemoveBarcodes    <- opt$inputs_remove_barcodes
 NormalizeAndScale       <- as.numeric(opt$normalize_and_scale_sample)
-SaveFilteredData        <- opt$save_filtered_data 
+SaveFilteredData        <- opt$save_filtered_data
 SaveUnFilteredData      <- opt$save_unfiltered_data 
 Resolution              <- as.numeric(opt$resolution)
 Outdir                  <- opt$outdir
@@ -273,6 +241,131 @@ NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
 MaxGlobalVariables      <- opt$max_global_variables
+
+#####
+OneLineCommands <- paste0("\n", "One-line-commands used:", "\n", "`Rscript /path_to/", ThisScriptName)
+for (optionInput in option_list) {
+  OneLineCommands <- paste0(OneLineCommands, paste0(" ", optionInput@short_flag, " ", opt[optionInput@dest]))
+}
+OneLineCommands <- paste0(OneLineCommands, paste0("`\n"))
+writeLines(OneLineCommands)
+
+####################################
+### Start stopwatches
+####################################
+
+StopWatchStart <- list()
+StopWatchEnd   <- list()
+
+StopWatchStart$Overall  <- Sys.time()
+
+####################################
+### Define outdirs and CWL parameters
+####################################
+writeLines("\n*** Create outdirs ***\n")
+
+if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
+  Tempdir         <- ProgramOutdir
+  dir.create(file.path(Tempdir), showWarnings = F) 
+  
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    "CRESCENT_CLOUD",
+    "CRESCENT_CLOUD/frontend_normalized",
+    "CRESCENT_CLOUD/frontend_coordinates",
+    "CRESCENT_CLOUD/frontend_raw",
+    "CRESCENT_CLOUD/frontend_markers",
+    "CRESCENT_CLOUD/frontend_qc",
+    "CRESCENT_CLOUD/frontend_groups",
+    "AVERAGE_GENE_EXPRESSION_TABLES", 
+    "CELL_CLUSTER_IDENTITIES", 
+    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
+    "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
+    "DIMENSION_REDUCTION_COORDINATE_TABLES",
+    "DIMENSION_REDUCTION_PLOTS",
+    "FILTERED_DATA_MATRICES",
+    "LOG_FILES",
+    "QC_PLOTS", 
+    "QC_TABLES", 
+    "R_OBJECTS", 
+    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
+    "SUMMARY_PLOTS",
+    "UNFILTERED_DATA_MATRICES"
+  )
+  
+}else{
+  PrefixOutfiles <- c(paste0(PrefixOutfiles,"_res",Resolution))
+  ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+  ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
+  ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
+  Tempdir        <- "~/temp" 
+  #
+  UserHomeDirectory <- Sys.getenv("HOME")[[1]]
+  #
+  Outdir<-gsub("^~/",paste0(UserHomeDirectory,"/"), Outdir)
+  Tempdir<-gsub("^~/",paste0(UserHomeDirectory,"/"), Tempdir)
+  Outdir<-gsub("/+", "/", Outdir, perl = T)
+  Tempdir<-gsub("/+", "/", Tempdir, perl = T)
+  Outdir<-gsub("/$", "", Outdir)
+  Tempdir<-gsub("/$", "", Tempdir)
+  #
+  dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
+  dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
+  
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    "AVERAGE_GENE_EXPRESSION_TABLES", 
+    "CELL_CLUSTER_IDENTITIES", 
+    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
+    "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
+    "DIMENSION_REDUCTION_COORDINATE_TABLES",
+    "DIMENSION_REDUCTION_PLOTS",
+    "FILTERED_DATA_MATRICES",
+    "LOG_FILES",
+    "QC_PLOTS", 
+    "QC_TABLES", 
+    "R_OBJECTS", 
+    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
+    "SUMMARY_PLOTS",
+    "UNFILTERED_DATA_MATRICES"
+  )
+}
+
+sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(eachdir) {
+  dir.create(file.path(paste0(Tempdir, "/", eachdir)), showWarnings = F, recursive = T)
+})
+
+####################################
+### Report used options
+####################################
+writeLines("\n*** Report used options ***\n")
+
+StopWatchStart$ReportUsedOptions  <- Sys.time()
+
+OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_UsedOptions.txt")
+
+TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
+write(file = OutfileOptionsUsed, x=paste0("Run started: ", TimeOfRun, "\n"))
+
+write(file = OutfileOptionsUsed, x=c("Commands used:"), append = T)
+for (optionInput in option_list) {
+  write(file = OutfileOptionsUsed, x=(paste(optionInput@short_flag, optionInput@dest, opt[optionInput@dest], sep="\t", collapse="\t")),append = T)
+}
+
+cat(file = OutfileOptionsUsed, x=paste0("\n", "One-line-commands used:", "\n", "`Rscript /path_to/", ThisScriptName), append = T)
+for (optionInput in option_list) {
+  cat(file = OutfileOptionsUsed, x=(paste0(" ", optionInput@short_flag, " ", opt[optionInput@dest])),append = T)
+}
+cat(file = OutfileOptionsUsed, x="`\n", append = T)
+
+StopWatchEnd$ReportUsedOptions  <- Sys.time()
+
+####################################
+### Report R sessionInfo
+####################################
+writeLines("\n*** Report R sessionInfo ***\n")
+
+OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/" , PrefixOutfiles, ".", ProgramOutdir, "_RSessionInfo.txt")
+writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
 
 ####################################
 ### Define default parameters
@@ -389,15 +482,6 @@ DimensionReductionMethods$umap$run  <-as.function(RunUMAP)
 DimensionReductionMethods$tsne$run  <-as.function(RunTSNE)
 
 ####################################
-### Start stopwatches
-####################################
-
-StopWatchStart <- list()
-StopWatchEnd   <- list()
-
-StopWatchStart$Overall  <- Sys.time()
-
-####################################
 ### Check that mandatory parameters are not 'NA' (default)
 ####################################
 writeLines("\n*** Check that mandatory parameters are not 'NA' (default) ***\n")
@@ -410,116 +494,6 @@ for (param in ListMandatory) {
 }
 
 ####################################
-### Define outdirs and CWL parameters
-####################################
-writeLines("\n*** Create outdirs ***\n")
-
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
-  Tempdir         <- ProgramOutdir
-  dir.create(file.path(Tempdir), showWarnings = F) 
-  
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "CRESCENT_CLOUD",
-    "CRESCENT_CLOUD/frontend_normalized",
-    "CRESCENT_CLOUD/frontend_coordinates",
-    "CRESCENT_CLOUD/frontend_raw",
-    "CRESCENT_CLOUD/frontend_metadata",
-    "CRESCENT_CLOUD/frontend_markers",
-    "CRESCENT_CLOUD/frontend_qc",
-    "CRESCENT_CLOUD/frontend_groups",
-    "AVERAGE_GENE_EXPRESSION_TABLES", 
-    "CELL_CLUSTER_IDENTITIES", 
-    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
-    "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
-    "DIMENSION_REDUCTION_COORDINATE_TABLES",
-    "DIMENSION_REDUCTION_PLOTS",
-    "FILTERED_DATA_MATRICES",
-    "LOG_FILES",
-    "QC_PLOTS", 
-    "QC_TABLES", 
-    "R_OBJECTS", 
-    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
-    "SUMMARY_PLOTS",
-    "UNFILTERED_DATA_MATRICES"
-  )
-  
-}else{
-  PrefixOutfiles <- c(paste0(PrefixOutfiles,"_res",Resolution))
-  ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
-  ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
-  ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
-  Tempdir        <- "~/temp" 
-  #
-  CommandsToGetUserHomeDirectory<-("eval echo \"~$USER\"")
-  UserHomeDirectory<-system(command = CommandsToGetUserHomeDirectory, input = NULL, wait = T, intern = T)
-  #
-  Outdir<-gsub("^~/",paste0(UserHomeDirectory,"/"), Outdir)
-  Tempdir<-gsub("^~/",paste0(UserHomeDirectory,"/"), Tempdir)
-  Outdir<-gsub("/+", "/", Outdir, perl = T)
-  Tempdir<-gsub("/+", "/", Tempdir, perl = T)
-  Outdir<-gsub("/$", "", Outdir)
-  Tempdir<-gsub("/$", "", Tempdir)
-  #
-  dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
-  dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
-  
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "AVERAGE_GENE_EXPRESSION_TABLES", 
-    "CELL_CLUSTER_IDENTITIES", 
-    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
-    "DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS",
-    "DIMENSION_REDUCTION_COORDINATE_TABLES",
-    "DIMENSION_REDUCTION_PLOTS",
-    "FILTERED_DATA_MATRICES",
-    "LOG_FILES",
-    "QC_PLOTS", 
-    "QC_TABLES", 
-    "R_OBJECTS", 
-    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS", 
-    "SUMMARY_PLOTS",
-    "UNFILTERED_DATA_MATRICES"
-  )
-}
-
-sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(eachdir) {
-  dir.create(file.path(paste0(Tempdir, "/", eachdir)), showWarnings = F, recursive = T)
-})
-
-####################################
-### Report used options
-####################################
-writeLines("\n*** Report used options ***\n")
-
-StopWatchStart$ReportUsedOptions  <- Sys.time()
-
-OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_UsedOptions.txt")
-
-TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
-write(file = OutfileOptionsUsed, x=paste0("Run started: ", TimeOfRun, "\n"))
-
-write(file = OutfileOptionsUsed, x=c("Commands used:"), append = T)
-for (optionInput in option_list) {
-  write(file = OutfileOptionsUsed, x=(paste(optionInput@short_flag, optionInput@dest, opt[optionInput@dest], sep="\t", collapse="\t")),append = T)
-}
-
-cat(file = OutfileOptionsUsed, x=paste0("\n", "One-line-commands used:", "\n", "`Rscript /path_to/", ThisScriptName), append = T)
-for (optionInput in option_list) {
-  cat(file = OutfileOptionsUsed, x=(paste0(" ", optionInput@short_flag, " ", opt[optionInput@dest])),append = T)
-}
-cat(file = OutfileOptionsUsed, x="`\n", append = T)
-
-StopWatchEnd$ReportUsedOptions  <- Sys.time()
-
-####################################
-### Report R sessionInfo
-####################################
-writeLines("\n*** Report R sessionInfo ***\n")
-
-OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/" , PrefixOutfiles, ".", ProgramOutdir, "_RSessionInfo.txt")
-writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
-
-####################################
 ### Load scRNA-seq data
 ####################################
 writeLines("\n*** Load scRNA-seq data ***\n")
@@ -528,7 +502,7 @@ StopWatchStart$LoadScRNAseqData  <- Sys.time()
 
 if (regexpr("^MTX$", InputType, ignore.case = T)[1] == 1) {
   writeLines(paste0("\n*** Loading MTX infiles ***\n"))
-  input.matrix <- Read10X(data.dir = Input)
+  input.matrix <- Read10X(data.dir = Input, strip.suffix = T) ### Note `strip.suffix = T` applies to Seurat v3.2 or higher
 }else if (regexpr("^TSV$", InputType, ignore.case = T)[1] == 1) {
   writeLines(paste0("\n*** Loading matrix of genes (rows) vs. barcodes (columns) ***\n"))
   ## Note `check.names = F` is needed for both `fread` and `data.frame`
@@ -537,7 +511,7 @@ if (regexpr("^MTX$", InputType, ignore.case = T)[1] == 1) {
   writeLines(paste0("\n*** Loading HDF5 infile ***\n"))
   input.matrix <- Read10X_h5(filename = Input, use.names = T, unique.features = T)
 }else{
-  stop(paste0("Unexpected type of input: ", InputType, "\n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n"))
+  stop(paste0("Unexpected type of input: ", InputType, "\n\nFor help type:\n\nRscript ", ThisScriptName, " -h\n\n"))
 }
 dim(input.matrix)
 
@@ -559,6 +533,8 @@ if (regexpr("^Y$", SaveUnFilteredData, ignore.case = T)[1] == 1) {
   dir.create(file.path(OutDirUnfilteredRaw), showWarnings = F, recursive = T)
   write10xCounts(path = OutDirUnfilteredRaw, x = seurat.object.tmp@assays[["RNA"]]@counts, gene.type="Raw_Gene_Expression", overwrite=T, type="sparse", version="3")
 
+  rm(seurat.object.tmp)
+  
   StopWatchEnd$SaveUnFilteredData  <- Sys.time()
 
 }
@@ -623,11 +599,8 @@ if (regexpr("^AUTO$", MaxGlobalVariables, ignore.case = T)[1] == 1) {
 
 ### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
 ### allocate 4Gb of RAM (4000*1024^2), use:
-
 writeLines(paste0("\nUsing ", MaxGlobalVariablesToUse, " global variables\n"))
-
 options(future.globals.maxSize = MaxGlobalVariablesToUse * 1024^2)
-
 plan(strategy = "multicore", workers = NumbCoresToUse)
 
 ####################################
@@ -1049,7 +1022,6 @@ rm(UnfilteredData.df)
 rm(seurat.object.full)
 rm(seurat.object.subset)
 
-
 ####################################
 ### Normalize data (if applicable)
 ####################################
@@ -1078,7 +1050,7 @@ if (NormalizeAndScale == 1) {
   writeLines("\n*** Data assumed to be already normalized ***\n")
   
 } else {
-  stop(paste0("Unexpected option -b", NormalizeAndScale, ". Only options '1', '2', or '3' are allowed. \n\nFor help type:\n\nRscript Runs_Seurat_Clustering.R -h\n\n"))
+  stop(paste0("Unexpected option -b", NormalizeAndScale, ". Only options '1', '2', or '3' are allowed.\n\nFor help type:\n\nRscript ", ThisScriptName, " -h\n\n"))
 }
 
 ####################################
@@ -1087,7 +1059,7 @@ if (NormalizeAndScale == 1) {
 
 if (regexpr("^Y$", SaveFilteredData, ignore.case = T)[1] == 1) {
   writeLines("\n*** Save filtered data ***\n")
-  
+
   OutDirFilteredRaw <-paste0(Tempdir, "/FILTERED_DATA_MATRICES/", "RAW")
   dir.create(file.path(OutDirFilteredRaw), showWarnings = F, recursive = T)
   write10xCounts(path = OutDirFilteredRaw, x = seurat.object.f@assays[["RNA"]]@counts, gene.type="Raw_Gene_Expression", overwrite=T, type="sparse", version="3")
@@ -1108,11 +1080,12 @@ if (regexpr("^Y$", SaveFilteredData, ignore.case = T)[1] == 1) {
 ####################################
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  
+
+  # output the normalized count matrix & features for front-end gene expression visualizations
   writeLines("\n*** Save normalized count matrix as loom ***\n")
-  
+
   normalized_count_matrix <- as.matrix(seurat.object.f@assays[["RNA"]]@data)
-  
+
   # all genes/features in matrix
   features_tsv <- data.frame(features = rownames(normalized_count_matrix))
   features_tsv_ordered <- as.data.frame(features_tsv[mixedorder(features_tsv$features),])
@@ -1121,7 +1094,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   # generating loom file of normalized count matrix
   loom_file <- paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_normalized/","normalized_counts.loom")
   create(loom_file, normalized_count_matrix)
-  
+
 }
 
 ####################################
@@ -1258,7 +1231,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   ####################################
   writeLines(paste0("\n*** Run ", DimensionReductionMethods[[dim_red_method]][["name"]], " ***\n"))
   
-  StopWatchStart$DimensionReduction$dim_red_method  <- Sys.time()
+  StopWatchStart$DimensionReduction[[dim_red_method]]  <- Sys.time()
   
   ### NOTES:
   ### In RunTSNE: if the datasets is small user may get error:
@@ -1277,22 +1250,22 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     seurat.object.f <- DimensionReductionMethods[[dim_red_method]][["run"]](object = seurat.object.f, dims = PcaDimsUse, umap.method = "uwot")
   }
   
-  StopWatchEnd$DimensionReduction$dim_red_method  <- Sys.time()
+  StopWatchEnd$DimensionReduction[[dim_red_method]]  <- Sys.time()
   
-  StopWatchStart$DimensionReductionPlot$dim_red_method  <- Sys.time()
+  StopWatchStart$DimensionReductionPlot[[dim_red_method]]  <- Sys.time()
   
   pdf(file=paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByCellClusters.pdf"))
   print(DimPlot(object = seurat.object.f, reduction = dim_red_method, group.by = 'ident', label = T, label.size=10))
   dev.off()
   
-  StopWatchEnd$DimensionReductionPlot$dim_red_method  <- Sys.time()
+  StopWatchEnd$DimensionReductionPlot[[dim_red_method]]  <- Sys.time()
   
   ####################################
   ### Write out coordinates
   ####################################
   writeLines(paste0("\n*** Write out ", DimensionReductionMethods[[dim_red_method]][["name"]], " coordinates ***\n"))
   
-  StopWatchStart$DimensionReductionWriteCoords$dim_red_method  <- Sys.time()
+  StopWatchStart$DimensionReductionWriteCoords[[dim_red_method]]  <- Sys.time()
   
   Headers<-paste("Barcode",paste(colnames(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings),sep="",collapse="\t"), sep="\t", collapse = "\t")
   
@@ -1306,21 +1279,21 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   write.table(Headers,file = OutfileCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(seurat.object.f@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
   
-  StopWatchEnd$DimensionReductionWriteCoords$dim_red_method  <- Sys.time()
+  StopWatchEnd$DimensionReductionWriteCoords[[dim_red_method]]  <- Sys.time()
   
   ####################################
   ### Colour dimension reduction plots by nFeature_RNA, nCount_RNA, mito.fraction and ribo.fraction
   ####################################
   writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by nFeature_RNA, nCount_RNA, mito.fraction and ribo.fraction ***\n"))
   
-  StopWatchStart$QCDimRedPlots$dim_red_method  <- Sys.time()
+  StopWatchStart$QCDimRedPlots[[dim_red_method]]  <- Sys.time()
   
   CellPropertiesToColour<-c("nFeature_RNA", "nCount_RNA", "mito.fraction", "ribo.fraction")
   pdf(file=paste0(Tempdir, "/QC_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByQC.pdf"), width = DefaultParameters$BaseSizeSinglePlotPdf * 1.5, height = DefaultParameters$BaseSizeSinglePlotPdf * 1.5)
   print(FeaturePlot(object = seurat.object.f, label = T, order = T, features = CellPropertiesToColour, cols = c("lightgrey", "blue"), reduction = dim_red_method, ncol = 2, pt.size = 1.5))
   dev.off()
   
-  StopWatchEnd$QCDimRedPlots$dim_red_method  <- Sys.time()
+  StopWatchEnd$QCDimRedPlots[[dim_red_method]]  <- Sys.time()
   
   ####################################
   ### Colour dimension reduction plots by -infile_metadata
@@ -1331,7 +1304,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     print("No metadata will be used for dimension reduction plots")
   }else{
     
-    StopWatchStart$DimRedPlotsColuredByOptC$dim_red_method  <- Sys.time()
+    StopWatchStart$DimRedPlotsColuredByOptC[[dim_red_method]]  <- Sys.time()
     
     seurat.object.meta.data<-seurat.object.f@meta.data
     ExtraCellProperties <- data.frame(read.table(InfileMetadata, header = T, row.names = 1))
@@ -1352,7 +1325,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     }
     dev.off()
     
-    StopWatchEnd$DimRedPlotsColuredByOptC$dim_red_method  <- Sys.time()
+    StopWatchEnd$DimRedPlotsColuredByOptC[[dim_red_method]]  <- Sys.time()
     
   }
   
@@ -1366,7 +1339,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     print("No selected genes for dimension reduction plots")
   }else{
     
-    StopWatchStart$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
+    StopWatchStart$DimRedPlotsColuredByGenes[[dim_red_method]]  <- Sys.time()
     
     ListOfGenesForDimRedPlots<-unlist(strsplit(ListGenes, ","))
     if (length(ListOfGenesForDimRedPlots) <= 4) {
@@ -1383,7 +1356,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     print(FeaturePlot(object = seurat.object.f, ncol = nColFeaturePlot, features = c(ListOfGenesForDimRedPlots), cols = c("lightgrey", "blue"), reduction = dim_red_method, order = T))
     dev.off()
     
-    StopWatchEnd$DimRedPlotsColuredByGenes$dim_red_method  <- Sys.time()
+    StopWatchEnd$DimRedPlotsColuredByGenes[[dim_red_method]]  <- Sys.time()
     
   }
 }
@@ -1481,92 +1454,38 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 }
 
 ####################################
-### Create summary plots outfile
-####################################
-writeLines("\n*** Create summary plots outfile ***\n")
-
-### Make this option "N" if library(staplr) or pdftk are not available
-SummaryPlots <- "Y"
-
-StopWatchStart$SummaryPlots  <- Sys.time()
-
-if (regexpr("^y$", SummaryPlots, ignore.case = T)[1] == 1) {
-  SummaryPlotsPdf<-paste0(Tempdir, "/SUMMARY_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_summary_plots.pdf")
-  ListOfPdfFilesToMerge<-c(paste0(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_QC_VlnPlot.pdf"),
-                           paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_UMAPPlot_ColourByCellClusters.pdf"),
-                           paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_TSNEPlot_ColourByCellClusters.pdf"),
-                           paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_VlnPlot_CountsLog10_AfterClusters.pdf"),
-                           paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_UMAPPlot_EachClusterTop2DEGs.pdf"),
-                           paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_TSNEPlot_EachClusterTop2DEGs.pdf")
-  )
-  if (regexpr("^NA$", ListGenes, ignore.case = T)[1] == 1) {
-    print("Create summary file")
-  }else{
-    ListOfPdfFilesToMerge<-c(ListOfPdfFilesToMerge, paste0(Tempdir, "/", PrefixOutfiles,".", ProgramOutdir, "_UMAPPlot_ColourBySelectedGenes.pdf"))
-    ListOfPdfFilesToMerge<-c(ListOfPdfFilesToMerge, paste0(Tempdir, "/", PrefixOutfiles,".", ProgramOutdir, "_TSNEPlot_ColourBySelectedGenes.pdf"))
-    print("Create summary file including dimension reduction plots for selected genes")
-  }
-  
-  ### Stappling *pdf's
-  staple_pdf(input_directory = NULL, input_files = ListOfPdfFilesToMerge, output_filepath = SummaryPlotsPdf)
-}
-
-StopWatchEnd$SummaryPlots  <- Sys.time()
-
-####################################
-### Transform select *pdf files into *png
-####################################
-writeLines("\n*** Transform select *pdf files into *png ***\n")
-
-StopWatchStart$TransformPdfToPng  <- Sys.time()
-
-ListOfPdfFilesToPng<-c(paste0(Tempdir, "/QC_PLOTS/", PrefixOutfiles, ".", ProgramOutdir, "_PCElbowPlot.pdf")
-)
-
-sapply(ListOfPdfFilesToPng,FUN=function(eachFile) {
-  inpdf  <- eachFile
-  outpng <- gsub(".pdf$",".png", x= inpdf, ignore.case = T, perl = T)
-  CommandConvert <- paste0("convert -density 150 ", inpdf, " -quality 300 ", outpng)
-  system(command = CommandConvert, input = NULL, wait = T)
-})
-
-StopWatchEnd$TransformPdfToPng  <- Sys.time()
-
-####################################
 ### Obtain computing time used
 ####################################
-writeLines("\n*** Obtain computing time used***\n")
+writeLines("\n*** Obtain computing time used ***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
-OutfileCPUusage<-paste0(Tempdir, "/LOG_FILES/" , PrefixOutfiles, ".", ProgramOutdir, "_CPUusage.txt")
-write(file = OutfileCPUusage, x = paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
-Headers<-paste("Step", "Time(minutes)", sep="\t")
-write.table(Headers,file = OutfileCPUusage, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+OutfileCPUtimes<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "CPUtimes", ".txt")
+write(file = OutfileCPUtimes, x = paste("#Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
+write(file = OutfileCPUtimes, x = paste("#MaxGlobalVariables", MaxGlobalVariables, sep = "\t", collapse = ""), append = T)
 
-for (stepToClock in names(StopWatchStart)) {
+Headers<-paste("Step", "Time(minutes)", sep="\t")
+write.table(Headers, file = OutfileCPUtimes, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+
+lapply(names(StopWatchStart), function(stepToClock) {
   if (regexpr("POSIXct", class(StopWatchStart[[stepToClock]]), ignore.case = T)[1] == 1) {
     TimeStart <- StopWatchStart[[stepToClock]]
     TimeEnd   <- StopWatchEnd[[stepToClock]]
     TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
     ReportTime<-c(paste(stepToClock, TimeDiff, sep = "\t", collapse = ""))
-    write(file = OutfileCPUusage, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
+    write(file = OutfileCPUtimes, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
   }else{
-    ### This is NOT being printed out
-    ### Because the StopWatch[Start|End]$STEP$SUB_STEP
-    ### need to be split and programmed are using the word provided by SUB_STEP itself as key
-    ### need to pass the SUB_STEP value instead
-    for (substep in rownames(DimensionReductionMethods)) {
+    lapply(names(StopWatchStart[[stepToClock]]), function(substep) {
       if (regexpr("POSIXct", class(StopWatchStart[[stepToClock]][[substep]]), ignore.case = T)[1] == 1) {
         TimeStart <- StopWatchStart[[stepToClock]][[substep]]
         TimeEnd   <- StopWatchEnd[[stepToClock]][[substep]]
         TimeDiff <- format(difftime(TimeEnd, TimeStart, units = "min"))
-        ReportTime<-c(paste(stepToClock, TimeDiff, substep, sep = "\t", collapse = ""))
-        write(file = OutfileCPUusage, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
+        ReportTime<-c(paste(paste0(stepToClock, "-", substep), TimeDiff, sep = "\t", collapse = ""))
+        write(file = OutfileCPUtimes, x=gsub(pattern = " mins", replacement = "", x = ReportTime), append = T)
       }
-    }
+    })
   }
-}
+})
 
 ####################################
 ### Moving outfiles into outdir or keeping them at tempdir (if using CWL)
@@ -1611,7 +1530,7 @@ options(warn = oldw)
 ####################################
 ### Finish
 ####################################
-OutfileCPUusage <- gsub(x = OutfileCPUusage, pattern = Tempdir, replacement = Outdir)
-writeLines(paste0("END - All done!!! See:\n", OutfileCPUusage, "\nfor computing times report"))
+OutfileCPUtimes <- gsub(x = OutfileCPUtimes, pattern = Tempdir, replacement = paste0(Outdir, "/", ProgramOutdir))
+writeLines(paste0("END - All done!!! See:\n", OutfileCPUtimes, "\nfor computing times report"))
 
 quit()
