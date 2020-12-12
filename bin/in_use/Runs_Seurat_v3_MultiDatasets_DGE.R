@@ -69,6 +69,8 @@
 ####################################
 ### Required libraries
 ####################################
+writeLines("\n**** LOAD REQUIRED LIBRARIES ****\n")
+
 suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v3.2.1. To run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
@@ -79,6 +81,14 @@ suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeri
 suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 ####################################
+
+################################################################################################################################################
+################################################################################################################################################
+### HERE ARE THE FUNCTIONS TO SETUP RUN
+################################################################################################################################################
+################################################################################################################################################
+
+writeLines("\n**** SETUP RUN ****\n")
 
 ####################################
 ### Turning warnings off for the sake of a cleaner aoutput
@@ -96,37 +106,20 @@ ProgramOutdir  <- "SEURAT"
 
 option_list <- list(
   make_option(c("-i", "--inputs_list"), default="NA",
-              help="Path/name to a <tab> delimited file with one dataset per row and the following 12 columns specifying filters/details for each dataset:
+              help="Path/name to a <tab> delimited file with one dataset per row and the following 2 columns specifying details for each dataset:
                 1) unique dataset ID (e.g. 'd1')
-                2) /path_to/dataset
-                3) dataset type (e.g. 'control' or 'treatment') or use 'type' to skip using dataset types
-                4) dataset format (either 'MTX', 'TSV' or 'HDF5')
-                5) dataset minimum mitochondrial fraction (e.g. '0')
-                6) dataset maximum mitochondrial fraction (e.g. '0.05' for NucSeq or '0.2' for whole cell scRNA-seq)
-                7) dataset minimum ribosomal fraction (e.g. '0')
-                8) dataset maximum ribosomal fraction (e.g. '0.75')
-                9) dataset minimum number of genes (e.g. '50')
-                10) dataset maximum number of genes (e.g. '8000')
-                11) dataset minimum number of reads (e.g. '1')
-                12) dataset maximum number of reads (e.g. '80000')
+                2) dataset type (e.g. 'control' or 'treatment') or use 'type' to skip using dataset types
 
                 Notes:
                 (a) The order of the list of datasets in --inputs_list may influence the results, including number of clusters,
                 t-SNE/UMAP and differentially expressed genes. List datasets better measured first.
 
-                (b) middle dashes '-' are not allowed in columns 1 or 3, if ocurring they will be replaced by low dashes '_'
-
-                (c) Column 4 indicates the dataset format. It must be in either:
-                'MTX'  and column 2 must be the path/name to an MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files
-                       'MTX' files can be the outputs from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
-                       Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
-                'TSV'  and column 2 must be the path/name to a <tab> delimited *file* with genes in rows vs. barcodes in columns
-                'HDF5' and column 2 must be the path/name of a *file* in hdf5 format (e.g. from Cell Ranger)
+                (b) middle dashes '-' are not allowed in columns 1 or 2, if ocurring they will be replaced by low dashes '_'
 
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-j", "--infile_r_object"), default="NA",
-              help="Path/name to the Integration R/Seurat object with PCA, clustering and dimension reduction data
+              help="Path/name to the R/Seurat object with PCA, clustering and dimension reduction data
 
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
@@ -196,6 +189,12 @@ option_list <- list(
 
                 Default = 'MAX'"),
   #
+  make_option(c("-s", "--save_r_object"), default="Y",
+              help="Indicates if a R object with the data and analyzes from the run should be saved
+                Note that this may be time consuming. Type 'y/Y' or 'n/N'
+                
+                Default = 'Y'"),
+  #
   make_option(c("-w", "--run_cwl"), default="N",
               help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME'. Type 'y/Y' or 'n/N'.
                 Note, if using 'y/Y' this supersedes option -o
@@ -228,6 +227,7 @@ MetadataColNamesForDge  <- opt$metadata_column_names_for_dge
 InfileListSubclasses    <- opt$infile_list_metadata_subclasses
 AssayForDge             <- opt$assay_to_use_for_dge
 NumbCores               <- opt$number_cores
+SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
 MinioPath               <- opt$minio_path
 MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
@@ -301,7 +301,7 @@ writeLines("\n*** Report used options ***\n")
 
 StopWatchStart$ReportUsedOptions  <- Sys.time()
 
-OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_LogFiles_", "UsedOptions", ".txt")
+OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_DGE_UsedOptions", ".txt")
 
 TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
 write(file = OutfileOptionsUsed, x=paste0("Run started: ", TimeOfRun, "\n"))
@@ -320,7 +320,7 @@ StopWatchEnd$ReportUsedOptions  <- Sys.time()
 ####################################
 writeLines("\n*** Report R sessionInfo ***\n")
 
-OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "RSessionInfo", ".txt")
+OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_DGE_RSessionInfo", ".txt")
 writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
 capture.output(sessionInfo())
 
@@ -382,6 +382,8 @@ for (param in ListMandatory) {
 ################################################################################################################################################
 ################################################################################################################################################
 
+writeLines("\n**** LOAD DATASETS ****\n")
+
 ####################################
 ### Load --inputs_list
 ####################################
@@ -391,7 +393,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   if (regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1) {
     
     InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-    colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+    colnames(InputsTable)<-c("DatasetType")
     
   } else {
     MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
@@ -404,18 +406,18 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
     
     MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name", "dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
+    MergeFilter <- c("name", "dataset_type")
     MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
     MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
     rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+    colnames(MergedInputsTableFilteredFinal) <-c("DatasetType")
     
     InputsTable <- MergedInputsTableFilteredFinal
   }
 } else {
   InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-  colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+  colnames(InputsTable)<-c("DatasetType")
 }
 
 ##### Replace low dashes by dots in rownames(InputsTable) or DatasetType
@@ -429,15 +431,15 @@ for (dataset in rownames(InputsTable)) {
 }
 
 ####################################
-### Load integrated datasets R object
+### Load integrated datasets R object with PCA, clustering and dimension reductions
 ####################################
-writeLines("\n*** Load integrated datasets R object ***\n")
+writeLines("\n*** Load integrated datasets R object with PCA, clustering and dimension reductions ***\n")
 
-StopWatchStart$LoadRDSIntegratedDatasets  <- Sys.time()
+StopWatchStart$LoadRDSIntegratedPcaClusteringDimReductions  <- Sys.time()
 
 seurat.object.integrated <- readRDS(InfileRobject)
 
-StopWatchEnd$LoadRDSIntegratedDatasets  <- Sys.time()
+StopWatchEnd$LoadRDSIntegratedPcaClusteringDimReductions  <- Sys.time()
 
 ####################################
 ### Loading metadata from --infile_metadata
@@ -457,7 +459,6 @@ if (regexpr("^NA$", InfileMetadata, ignore.case = T)[1] == 1) {
 }
 
 DatasetTypes <- unique(seurat.object.integrated$dataset_type)
-NumberOfDatasetsTypes <- length(unique(InputsTable[,"DatasetType"]))
 
 ####################################
 ### Check that requested groups for DGE are available
@@ -518,6 +519,8 @@ if (regexpr("^NA$", InfileListSubclasses, ignore.case = T)[1] == 1) {
 ################################################################################################################################################
 ################################################################################################################################################
 
+writeLines("\n**** COMPUTE DGE USING GLOBAL CLUSTERS ****\n")
+
 ####################################
 ### Finding differentially expressed genes (1): using global cell clusers, compares each cell cluster vs. the rest of cells
 ####################################
@@ -538,8 +541,7 @@ if (1 %in% RequestedDiffGeneExprComparisons == T) {
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
   seurat.object.integrated.markers <- FindAllMarkers(object = seurat.object.integrated, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
   SimplifiedDiffExprGenes.df <- seurat.object.integrated.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-  OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", ".tsv.bz2")
-  Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+  Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", ".tsv.bz2"), "w")
   write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
   close(Outfile.con)
 
@@ -593,8 +595,7 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
     FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
     seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
     SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-    OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_dataset_", dataset, ".tsv.bz2")
-    Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_dataset_", dataset, ".tsv.bz2"), "w")
     write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
     close(Outfile.con)
     
@@ -641,8 +642,7 @@ if (3 %in% RequestedDiffGeneExprComparisons == T) {
   print(paste0("Number of groups = ", length(unique(seurat.object.integrated@meta.data$seurat_clusters))))
   
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
-  OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", "DatasetEquivalentClusters", ".tsv.bz2")
-  Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+  Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", "DatasetEquivalentClusters", ".tsv.bz2"), "w")
   HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
   write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
 
@@ -668,7 +668,6 @@ if (3 %in% RequestedDiffGeneExprComparisons == T) {
       }
     }
   }
-  
   close(Outfile.con)
   StopWatchEnd$FindDiffMarkersEachDatasetGlobalClustersVsSameClusterInOtherDatasets  <- Sys.time()
 }
@@ -704,8 +703,7 @@ if (4 %in% RequestedDiffGeneExprComparisons == T) {
     FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
     seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
     SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-    OutfileDiffGeneExpression <- paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_dataset_type_", dataset_type, ".tsv.bz2")
-    Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_dataset_type_", dataset_type, ".tsv.bz2"), "w")
     write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
     close(Outfile.con)
     
@@ -727,8 +725,7 @@ if (5 %in% RequestedDiffGeneExprComparisons == T) {
   
   FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
   
-  OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", "DatasetTypeEquivalentClusters", ".tsv.bz2")
-  Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+  Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", "DatasetTypeEquivalentClusters", ".tsv.bz2"), "w")
   HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
   write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
   
@@ -756,7 +753,6 @@ if (5 %in% RequestedDiffGeneExprComparisons == T) {
       }
     }
   }
-  
   close(Outfile.con)
   StopWatchEnd$FindDiffMarkersEachDatasetTypeGlobalClustersVsSameClusterInOtherDatasets  <- Sys.time()
 }
@@ -766,6 +762,8 @@ if (5 %in% RequestedDiffGeneExprComparisons == T) {
 ### HERE ARE THE FUNCTIONS TO COMPUTE DGE USING RE-CLUSTERS
 ################################################################################################################################################
 ################################################################################################################################################
+
+writeLines("\n**** COMPUTE DGE USING RE-CLUSTERS ****\n")
 
 ####################################
 ### Finding differentially expressed genes (6): using re-clustered cells, for each dataset, compares each cell cluster vs. the rest of cells
@@ -797,8 +795,7 @@ if (6 %in% RequestedDiffGeneExprComparisons == T) {
     FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
     seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
     SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-    OutfileDiffGeneExpression <- paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "EachDatasetReclustered_", dataset, ".tsv.bz2")
-    Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "EachDatasetReclustered_", dataset, ".tsv.bz2"), "w")
     write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
     close(Outfile.con)
     
@@ -833,8 +830,7 @@ if (7 %in% RequestedDiffGeneExprComparisons == T) {
     FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
     seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
     SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-    OutfileDiffGeneExpression <- paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "EachDatasetTypeReclustered_", dataset_type, ".tsv.bz2")
-    Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "EachDatasetTypeReclustered_", dataset_type, ".tsv.bz2"), "w")
     write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
     close(Outfile.con)
 
@@ -845,9 +841,11 @@ if (7 %in% RequestedDiffGeneExprComparisons == T) {
 
 ################################################################################################################################################
 ################################################################################################################################################
-### HERE ARE THE FUNCTIONS TO OBTAIN DIFFERENTIAL GENE EXPRESSION USING METADATA
+### HERE ARE THE FUNCTIONS TO COMPUTE DGE USING METADATA
 ################################################################################################################################################
 ################################################################################################################################################
+
+writeLines("\n**** COMPUTE DGE USING METADATA ****\n")
 
 ####################################
 ### Finding differentially expressed genes (8): using metadata, compares each cell class vs. the rest of cells
@@ -877,8 +875,7 @@ if (8 %in% RequestedDiffGeneExprComparisons == T) {
       seurat.object.each_property.markers <- FindAllMarkers(object = seurat.object.each_property, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
       SimplifiedDiffExprGenes.df <- seurat.object.each_property.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
       colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
-      OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_", "AllDatasets", ".tsv.bz2")
-      Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+      Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_", "AllDatasets", ".tsv.bz2"), "w")
       write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
       close(Outfile.con)
       
@@ -919,13 +916,10 @@ if (9 %in% RequestedDiffGeneExprComparisons == T) {
         seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
         SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
         colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
-        OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  dataset, ".tsv.bz2")
-        Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  dataset, ".tsv.bz2"), "w")
         write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
         close(Outfile.con)
-        
       }
-      
       StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetVsRestOfCells[[dataset]][[property]] <- Sys.time()
     }
   }
@@ -957,8 +951,7 @@ if (10 %in% RequestedDiffGeneExprComparisons == T) {
       seurat.object.each_property <- AddMetaData(object = seurat.object.each_property, metadata = DatasetAndProperty, col.name = "DatasetAndProperty")
 
       FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
-      OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "DatasetEquivalentClasses", ".tsv.bz2")
-      Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+      Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "DatasetEquivalentClasses", ".tsv.bz2"), "w")
       HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
       write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
       
@@ -988,10 +981,8 @@ if (10 %in% RequestedDiffGeneExprComparisons == T) {
           }
         }
       }
-      
       close(Outfile.con)
       StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetVsSameClassInOtherDatasets[[property]]  <- Sys.time()
-
      }
   }
 }
@@ -1028,12 +1019,10 @@ if (11 %in% RequestedDiffGeneExprComparisons == T) {
         seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
         SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
         colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
-        OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_", dataset_type, ".tsv.bz2")
-        Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_", dataset_type, ".tsv.bz2"), "w")
         write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
         close(Outfile.con)
       }
-      
       StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetTypeVsRestOfCells[[dataset_type]][[property]] <- Sys.time()
     }
   }
@@ -1067,8 +1056,7 @@ if (12 %in% RequestedDiffGeneExprComparisons == T) {
         seurat.object.each_property <- AddMetaData(object = seurat.object.each_property, metadata = DatasetTypeAndProperty, col.name = "DatasetTypeAndProperty")
 
         FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
-        OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "DatasetTypeEquivalentClasses", ".tsv.bz2")
-        Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "DatasetTypeEquivalentClasses", ".tsv.bz2"), "w")
         HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
         write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
 
@@ -1098,7 +1086,6 @@ if (12 %in% RequestedDiffGeneExprComparisons == T) {
             }
           }
         }
-        
         close(Outfile.con)
         StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetTypeVsSameClassInOtherDatasetTypes  <- Sys.time()
       }
@@ -1142,8 +1129,7 @@ if (13 %in% RequestedDiffGeneExprComparisons == T) {
       Idents(object = seurat.object.each_property) <- property
 
       FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
-      OutfileDiffGeneExpression<-paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "SubClassesAgainstEachOther", ".tsv.bz2")
-      Outfile.con <- bzfile(OutfileDiffGeneExpression, "w")
+      Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "SubClassesAgainstEachOther", ".tsv.bz2"), "w")
       HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
       write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
 
@@ -1184,9 +1170,32 @@ if (13 %in% RequestedDiffGeneExprComparisons == T) {
 
 ################################################################################################################################################
 ################################################################################################################################################
-### HERE ARE THE FUNCTIONS TO SAVE THE WHOLE RUN R_OBJECT AND LOG FILES
+### HERE ARE THE FUNCTIONS TO SAVE THE R_OBJECT AND LOG FILES
 ################################################################################################################################################
 ################################################################################################################################################
+
+writeLines("\n**** SAVE THE FULL RUN R_OBJECT AND LOG FILES ****\n")
+
+####################################
+### Saving the R object
+####################################
+
+if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
+  
+  writeLines("\n*** Saving the full run R object ***\n")
+  
+  StopWatchStart$SaveRDSFull  <- Sys.time()
+  
+  OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_full_run", ".rds")
+  saveRDS(seurat.object.integrated, file = OutfileRDS)
+  
+  StopWatchEnd$SaveRDSFull  <- Sys.time()
+  
+}else{
+  
+  writeLines("\n*** Not saving the full run R object ***\n")
+  
+}
 
 ####################################
 ### Obtain computing time used
@@ -1195,7 +1204,7 @@ writeLines("\n*** Obtain computing time used ***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
-OutfileCPUtimes<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "CPUtimes", ".txt")
+OutfileCPUtimes<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_DGE_CPUtimes", ".txt")
 write(file = OutfileCPUtimes, x = paste("#Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
 write(file = OutfileCPUtimes, x = paste("#MaxGlobalVariables", MaxGlobalVariables, sep = "\t", collapse = ""), append = T)
 
