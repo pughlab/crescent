@@ -9,7 +9,7 @@
 
 ####################################
 ### GENERAL OVERVIEW OF THIS SCRIPT
-### 1) Loads each normalized dataset R object, presumably from script `Runs_Seurat_v3_MultiDatasets_QC_Normalization.R'
+### 1) Loads each normalized dataset R object, presumably produced by script `Runs_Seurat_v3_MultiDatasets_QC_Normalization.R'
 ### 2) Merges and integrates datasets correcting batch effects
 ### 3) Saves integrated datasets R object
 ### 4) Saves log files
@@ -45,6 +45,8 @@
 ####################################
 ### Required libraries
 ####################################
+writeLines("\n**** LOAD REQUIRED LIBRARIES ****\n")
+
 suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v3.2.1. To run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
@@ -59,6 +61,14 @@ suppressPackageStartupMessages(library(STACAS))       # (GitHub carmonalab/STACA
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 suppressPackageStartupMessages(library(cluster))      # (CRAN) to cluster/sort the STACAS distances
 ####################################
+
+################################################################################################################################################
+################################################################################################################################################
+### HERE ARE THE FUNCTIONS TO SETUP RUN
+################################################################################################################################################
+################################################################################################################################################
+
+writeLines("\n**** SETUP RUN ****\n")
 
 ####################################
 ### Turning warnings off for the sake of a cleaner aoutput
@@ -76,39 +86,16 @@ ProgramOutdir  <- "SEURAT"
 
 option_list <- list(
   make_option(c("-i", "--inputs_list"), default="NA",
-              help="Path/name to a <tab> delimited file with one dataset per row and the following 12 columns specifying filters/details for each dataset:
+              help="Path/name to a <tab> delimited file with one dataset per row and the following 3 columns specifying details for each dataset:
                 1) unique dataset ID (e.g. 'd1')
-                2) /path_to/dataset
+                2) /path_to/dataset_R_object
                 3) dataset type (e.g. 'control' or 'treatment') or use 'type' to skip using dataset types
-                4) dataset format (either 'MTX', 'TSV' or 'HDF5')
-                5) dataset minimum mitochondrial fraction (e.g. '0')
-                6) dataset maximum mitochondrial fraction (e.g. '0.05' for NucSeq or '0.2' for whole cell scRNA-seq)
-                7) dataset minimum ribosomal fraction (e.g. '0')
-                8) dataset maximum ribosomal fraction (e.g. '0.75')
-                9) dataset minimum number of genes (e.g. '50')
-                10) dataset maximum number of genes (e.g. '8000')
-                11) dataset minimum number of reads (e.g. '1')
-                12) dataset maximum number of reads (e.g. '80000')
 
                 Notes:
                 (a) The order of the list of datasets in --inputs_list may influence the results, including number of clusters,
                 t-SNE/UMAP and differentially expressed genes. List datasets better measured first.
                 
                 (b) middle dashes '-' are not allowed in columns 1 or 3, if ocurring they will be replaced by low dashes '_'
-                
-                (c) Column 4 indicates the dataset format. It must be in either:
-                'MTX'  and column 2 must be the path/name to an MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files
-                       'MTX' files can be the outputs from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
-                       Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
-                'TSV'  and column 2 must be the path/name to a <tab> delimited *file* with genes in rows vs. barcodes in columns
-                'HDF5' and column 2 must be the path/name of a *file* in hdf5 format (e.g. from Cell Ranger)
-
-                Default = 'No default. It's mandatory to specify this parameter'"),
-  #
-  make_option(c("-j", "--infile_r_objects"), default="NA",
-              help="Path/name to a <tab> delimited file with dataset ID's and path/name to the QC and Normalization R/Seurat objects, like:
-                d1  /path/to/d1_Normalization.rds
-                d2  /path/to/d2_Normalization.rds
 
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
@@ -189,7 +176,6 @@ option_list <- list(
 opt <- parse_args(OptionParser(option_list=option_list))
 
 InputsList              <- opt$inputs_list
-InputRObjects           <- opt$infile_r_objects
 AnchorsFunction         <- opt$anchors_function
 ReferenceDatasets       <- opt$reference_datasets
 Outdir                  <- opt$outdir
@@ -274,7 +260,7 @@ writeLines("\n*** Report used options ***\n")
 
 StopWatchStart$ReportUsedOptions  <- Sys.time()
 
-OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_LogFiles_", "UsedOptions", ".txt")
+OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_Integration_UsedOptions", ".txt")
 
 TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
 write(file = OutfileOptionsUsed, x=paste0("Run started: ", TimeOfRun, "\n"))
@@ -293,7 +279,7 @@ StopWatchEnd$ReportUsedOptions  <- Sys.time()
 ####################################
 writeLines("\n*** Report R sessionInfo ***\n")
 
-OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "RSessionInfo", ".txt")
+OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_Integration_RSessionInfo", ".txt")
 writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
 capture.output(sessionInfo())
 
@@ -352,7 +338,7 @@ listAssaySuffixForOutfiles <- list(RNA="RNA", SCT="SCT", integrated="INT")
 ####################################
 writeLines("\n*** Check that mandatory parameters are not 'NA' (default) ***\n")
 
-ListMandatory<-list("infiles_list", "infile_r_objects", "outdir", "prefix_outfiles")
+ListMandatory<-list("infiles_list", "outdir", "prefix_outfiles")
 for (param in ListMandatory) {
   if (length(grep('^NA$',opt[[param]], perl = T))) {
     stop(paste0("Parameter -", param, " can't be 'NA' (default). Use option -h for help."))
@@ -365,6 +351,8 @@ for (param in ListMandatory) {
 ################################################################################################################################################
 ################################################################################################################################################
 
+writeLines("\n**** LOAD DATASETS ****\n")
+
 ####################################
 ### Load --inputs_list
 ####################################
@@ -374,7 +362,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   if (regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1) {
     
     InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-    colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+    colnames(InputsTable)<-c("PathToRObject","DatasetType")
     
   } else {
     MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
@@ -387,18 +375,18 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
     
     MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name", "dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
+    MergeFilter <- c("name", "dataset_path", "dataset_type")
     MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
     MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
     rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+    colnames(MergedInputsTableFilteredFinal) <-c("PathToRObject","DatasetType")
     
     InputsTable <- MergedInputsTableFilteredFinal
   }
 } else {
   InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-  colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+  colnames(InputsTable)<-c("PathToRObject","DatasetType")
 }
 
 ##### Replace low dashes by dots in rownames(InputsTable) or DatasetType
@@ -418,14 +406,11 @@ writeLines("\n*** Load each dataset R object ***\n")
 
 StopWatchStart$LoadRDSEachDataset  <- Sys.time()
 
-InputRObjects.tab <- read.table(InputRObjects, header = F, row.names = 1, stringsAsFactors = F)
-colnames(InputRObjects.tab)<-c("PathToRObject")
-
 seurat.object.list <- list()
-for (dataset in rownames(InputRObjects.tab)) {
+for (dataset in rownames(InputsTable)) {
   print(dataset)
   DatasetIndexInInputsTable <- which(x = rownames(InputsTable) == dataset)
-  InputRobject <- InputRObjects.tab[dataset,"PathToRObject"]
+  InputRobject <- InputsTable[dataset,"PathToRObject"]
   seurat.object.list[[DatasetIndexInInputsTable]] <- readRDS(InputRobject)
 }
 
@@ -436,6 +421,8 @@ StopWatchEnd$LoadRDSEachDataset  <- Sys.time()
 ### HERE ARE THE FUNCTIONS TO INTEGRATE DATASETS
 ################################################################################################################################################
 ################################################################################################################################################
+
+writeLines("\n**** INTEGRATE DATASETS ****\n")
 
 ####################################
 ### Get correlation between datasets using pseudo-bulk
@@ -463,17 +450,21 @@ for (assay_expression in DefaultParameters$AssaysForPseudoBulk) {
     mat_for_correl_all_cells.df[[dataset]] <- rowSums(as.matrix(seurat.object.list.normalized[[dataset]]@assays[[assay_expression]][,]))
   }
   
-  OutfilePseudoBulk <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
+  OutfilePathName <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2")
+  Outfile.con <- bzfile(OutfilePathName, "w")
   Headers<-paste(paste0("PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]]), paste(colnames(mat_for_correl_all_cells.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
-  write.table(Headers, file = OutfilePseudoBulk, row.names = F, col.names = F, sep="\t", quote = F)
-  write.table(mat_for_correl_all_cells.df,  file = OutfilePseudoBulk, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-  
+  write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+  write.table(mat_for_correl_all_cells.df,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  close(Outfile.con)
+
   ### Get correlation
   mat_for_correl_all_cells.cor <- round(cor(mat_for_correl_all_cells.df), digits = 3)
-  OutfilePseudoBulkCor <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor", ".tsv")
+  OutfilePathName <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor", ".tsv.bz2")
+  Outfile.con <- bzfile(OutfilePathName, "w")
   Headers<-paste(paste0("PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor"), paste(colnames(mat_for_correl_all_cells.cor), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
-  write.table(Headers, file = OutfilePseudoBulkCor, row.names = F, col.names = F, sep="\t", quote = F)
-  write.table(mat_for_correl_all_cells.cor,  file = OutfilePseudoBulkCor, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+  write.table(mat_for_correl_all_cells.cor,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  close(Outfile.con)
   
 }
 
@@ -530,13 +521,15 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   DensityPlots <- PlotAnchors.STACAS(seurat.object.anchors.unfiltered, obj.names=names(seurat.object.list))
   
-  OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_distances.tsv")
+  OutfilePathName <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_distances.tsv.bz2")
+  Outfile.con <- bzfile(OutfilePathName, "w")
   Headers<-paste("dataset1", "dataset2", "cell1", "cell2", "score", "dist1.2", "dist2.1", "dist.mean", sep = "\t", collapse = "")
-  write.table(Headers, file = OutfilesTsv, row.names = F, col.names = F, sep="\t", quote = F)
+  write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
   lapply(1:length(seurat.object.list), function(DatasetNumber) {
-    write.table(file = OutfilesTsv, x = DensityPlots[[DatasetNumber]]$data[,c("dataset1", "dataset2", "cell1", "cell2", "score", "dist1.2", "dist2.1", "dist.mean")],
+    write.table(file = Outfile.con, x = DensityPlots[[DatasetNumber]]$data[,c("dataset1", "dataset2", "cell1", "cell2", "score", "dist1.2", "dist2.1", "dist.mean")],
                 quote = F, sep = "\t", row.names = F, col.names = F, append = T)
   })
+  close(Outfile.con)
   
   StopWatchEnd$GetDistancesStacas <- Sys.time()
   
@@ -547,7 +540,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   StopWatchStart$GetMedianDistMeanStacas <- Sys.time()
   
-  Distances.df <- read.table(file = OutfilesTsv, header = T, sep = "\t", row.names = NULL)
+  Distances.df <- read.table(file = paste0(OutfilesTsv, ".gz"), header = T, sep = "\t", row.names = NULL)
   Distances.df$datasets <- paste0(Distances.df[,"dataset1"],"---",Distances.df[,"dataset2"])
   MedianDistances.df <- aggregate(Distances.df[,"dist.mean"], list(Distances.df$datasets), median)
   SplitDatasets <- data.frame(do.call('rbind', strsplit(as.character(MedianDistances.df[,1]),'---', fixed=TRUE)))
@@ -562,10 +555,17 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   MedianDistances.order <- rownames(MedianDistances.mat)[MedianDistances.clust$order]
   MedianDistances.mat   <- MedianDistances.mat[MedianDistances.order,MedianDistances.order]
   
-  OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_inv_dist.mean_median_ordered.tsv")
-  write.table(data.frame("InvDistMean_median"=MedianDistances.order, round(MedianDistances.mat,DefaultParameters$DigitsForRoundMedianDist)), OutfilesTsv, row.names = F,sep="\t",quote = F)
-  OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_dist.mean_median_ordered.tsv")
-  write.table(data.frame("DistMean_median"=MedianDistances.order, round(1-MedianDistances.mat,DefaultParameters$DigitsForRoundMedianDist)), OutfilesTsv, row.names = F,sep="\t",quote = F)
+  OutfilePathName <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_inv_dist.mean_median_ordered.tsv.bz2")
+  Outfile.con <- bzfile(OutfilePathName, "w")
+  write.table(data.frame("InvDistMean_median"=MedianDistances.order, round(MedianDistances.mat,DefaultParameters$DigitsForRoundMedianDist)),
+              file = OutfilePathName, row.names = F,sep="\t",quote = F)
+  close(Outfile.con)
+  
+  OutfilePathName <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_dist.mean_median_ordered.tsv.bz2")
+  Outfile.con <- bzfile(OutfilePathName, "w")
+  write.table(data.frame("DistMean_median"=MedianDistances.order, round(1-MedianDistances.mat,DefaultParameters$DigitsForRoundMedianDist)),
+              file = OutfilePathName, row.names = F,sep="\t",quote = F)
+  close(Outfile.con)
   
   StopWatchEnd$GetMedianDistMeanStacas <- Sys.time()
   
@@ -581,8 +581,11 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
     rownames(anchor.stats) <- names(sos.list)
     colnames(anchor.stats) <- names(sos.list)
     
-    write(x=paste0("Dataset", "\t", paste(names(sos.list), sep = "\t", collapse = "\t")), file=OutfilesTsv)
-    write.table(x=anchor.stats, file=OutfilesTsv, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+    OutfilePathName<-OutfilesTsv
+    Outfile.con <- bzfile(OutfilePathName, "w")
+    write(x=paste0("Dataset", "\t", paste(names(sos.list), sep = "\t", collapse = "\t")), file=Outfile.con)
+    write.table(x=anchor.stats, file=Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+    close(Outfile.con)
     
     pdf(file=OutfilePdf, width = DefaultParameters$BaseSizeSinglePlotPdf, height = DefaultParameters$BaseSizeSinglePlotPdf)
     anchor.stats.norm <- apply(anchor.stats, 1, function(x) {x/sum(x)})
@@ -604,7 +607,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   StopWatchStart$GetAllAnchorsStacas <- Sys.time()
   
-  OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.tsv")
+  OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.tsv.bz2")
   OutfilePdf  <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.pdf")
   so.anchors  <- seurat.object.anchors.unfiltered
   sos.list    <- seurat.object.list
@@ -622,7 +625,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   seurat.object.anchors <- FilterAnchors.STACAS(seurat.object.anchors.unfiltered)
   print(seurat.object.anchors)
   
-  OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.tsv")
+  OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.tsv.bz2")
   OutfilePdf  <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.pdf")
   so.anchors  <- seurat.object.anchors
   sos.list    <- seurat.object.list
@@ -694,17 +697,19 @@ StopWatchEnd$IntegrateData  <- Sys.time()
 
 ################################################################################################################################################
 ################################################################################################################################################
-### HERE ARE THE FUNCTIONS TO SAVE THE WHOLE RUN R_OBJECT AND LOG FILES
+### HERE ARE THE FUNCTIONS TO SAVE THE R_OBJECT AND LOG FILES
 ################################################################################################################################################
 ################################################################################################################################################
 
+writeLines("\n**** SAVE THE R_OBJECT AND LOG FILES ****\n")
+
 ####################################
-### Saving the full R object
+### Saving the Integration R object
 ####################################
 
 if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
-  writeLines("\n*** Saving the full R object ***\n")
+  writeLines("\n*** Saving the Integration R object ***\n")
   
   StopWatchStart$SaveRDSFull  <- Sys.time()
   
@@ -715,7 +720,7 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
 }else{
   
-  writeLines("\n*** Not saving the full R object ***\n")
+  writeLines("\n*** Not saving the Integration R object ***\n")
   
 }
 
@@ -726,7 +731,7 @@ writeLines("\n*** Obtain computing time used ***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
-OutfileCPUtimes<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "CPUtimes", ".txt")
+OutfileCPUtimes<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_Integration_CPUtimes", ".txt")
 write(file = OutfileCPUtimes, x = paste("#Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
 write(file = OutfileCPUtimes, x = paste("#MaxGlobalVariables", MaxGlobalVariables, sep = "\t", collapse = ""), append = T)
 
