@@ -8,17 +8,18 @@
 
 ####################################
 ### GENERAL OVERVIEW OF THIS SCRIPT
-### 1) Loads integrated datasets R object,  presumably from script `Runs_Seurat_v3_MultiDatasets_Integration.R'
+### 1) Loads integrated datasets R object,  presumably produced by script `Runs_Seurat_v3_MultiDatasets_Integration.R'
 ### 2) Process integrated datasets as a whole, including:
 ###    - dimension reduction
 ###    - 'global' cell clustering
 ###    - UMAP/tSNE plots by global cell clusters, sample, sample type, requested genes and metadata
 ###    - average gene expression
-### 3) For each dataset on its own uses global clusters and repeats analysis from step 2
-### 4) For each dataset on its own re-clusters cells and repeats analysis from step 2
-### 5) For each dataset type on its own uses global clusters and repeats analysis from step 2
-### 6) For each dataset type on its own re-clusters cells and repeats analysis from step 2
-### 7) Saves log files
+### 3) For each dataset on its own, uses global clusters and repeats analysis from step 2
+### 4) For each dataset on its own, re-clusters cells and repeats analysis from step 2
+### 5) For each dataset type on its own, uses global clusters and repeats analysis from step 2
+### 6) For each dataset type on its own, re-clusters cells and repeats analysis from step 2
+### 7) Saves datasets R object with PCA, clustering and dimension reduction
+### 8) Saves log files
 ####################################
 
 ####################################
@@ -35,6 +36,8 @@
 ####################################
 ### Required libraries
 ####################################
+writeLines("\n**** LOAD REQUIRED LIBRARIES ****\n")
+
 suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v3.2.1. To run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
@@ -47,6 +50,14 @@ suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeri
 suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 ####################################
+
+################################################################################################################################################
+################################################################################################################################################
+### HERE ARE THE FUNCTIONS TO SETUP RUN
+################################################################################################################################################
+################################################################################################################################################
+
+writeLines("\n**** SETUP RUN ****\n")
 
 ####################################
 ### Turning warnings off for the sake of a cleaner aoutput
@@ -64,37 +75,20 @@ ProgramOutdir  <- "SEURAT"
 
 option_list <- list(
   make_option(c("-i", "--inputs_list"), default="NA",
-              help="Path/name to a <tab> delimited file with one dataset per row and the following 12 columns specifying filters/details for each dataset:
+              help="Path/name to a <tab> delimited file with one dataset per row and the following 2 columns specifying details for each dataset:
                 1) unique dataset ID (e.g. 'd1')
-                2) /path_to/dataset
-                3) dataset type (e.g. 'control' or 'treatment') or use 'type' to skip using dataset types
-                4) dataset format (either 'MTX', 'TSV' or 'HDF5')
-                5) dataset minimum mitochondrial fraction (e.g. '0')
-                6) dataset maximum mitochondrial fraction (e.g. '0.05' for NucSeq or '0.2' for whole cell scRNA-seq)
-                7) dataset minimum ribosomal fraction (e.g. '0')
-                8) dataset maximum ribosomal fraction (e.g. '0.75')
-                9) dataset minimum number of genes (e.g. '50')
-                10) dataset maximum number of genes (e.g. '8000')
-                11) dataset minimum number of reads (e.g. '1')
-                12) dataset maximum number of reads (e.g. '80000')
+                2) dataset type (e.g. 'control' or 'treatment') or use 'type' to skip using dataset types
 
                 Notes:
                 (a) The order of the list of datasets in --inputs_list may influence the results, including number of clusters,
                 t-SNE/UMAP and differentially expressed genes. List datasets better measured first.
-                
-                (b) middle dashes '-' are not allowed in columns 1 or 3, if ocurring they will be replaced by low dashes '_'
-                
-                (c) Column 4 indicates the dataset format. It must be in either:
-                'MTX'  and column 2 must be the path/name to an MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files
-                       'MTX' files can be the outputs from Cell Ranger 'count' v2 or v3: `/path_to/outs/filtered_feature_bc_matrix/`
-                       Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
-                'TSV'  and column 2 must be the path/name to a <tab> delimited *file* with genes in rows vs. barcodes in columns
-                'HDF5' and column 2 must be the path/name of a *file* in hdf5 format (e.g. from Cell Ranger)
+
+                (b) middle dashes '-' are not allowed in columns 1 or 2, if ocurring they will be replaced by low dashes '_'
 
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-j", "--infile_r_object"), default="NA",
-              help="Path/name to the Integration R/Seurat object
+              help="Path/name to the R/Seurat object with Integrated datasets
 
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
@@ -158,11 +152,11 @@ option_list <- list(
               
                 Default = 'MAX'"),
   #
-  make_option(c("-s", "--save_r_object"), default="N",
+  make_option(c("-s", "--save_r_object"), default="Y",
               help="Indicates if a R object with the data and analyzes from the run should be saved
                 Note that this may be time consuming. Type 'y/Y' or 'n/N'
                 
-                Default = 'N'"),
+                Default = 'Y'"),
   #
   make_option(c("-w", "--run_cwl"), default="N",
               help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME' . Type 'y/Y' or 'n/N'.
@@ -291,7 +285,7 @@ writeLines("\n*** Report used options ***\n")
 
 StopWatchStart$ReportUsedOptions  <- Sys.time()
 
-OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_LogFiles_", "UsedOptions", ".txt")
+OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_PCA_Clustering_DimReduction_UsedOptions", ".txt")
 
 TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
 write(file = OutfileOptionsUsed, x=paste0("Run started: ", TimeOfRun, "\n"))
@@ -310,7 +304,7 @@ StopWatchEnd$ReportUsedOptions  <- Sys.time()
 ####################################
 writeLines("\n*** Report R sessionInfo ***\n")
 
-OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "RSessionInfo", ".txt")
+OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_PCA_Clustering_DimReduction_RSessionInfo", ".txt")
 writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
 capture.output(sessionInfo())
 
@@ -424,6 +418,8 @@ if ((1 %in% RequestedApplySelectedGenes == T) |
 ################################################################################################################################################
 ################################################################################################################################################
 
+writeLines("\n**** LOAD DATASETS ****\n")
+
 ####################################
 ### Load --inputs_list
 ####################################
@@ -433,7 +429,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   if (regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1) {
     
     InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-    colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+    colnames(InputsTable)<-c("DatasetType")
     
   } else {
     MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
@@ -446,18 +442,18 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
     
     MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name", "dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
+    MergeFilter <- c("name", "dataset_type")
     MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
     MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
     rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+    colnames(MergedInputsTableFilteredFinal) <-c("DatasetType")
     
     InputsTable <- MergedInputsTableFilteredFinal
   }
 } else {
   InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-  colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+  colnames(InputsTable)<-c("DatasetType")
 }
 
 ##### Replace low dashes by dots in rownames(InputsTable) or DatasetType
@@ -586,6 +582,8 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 ################################################################################################################################################
 ################################################################################################################################################
 
+writeLines("\n**** PROCESS INTEGRATED DATASETS AS A WHOLE ****\n")
+
 ####################################
 ### Globally cluster cells using integrated data
 ####################################
@@ -608,17 +606,20 @@ NumberOfClusters<-length(unique(ClusterIdent))
 Headers<-paste("Cell_barcode", paste0("seurat_cluster_r", Resolution), sep="\t")
 clusters_data<-paste(CellNames, ClusterIdent, sep="\t")
 #
-OutfileClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "CellClusters", ".tsv")
-write.table(Headers, file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F)
-write.table(data.frame(clusters_data), file = OutfileClusters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+Outfile.con <- bzfile(paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "CellClusters", ".tsv.bz2"), "w")
+write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(data.frame(clusters_data), file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+close(Outfile.con)
 #
-OutfileNumbClusters<-paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellClusters", ".tsv")
-write(x=NumberOfClusters, file = OutfileNumbClusters)
+Outfile.con <- bzfile(paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellClusters", ".tsv.bz2"), "w")
+write(x=NumberOfClusters, file = Outfile.con)
+close(Outfile.con)
 #
-OutfileNumbCellsPerCluster<-paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerCluster", ".tsv")
+Outfile.con <- bzfile(paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerCluster", ".tsv.bz2"), "w")
 Headers<-paste("Cluster", "Number_of_cells", sep="\t", collapse = "")
-write.table(Headers, file = OutfileNumbCellsPerCluster, row.names = F, col.names = F, sep="\t", quote = F)
-write.table(table(ClusterIdent), file = OutfileNumbCellsPerCluster, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(table(ClusterIdent), file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+close(Outfile.con)
 #
 StopWatchEnd$AllCellClusterTables  <- Sys.time()
 
@@ -682,10 +683,11 @@ for (assay_expression in DefaultParameters$AssaysForPseudoBulk) {
     }
   }
   
-  OutfilePseudoBulk <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_", "EachDatasetCluster_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
+  Outfile.con <- bzfile(paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_", "EachDatasetCluster_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
   Headers<-paste("PseudoBulk_EachDatasetCluster", paste(colnames(mat_for_correl_each_cluster.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
-  write.table(Headers, file = OutfilePseudoBulk, row.names = F, col.names = F, sep="\t", quote = F)
-  write.table(mat_for_correl_each_cluster.df,  file = OutfilePseudoBulk, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+  write.table(mat_for_correl_each_cluster.df,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  close(Outfile.con)
 }
 
 StopWatchEnd$SaveSctransformClustersInColumns  <- Sys.time()
@@ -720,11 +722,12 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   
   StopWatchStart$DimensionReductionWriteCoords[[dim_red_method]]  <- Sys.time()
   
-  OutfileCoordinates<-paste0(Tempdir, "/DIMENSION_REDUCTION_COORDINATE_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_Coordinates", ".tsv")
+  Outfile.con <- bzfile(paste0(Tempdir, "/DIMENSION_REDUCTION_COORDINATE_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_Coordinates", ".tsv.bz2"), "w")
   Headers<-paste("Barcode",paste(colnames(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings), sep="", collapse="\t"), sep="\t", collapse = "\t")
-  write.table(Headers, file = OutfileCoordinates, row.names = F, col.names = F, sep="\t", quote = F)
-  write.table(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings, file = OutfileCoordinates,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
-  
+  write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+  write.table(seurat.object.integrated@reductions[[dim_red_method]]@cell.embeddings, file = Outfile.con,  row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  close(Outfile.con)
+
   StopWatchEnd$DimensionReductionWriteCoords[[dim_red_method]]  <- Sys.time()
   
   if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
@@ -902,10 +905,11 @@ Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$
 
 for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
   cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
-  OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_AllDatasets_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
+  Outfile.con <- bzfile(paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_AllDatasets_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
   Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
-  write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
-  write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+  write.table(data.frame(cluster.averages[[assay_expression]]), file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  close(Outfile.con)
 }
 
 StopWatchEnd$AverageGeneExpressionGlobalClusters  <- Sys.time()
@@ -915,6 +919,8 @@ StopWatchEnd$AverageGeneExpressionGlobalClusters  <- Sys.time()
 ### HERE ARE THE FUNCTIONS TO PROCESS EACH DATASET USING GLOBAL CELL CLUSTERS
 ################################################################################################################################################
 ################################################################################################################################################
+
+writeLines("\n**** PROCESS EACH DATASET USING GLOBAL CELL CLUSTERS ****\n")
 
 ####################################
 ### FOR EACH DATASET uses integrated/normalized counts and generates dimension reduction plots for each dataset coloured by: a) QC, b) global clusters, c) selected genes and d) metadata
@@ -967,9 +973,6 @@ writeLines("\n*** Write out number and fraction of cells per cluster, per datase
 
 StopWatchStart$SaveFractionsOfCellsPerClusterPerDataset  <- Sys.time()
 
-OutfileNumbCellsPerClusterPerDataset<-paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDataset", ".tsv")
-OutfileFracCellsPerClusterPerDataset<-paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "FracCellsPerClusterPerDataset", ".tsv")
-
 seurat.object.integrated_EachDatasetGlobalCellClusters.df <- as.data.frame(table(seurat.object.integrated$EachDatasetGlobalCellClusters))
 rownames(seurat.object.integrated_EachDatasetGlobalCellClusters.df) <- seurat.object.integrated_EachDatasetGlobalCellClusters.df[,1]
 
@@ -990,11 +993,15 @@ frac_mat <- t(round(t(freq_mat) / colSums(freq_mat), 4)) ### note it's necessary
 
 Headers<-paste("cluster", paste(rownames(InputsTable) , sep="", collapse = "\t"), sep = "\t", collapse = "\t")
 
-write.table(Headers, file = OutfileNumbCellsPerClusterPerDataset, row.names = F, col.names = F, sep="\t", quote = F)
-write.table(freq_mat, file = OutfileNumbCellsPerClusterPerDataset, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+Outfile.con <- bzfile(paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDataset", ".tsv.bz2"), "w")
+write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(freq_mat, file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+close(Outfile.con)
 
-write.table(Headers, file = OutfileFracCellsPerClusterPerDataset, row.names = F, col.names = F, sep="\t", quote = F)
-write.table(frac_mat , file = OutfileFracCellsPerClusterPerDataset, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+Outfile.con <- bzfile(paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "FracCellsPerClusterPerDataset", ".tsv.bz2"), "w")
+write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+write.table(frac_mat , file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+close(Outfile.con)
 
 StopWatchEnd$SaveFractionsOfCellsPerClusterPerDataset  <- Sys.time()
 
@@ -1136,10 +1143,11 @@ Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$
 
 for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
   cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
-  OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
+  Outfile.con <- bzfile(paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
   Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
-  write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
-  write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+  write.table(data.frame(cluster.averages[[assay_expression]]), file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+  close(Outfile.con)
 }
 
 StopWatchEnd$AverageGeneExpressionEachDatasetGlobalClustersPerDataset  <- Sys.time()
@@ -1149,6 +1157,8 @@ StopWatchEnd$AverageGeneExpressionEachDatasetGlobalClustersPerDataset  <- Sys.ti
 ### HERE ARE THE FUNCTIONS TO PROCESS EACH DATASET USING RE-CLUSTERED CELLS
 ################################################################################################################################################
 ################################################################################################################################################
+
+writeLines("\n**** PROCESS EACH DATASET USING RE-CLUSTERED CELLS ****\n")
 
 ####################################
 ### FOR EACH DATASET uses integrated counts, RE-CLUSTER cells and colour dimension reduction plots
@@ -1170,7 +1180,7 @@ if (2 %in% RequestedClusteringInputs == T) {
   #
   Headers<-paste("Dataset", "Number_of_clusters", sep="\t", collapse = "")
   OutfileEachDatasetNumbClusters<-paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "NumbCellClusters", ".tsv")
-  write(x=NumberOfClusters, file = OutfileNumbClusters)
+  write.table(Headers, file = OutfileEachDatasetNumbClusters, row.names = F, col.names = F, sep="\t", quote = F)
   #
   Headers<-paste("Cluster", "Number_of_cells", sep="\t", collapse = "")
   OutfileEachDatasetNumbCellsPerCluster<-paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetReclustered_", "NumbCellsPerCluster", ".tsv")
@@ -1264,15 +1274,24 @@ if (2 %in% RequestedClusteringInputs == T) {
   
   for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
     cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
-    
-    OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "EachDatasetReclustered", "_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
+    Outfile.con <- bzfile(paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "EachDatasetReclustered", "_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
     Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
-    write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
-    write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+    write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(data.frame(cluster.averages[[assay_expression]]), file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+    close(Outfile.con)
   }
   
   StopWatchEnd$AverageGeneExpressionEachDatasetReclustered[[dataset]]  <- Sys.time()
   
+  ####################################
+  ### Bzip2 outfiles
+  ####################################
+  system(paste("bzip2 -f", OutfileEachDatasetClusters, sep = " "))
+  system(paste("rm", OutfileEachDatasetClusters, sep = " "))
+  system(paste("bzip2 -f", OutfileEachDatasetNumbClusters, sep = " "))
+  system(paste("rm", OutfileEachDatasetNumbClusters, sep = " "))
+  system(paste("bzip2 -f", OutfileEachDatasetNumbCellsPerCluster, sep = " "))
+  system(paste("rm", OutfileEachDatasetNumbCellsPerCluster, sep = " "))
 }
 
 ################################################################################################################################################
@@ -1280,6 +1299,8 @@ if (2 %in% RequestedClusteringInputs == T) {
 ### HERE ARE THE FUNCTIONS TO PROCESS EACH DATASET TYPE USING GLOBAL CELL CLUSTERS
 ################################################################################################################################################
 ################################################################################################################################################
+
+writeLines("\n**** PROCESS EACH DATASET TYPE USING GLOBAL CELL CLUSTERS ****\n")
 
 ####################################
 ### FOR EACH DATASET TYPE uses integrated/normalized counts and generates dimension reduction plots coloured by: a) dataset type, b) global clusters, c) selected genes and d) metadata
@@ -1310,17 +1331,18 @@ if (NumberOfDatasetsTypes >= 1) {
   
   # Headers for dataset-type-specific cell clusters
   Headers<-paste("Cell_barcode", paste0("seurat_cluster_r", Resolution), sep="\t")
-  OutfileEachDatasetTypeGlobalClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "EachDatasetType_CellClusters", ".tsv")
-  GlobalClustersByDatasetType<- unlist(x = strsplit(x = paste(seurat.object.integrated@meta.data$dataset_type, seurat.object.integrated@meta.data$seurat_clusters, sep = "_c", collapse = "\n"), split = "\n"))
-  write.table(Headers, file = OutfileEachDatasetTypeGlobalClusters, row.names = F, col.names = F, sep="\t", quote = F)
+  EachDatasetTypeGlobalCellClusters <- paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "EachDatasetType_CellClusters", ".tsv")
+  GlobalClustersByDatasetType<- unlist(x = strsplit(x = paste(seurat.object.integrated@meta.data$dataset_type, seurat.object.integrated@meta.data$seurat_clusters,
+                                                              sep = "_c", collapse = "\n"), split = "\n"))
+  write.table(Headers, file = EachDatasetTypeGlobalCellClusters, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(paste(colnames(seurat.object.integrated), GlobalClustersByDatasetType, sep = "\t", collapse = "\n"),
-              file = OutfileEachDatasetTypeGlobalClusters, row.names = F, col.names = F, quote = F, append = T)
-  
-  OutfileNumbCellsPerClusterPerDatasetType<-paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDatasetType", ".tsv")
+              file = EachDatasetTypeGlobalCellClusters, row.names = F, col.names = F, quote = F, append = T)
+
+  OutfileNumbCellsPerClusterPerDatasetType <- paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDatasetType", ".tsv")
   Headers<-paste("Cluster", "Number_of_cells", sep="\t", collapse = "")
   write.table(Headers, file = OutfileNumbCellsPerClusterPerDatasetType, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(table(GlobalClustersByDatasetType), file = OutfileNumbCellsPerClusterPerDatasetType, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-  
+
   StopWatchEnd$WriteOutDatasetTypeClusterAssignments  <- Sys.time()
   
   if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
@@ -1476,6 +1498,7 @@ if (NumberOfDatasetsTypes >= 1) {
   
   StopWatchStart$LoadOutDatasetTypeClusterAssignments  <- Sys.time()
   
+  OutfileEachDatasetTypeGlobalClusters <- paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "EachDatasetType_CellClusters", ".tsv")
   EachDatasetTypeGlobalCellClusters <- data.frame(read.table(OutfileEachDatasetTypeGlobalClusters, header = T, row.names = 1, sep = "\t"))
   seurat.object.integrated <- AddMetaData(object = seurat.object.integrated, metadata = EachDatasetTypeGlobalCellClusters, col.name = "EachDatasetTypeGlobalCellClusters")
   
@@ -1490,18 +1513,25 @@ if (NumberOfDatasetsTypes >= 1) {
   
   for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
     Idents(object = seurat.object.integrated) <- seurat.object.integrated$EachDatasetTypeGlobalCellClusters
-    
     cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
-    
-    OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_EachDatasetType_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
+    Outfile.con <- bzfile(paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_EachDatasetType_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
     Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
-    write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
-    write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-    
+    write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(data.frame(cluster.averages[[assay_expression]]), file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+    close(Outfile.con)
   }
   
   StopWatchEnd$AverageGeneExpressionEachDatasetTypeGlobalClusters  <- Sys.time()
   
+  ####################################
+  ### Gzips outfiles
+  ####################################
+  OutfileEachDatasetTypeGlobalClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "EachDatasetType_CellClusters", ".tsv")
+  system(paste("bzip2 -f", OutfileEachDatasetTypeGlobalClusters, sep = " "))
+  system(paste("rm", OutfileEachDatasetTypeGlobalClusters, sep = " "))
+  OutfileNumbCellsPerClusterPerDatasetType<-paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDatasetType", ".tsv")
+  system(paste("bzip2 -f", OutfileNumbCellsPerClusterPerDatasetType, sep = " "))
+  system(paste("rm", OutfileNumbCellsPerClusterPerDatasetType, sep = " "))
 }
 
 ################################################################################################################################################
@@ -1509,6 +1539,8 @@ if (NumberOfDatasetsTypes >= 1) {
 ### HERE ARE THE FUNCTIONS TO PROCESS EACH DATASET TYPE USING RE-CLUSTERED CELLS
 ################################################################################################################################################
 ################################################################################################################################################
+
+writeLines("\n**** PROCESS EACH DATASET TYPE USING RE-CLUSTERED CELLS ****\n")
 
 ####################################
 ### FOR EACH DATASET TYPE uses integrated counts, RE-CLUSTER cells and colour dimension reduction plots
@@ -1586,11 +1618,13 @@ if (NumberOfDatasetsTypes >= 1) {
       write.table(paste(colnames(seurat.object.each_dataset_type), ClustersThisDatasetType, sep = "\t", collapse = "\n"),
                   file = OutfileEachDatasetTypeCellReClusters, row.names = F, col.names = F, quote = F, append = T)
       
+      
       CellNames<-rownames(seurat.object.each_dataset_type@meta.data)
       ClusterIdent <-seurat.object.each_dataset_type@meta.data$seurat_clusters
       NumberOfClusters<-length(unique(ClusterIdent))
-      OutfileNumbClusters<-paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", dataset_type, "_NumbCellClusters", ".tsv")
-      write(x=NumberOfClusters, file = OutfileNumbClusters)
+      Outfile.con <- bzfile(paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", dataset_type, "_NumbCellClusters", ".tsv.bz2"), "w")
+      write(x=NumberOfClusters, file = Outfile.con)
+      close(Outfile.con)
       
       StopWatchEnd$WriteReClustersEachDatasetTypeTables[[dataset_type]] <- Sys.time()
       
@@ -1633,15 +1667,21 @@ if (NumberOfDatasetsTypes >= 1) {
     
     for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
       cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
-      
-      OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "EachDatasetTypeReclustered_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv")
+      Outfile.con <- bzfile(paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "EachDatasetTypeReclustered_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
       Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
-      write.table(Headers, file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
-      write.table(data.frame(cluster.averages[[assay_expression]]), file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+      write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+      write.table(data.frame(cluster.averages[[assay_expression]]), file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+      close(Outfile.con)
     }
     
     StopWatchEnd$AverageGeneExpressionEachDatasetTypeReCluster <- Sys.time()
     
+    ####################################
+    ### Gzips outfiles
+    ####################################
+    OutfileEachDatasetTypeCellReClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "CellClusters", ".tsv")
+    system(paste("bzip2 -f", OutfileEachDatasetTypeCellReClusters, sep = " "))
+    system(paste("rm", OutfileEachDatasetTypeCellReClusters, sep = " "))
   }
 }else{
   writeLines("\n*** No dataset type analyzes will be conducted because only '1' dataset type was found in -inputs_list ***\n")
@@ -1649,28 +1689,30 @@ if (NumberOfDatasetsTypes >= 1) {
 
 ################################################################################################################################################
 ################################################################################################################################################
-### HERE ARE THE FUNCTIONS TO SAVE THE WHOLE RUN R_OBJECT AND LOG FILES
+### HERE ARE THE FUNCTIONS TO SAVE THE R_OBJECT AND LOG FILES
 ################################################################################################################################################
 ################################################################################################################################################
 
+writeLines("\n**** SAVE THE R_OBJECT AND LOG FILES ****\n")
+
 ####################################
-### Saving the full R object
+### Saving the PCA, Clustering, Dimension Reduction R object
 ####################################
 
 if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
-  writeLines("\n*** Saving the full R object ***\n")
+  writeLines("\n*** Saving the PCA, Clustering, Dimension Reduction R object ***\n")
   
   StopWatchStart$SaveRDSFull  <- Sys.time()
   
-  OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_PcaClusteringDimReduction", ".rds")
+  OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_PCA_Clustering_DimReduction", ".rds")
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDSFull  <- Sys.time()
   
 }else{
   
-  writeLines("\n*** Not saving the full R object ***\n")
+  writeLines("\n*** Not saving the PCA, Clustering, Dimension Reduction R object ***\n")
   
 }
 
@@ -1681,7 +1723,7 @@ writeLines("\n*** Obtain computing time used ***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
-OutfileCPUtimes<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "CPUtimes", ".txt")
+OutfileCPUtimes<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_PCA_Clustering_DimReduction_CPUtimes", ".txt")
 write(file = OutfileCPUtimes, x = paste("#Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
 write(file = OutfileCPUtimes, x = paste("#MaxGlobalVariables", MaxGlobalVariables, sep = "\t", collapse = ""), append = T)
 
