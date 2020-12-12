@@ -29,6 +29,8 @@
 ####################################
 ### Required libraries
 ####################################
+writeLines("\n**** LOAD REQUIRED LIBRARIES ****\n")
+
 suppressPackageStartupMessages(library(DropletUtils)) # (Bioconductor) to handle MTX/H5 format files. Note it has about the same speed than library(earlycross) which can't handle H5
 suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v3.2.1. To run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
@@ -42,6 +44,14 @@ suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeri
 suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 ####################################
+
+################################################################################################################################################
+################################################################################################################################################
+### HERE ARE THE FUNCTIONS TO SETUP RUN
+################################################################################################################################################
+################################################################################################################################################
+
+writeLines("\n**** SETUP RUN ****\n")
 
 ####################################
 ### Turning warnings off for the sake of a cleaner aoutput
@@ -241,7 +251,7 @@ writeLines("\n*** Report used options ***\n")
 
 StopWatchStart$ReportUsedOptions  <- Sys.time()
 
-OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_LogFiles_", "UsedOptions", ".txt")
+OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_QC_Normalization_UsedOptions", ".txt")
 
 TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
 write(file = OutfileOptionsUsed, x=paste0("Run started: ", TimeOfRun, "\n"))
@@ -260,7 +270,7 @@ StopWatchEnd$ReportUsedOptions  <- Sys.time()
 ####################################
 writeLines("\n*** Report R sessionInfo ***\n")
 
-OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "RSessionInfo", ".txt")
+OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_Normalization_RSessionInfo", ".txt")
 writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
 capture.output(sessionInfo())
 
@@ -338,6 +348,8 @@ for (param in ListMandatory) {
 ### HERE ARE THE FUNCTIONS TO LOAD AND QC DATASETS
 ################################################################################################################################################
 ################################################################################################################################################
+
+writeLines("\n**** LOAD AND QC DATASETS ****\n")
 
 ####################################
 ### Load --inputs_list
@@ -779,9 +791,9 @@ for (dataset in rownames(InputsTable)) {
     
     StopWatchStart$OutTablesFilterDetailsAndFilteredCells[[dataset]]  <- Sys.time()
     
-    OutTableFilterDetails<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "FilterDetails", "_", dataset, ".tsv")
+    Outfile.con <- bzfile(paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "FilterDetails", "_", dataset, ".tsv.bz2"), "w")
     Headers<-paste("Step", "Filter_min", "Filter_max", "Mean_before_filter", "Median_before_filter", "Mean_after_filter", "Median_after_filter", "Excluded_cells", sep = "\t", collapse = "")
-    write.table(Headers, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
     
     FilterDetails.nFeature_RNA  <- paste("nFeature_RNA", list_MinNGenes[[dataset]], list_MaxNGenes[[dataset]],
                                          mean_nFeature_RNAStats.u, median_nFeature_RNAStats.u, mean_nFeature_RNAStats.f, median_nFeature_RNAStats.f, 
@@ -795,15 +807,16 @@ for (dataset in rownames(InputsTable)) {
     FilterDetails.ribo.fraction <- paste("ribo.fraction", list_MinRiboFrac[[dataset]], list_MaxRiboFrac[[dataset]],
                                          mean_ribo.fraction.u, median_ribo.fraction.u, mean_ribo.fraction.f, median_ribo.fraction.f, 
                                          NumberOfBarcodesExcludedByRibo, sep = "\t", collapse = "")
+    write.table(FilterDetails.nFeature_RNA,  file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    write.table(FilterDetails.nCount_RNA,    file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    write.table(FilterDetails.mito.fraction, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    write.table(FilterDetails.ribo.fraction, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    close(Outfile.con)
     
-    write.table(FilterDetails.nFeature_RNA,  file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-    write.table(FilterDetails.nCount_RNA,    file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-    write.table(FilterDetails.mito.fraction, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-    write.table(FilterDetails.ribo.fraction, file = OutTableFilterDetails, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-    
-    OutTableFilteredCells<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "NumberOfFilteredCells", "_", dataset, ".tsv")
-    write.table(paste("Number_of_cells_before_filters", NumberOfCells[["unfiltered"]], sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F)
-    write.table(paste("Number_of_cells_after_filters", NumberOfCells[["filtered"]],    sep = "\t", collapse = "\n"), file = OutTableFilteredCells, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    Outfile.con <- bzfile(paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "NumberOfFilteredCells", "_", dataset, ".tsv.bz2"), "w")
+    write.table(paste("Number_of_cells_before_filters", NumberOfCells[["unfiltered"]], sep = "\t", collapse = "\n"), file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(paste("Number_of_cells_after_filters", NumberOfCells[["filtered"]],    sep = "\t", collapse = "\n"), file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    close(Outfile.con)
     
     StopWatchEnd$OutTablesFilterDetailsAndFilteredCells[[dataset]]  <- Sys.time()
     
@@ -853,14 +866,18 @@ for (dataset in rownames(InputsTable)) {
     Headers<-paste("Cell_barcode", paste(DefaultParameters$CellPropertiesToQC, sep = "", collapse = "\t") ,sep="\t")
     
     BarcodeIdsWithDatasetBeforeFilters <- colnames(SeuratObjectsUnfiltered[[NumberOfDatasets]])
-    OutfileQCMetadataBeforeFilters<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "Before_filters_QC_metadata", "_", dataset, ".tsv")
-    write.table(Headers, file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F)
-    write.table(data.frame(BarcodeIdsWithDatasetBeforeFilters, SeuratObjectsUnfiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataBeforeFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    Outfile.con <- bzfile(paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "Before_filters_QC_metadata", "_", dataset, ".tsv.bz2"), "w")
+    write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(data.frame(BarcodeIdsWithDatasetBeforeFilters, SeuratObjectsUnfiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]),
+                file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    close(Outfile.con)
     
     BarcodeIdsWithDatasetAfterFilters <- colnames(SeuratObjectsFiltered[[NumberOfDatasets]])
-    OutfileQCMetadataAfterFilters<-paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "After_filters_QC_metadata", "_", dataset, ".tsv")
-    write.table(Headers, file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F)
-    write.table(data.frame(BarcodeIdsWithDatasetAfterFilters, SeuratObjectsFiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]), file = OutfileQCMetadataAfterFilters, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    Outfile.con <- bzfile(paste0(Tempdir, "/QC_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_", "After_filters_QC_metadata", "_", dataset, ".tsv.bz2"), "w")
+    write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(data.frame(BarcodeIdsWithDatasetAfterFilters, SeuratObjectsFiltered[[NumberOfDatasets]]@meta.data[,DefaultParameters$CellPropertiesToQC]),
+                file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+    close(Outfile.con)
     
     StopWatchEnd$WriteOutQCData  <- Sys.time()
     
@@ -974,9 +991,11 @@ StopWatchEnd$SCTransform  <- Sys.time()
 
 ################################################################################################################################################
 ################################################################################################################################################
-### HERE ARE THE FUNCTIONS TO SAVE EACH DATASET R_OBJECT AND LOG FILES
+### HERE ARE THE FUNCTIONS TO SAVE THE R_OBJECTS AND LOG FILES
 ################################################################################################################################################
 ################################################################################################################################################
+
+writeLines("\n**** SAVE THE R_OBJECTS AND LOG FILES ****\n")
 
 ####################################
 ### Saving each dataset R object
@@ -1013,7 +1032,7 @@ writeLines("\n*** Obtain computing time used ***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
-OutfileCPUusage<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_CPUusage.txt")
+OutfileCPUusage<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_QC_Normalization_CPUtimes.txt")
 write(file = OutfileCPUusage, x = paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
 write(file = OutfileCPUusage, x = paste("MaxGlobalVariables", MaxGlobalVariables, sep = "\t", collapse = ""))
 
