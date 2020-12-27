@@ -200,6 +200,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
   Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F) 
+  dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F) 
   
   FILE_TYPE_OUT_DIRECTORIES = c(
     "CRESCENT_CLOUD",
@@ -358,7 +359,7 @@ writeLines("\n*** Load --inputs_list ***\n")
 
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   if (regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1) {
-    
+
     InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
     colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
     
@@ -373,11 +374,11 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
     
     MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name", "dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
+    MergeFilter <- c("name","dataset_ID","dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
     MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
     MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
     rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+    colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
     
     InputsTable <- MergedInputsTableFilteredFinal
   }
@@ -411,6 +412,10 @@ list_MaxNGenes          <-list()
 list_MinNReads          <-list()
 list_MaxNReads          <-list()
 
+if ((regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) & (!(regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1))) {
+  list_DatasetMinioIDs         <-list()
+}
+
 NumberOfDatasets <- 0
 for (dataset in rownames(InputsTable)) {
   NumberOfDatasets <- NumberOfDatasets + 1
@@ -436,6 +441,11 @@ for (dataset in rownames(InputsTable)) {
   list_MaxNGenes[[dataset]]          <- as.numeric(InputsTable[dataset,"MaxNGenes"])
   list_MinNReads[[dataset]]          <- as.numeric(InputsTable[dataset,"MinNReads"])
   list_MaxNReads[[dataset]]          <- as.numeric(InputsTable[dataset,"MaxNReads"])
+  
+  if ((regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) & (!(regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1))) {
+    DatasetMinioID   <- InputsTable[dataset,"DatasetMinioID"]
+    list_DatasetMinioIDs[[dataset]]      <- DatasetMinioID
+  }
   
   if (regexpr("^MTX$|^TSV$|^HDF5$", list_DatasetToFormat[[dataset]], ignore.case = T, perl = T)[1] == 1) {
     
@@ -955,6 +965,8 @@ StopWatchEnd$MergeSeuratObjectsFilteredRNA  <- Sys.time()
 ####################################
 ### Running SCTransform
 ####################################
+writeLines("\n**** NORMALIZE DATASETS ****\n")
+
 writeLines("\n*** Running SCTransform ***\n")
 
 StopWatchStart$SCTransform  <- Sys.time()
@@ -1011,8 +1023,12 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
     
     dataset <- rownames(InputsTable)[[i]]
     print(dataset)
-
-    OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset , "_QC_Normalization.rds")
+    
+    if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+      OutfileRDS<-paste0("R_OBJECTS_CWL/", list_DatasetMinioIDs[[dataset]], ".", PrefixOutfiles, ".", ProgramOutdir, "_", dataset , "_QC_Normalization.rds")
+    } else {
+      OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset , "_QC_Normalization.rds")
+    }
     print(OutfileRDS)
     saveRDS(seurat.object.list[[i]], file = OutfileRDS)
   }
