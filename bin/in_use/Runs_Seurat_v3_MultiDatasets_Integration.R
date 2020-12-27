@@ -57,9 +57,11 @@ suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC vio
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
 suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
+suppressPackageStartupMessages(library(stringr))      # (CRAN) to regex and extract matching string. Only needed if using `-w Y` and `-x`.
 suppressPackageStartupMessages(library(STACAS))       # (GitHub carmonalab/STACAS) tested with v1.0.1 (compatible with Seurat v3.2.1). Needed for STACAS-based dataset integration
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 suppressPackageStartupMessages(library(cluster))      # (CRAN) to cluster/sort the STACAS distances
+
 ####################################
 
 ################################################################################################################################################
@@ -98,6 +100,11 @@ option_list <- list(
                 (b) middle dashes '-' are not allowed in columns 1 or 3, if ocurring they will be replaced by low dashes '_'
 
                 Default = 'No default. It's mandatory to specify this parameter'"),
+  #
+  make_option(c("-j", "--infile_r_objects"), default="NA",
+              help="Used with the 'run_cwl' option for mounting input R Object file directory in 'inputs_list' to CWL containers
+
+                Default = 'NA'"),
   #
   make_option(c("-y", "--anchors_function"), default="Seurat",
               help="Indicates function to find integration anchors:
@@ -176,6 +183,7 @@ option_list <- list(
 opt <- parse_args(OptionParser(option_list=option_list))
 
 InputsList              <- opt$inputs_list
+InputRObjects           <- opt$infile_r_objects
 AnchorsFunction         <- opt$anchors_function
 ReferenceDatasets       <- opt$reference_datasets
 Outdir                  <- opt$outdir
@@ -214,6 +222,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
   Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F) 
+  dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F) 
   
   FILE_TYPE_OUT_DIRECTORIES = c(
     "CRESCENT_CLOUD",
@@ -375,11 +384,11 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
     
     MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name", "dataset_path", "dataset_type")
+    MergeFilter <- c("name", "dataset_ID","dataset_path", "dataset_type")
     MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
     MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
     rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("PathToRObject","DatasetType")
+    colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","PathToRObject","DatasetType")
     
     InputsTable <- MergedInputsTableFilteredFinal
   }
@@ -406,12 +415,28 @@ writeLines("\n*** Load each dataset R object ***\n")
 
 StopWatchStart$LoadRDSEachDataset  <- Sys.time()
 
-seurat.object.list <- list()
-for (dataset in rownames(InputsTable)) {
-  print(dataset)
-  DatasetIndexInInputsTable <- which(x = rownames(InputsTable) == dataset)
-  InputRobject <- InputsTable[dataset,"PathToRObject"]
-  seurat.object.list[[DatasetIndexInInputsTable]] <- readRDS(InputRobject)
+if ((regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) & (!(regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1))) {
+  RObjects <- list.files(InputRObjects, pattern="*_QC_Normalization.rds", full.names=TRUE)
+  seurat.object.list <- list()
+  
+  for (object in RObjects) {
+    MinioID <- str_extract(basename(object), regex("[^.]*"))
+    for (dataset in rownames(InputsTable)) {
+      DatasetMinioID   <- InputsTable[dataset,"DatasetMinioID"]
+      if (MinioID == DatasetMinioID) {
+        DatasetIndexInInputsTable <- which(x = rownames(InputsTable) == dataset)
+        seurat.object.list[[DatasetIndexInInputsTable]] <- readRDS(object)
+      }
+    }
+  }
+} else {
+  seurat.object.list <- list()
+  for (dataset in rownames(InputsTable)) {
+    print(dataset)
+    DatasetIndexInInputsTable <- which(x = rownames(InputsTable) == dataset)
+    InputRobject <- InputsTable[dataset,"PathToRObject"]
+    seurat.object.list[[DatasetIndexInInputsTable]] <- readRDS(InputRobject)
+  }
 }
 
 StopWatchEnd$LoadRDSEachDataset  <- Sys.time()
@@ -713,7 +738,12 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
   StopWatchStart$SaveRDSFull  <- Sys.time()
   
-  OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_Integration", ".rds")
+    if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+      OutfileRDS<-paste0("R_OBJECTS_CWL/", PrefixOutfiles, ".", ProgramOutdir, "_Integration", ".rds")
+    } else {
+      OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_Integration", ".rds")
+    }
+
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDSFull  <- Sys.time()
