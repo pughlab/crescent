@@ -221,6 +221,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
   Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F) 
+  dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F) 
   
   FILE_TYPE_OUT_DIRECTORIES = c(
     "CRESCENT_CLOUD",
@@ -442,11 +443,11 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
     
     MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name", "dataset_type")
+    MergeFilter <- c("name", "dataset_ID","dataset_type")
     MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
     MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
     rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("DatasetType")
+    colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","DatasetType")
     
     InputsTable <- MergedInputsTableFilteredFinal
   }
@@ -1705,7 +1706,11 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
   StopWatchStart$SaveRDSFull  <- Sys.time()
   
-  OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_PCA_Clustering_DimReduction", ".rds")
+  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    OutfileRDS<-paste0("R_OBJECTS_CWL/", PrefixOutfiles, ".", ProgramOutdir, "_PCA_Clustering_DimReduction", ".rds")
+  } else {
+    OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_PCA_Clustering_DimReduction", ".rds")
+  }
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDSFull  <- Sys.time()
