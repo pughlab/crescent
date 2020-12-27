@@ -263,7 +263,8 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     "CRESCENT_CLOUD",
     "CRESCENT_CLOUD/frontend_markers",
     "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
-    "LOG_FILES"
+    "LOG_FILES",
+    "R_OBJECTS"
   )
 
 }else{
@@ -286,7 +287,8 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
 
   FILE_TYPE_OUT_DIRECTORIES = c(
     "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
-    "LOG_FILES"
+    "LOG_FILES",
+    "R_OBJECTS"
   )
 }
 
@@ -406,11 +408,11 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
     
     MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name", "dataset_type")
+    MergeFilter <- c("name","dataset_ID","dataset_type")
     MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
     MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
     rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("DatasetType")
+    colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","DatasetType")
     
     InputsTable <- MergedInputsTableFilteredFinal
   }
