@@ -23,6 +23,20 @@
 ####################################
 
 ####################################
+### ISSUES TO BE FIXED
+### 1) with some fetal brain and GBM datasets in the RunPCA() step got:
+### Error in irlba(A = t(x = object), nv = npcs, ...) : 
+### max(nu, nv) must be positive
+### Calls: RunPCA ... RunPCA -> RunPCA.Assay -> RunPCA -> RunPCA.default -> irlba
+### Execution halted
+### Check this:
+### https://github.com/satijalab/seurat/issues/1788
+### Some Seurat users report that the Integration results in cells with ScaleData=0, which produces NaN values afterwards
+### Also some suggest to run FindVariableFeatures() before RunPCA()
+### but FindVariableFeatures() doesn't apply to SCTransform(), check if this works
+####################################
+
+####################################
 ### HOW TO RUN THIS SCRIPT 
 ### Using one-line-commands in a console or terminal type:
 ### 'Rscript ~/path_to_this_file/Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R -h'
@@ -60,7 +74,7 @@ suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles
 writeLines("\n**** SETUP RUN ****\n")
 
 ####################################
-### Turning warnings off for the sake of a cleaner aoutput
+### Turning warnings off for the sake of a cleaner output
 ####################################
 oldw <- getOption("warn")
 options( warn = -1 )
@@ -220,14 +234,14 @@ writeLines("\n*** Create outdirs ***\n")
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
   Tempdir         <- ProgramOutdir
-  dir.create(file.path(Tempdir), showWarnings = F) 
+  dir.create(file.path(Tempdir), showWarnings = F)
   dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F) 
-  
+
   FILE_TYPE_OUT_DIRECTORIES = c(
     "CRESCENT_CLOUD",
-    "CRESCENT_CLOUD/frontend_normalized",
+    "CRESCENT_CLOUD/frontend_features",
+    "CRESCENT_CLOUD/frontend_counts",
     "CRESCENT_CLOUD/frontend_coordinates",
-    "CRESCENT_CLOUD/frontend_raw",
     "CRESCENT_CLOUD/frontend_groups",
     "AVERAGE_GENE_EXPRESSION_TABLES",
     "CELL_CLUSTER_IDENTITIES", 
@@ -236,7 +250,6 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     "DIMENSION_REDUCTION_PLOTS",
     "LOG_FILES",
     "QC_PLOTS",
-    "R_OBJECTS",
     "PSEUDO_BULK",
     "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS",
     "UNFILTERED_DATA_MATRICES"
@@ -259,7 +272,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
-  
+
   FILE_TYPE_OUT_DIRECTORIES = c(
     "AVERAGE_GENE_EXPRESSION_TABLES",
     "CELL_CLUSTER_IDENTITIES", 
@@ -357,7 +370,8 @@ DefaultParameters <- list(
 
   ### Parameters for datasets comparison
   AssaysForAverageGETables = c("RNA", "SCT", "integrated"),
-  AssaysForPseudoBulk = c("RNA", "SCT")
+  AssaysForPseudoBulk = c("RNA", "SCT"),
+  AssaysForLoom = c("RNA", "SCT")
 )
 
 ### Assay types for plot and table outfiles
@@ -443,11 +457,11 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
     InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
     
     MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name", "dataset_ID","dataset_type")
+    MergeFilter <- c("name", "dataset_ID", "dataset_type")
     MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
     MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
     rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","DatasetType")
+    colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID", "DatasetType")
     
     InputsTable <- MergedInputsTableFilteredFinal
   }
@@ -497,21 +511,25 @@ StopWatchEnd$LoadRDSIntegratedDatasets  <- Sys.time()
 ####################################
 ### Outfiles for web app: save normalized count matrix as loom
 ####################################
+
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   writeLines("\n*** Outfiles for web app: save normalized count matrix as loom ***\n")
   
   StopWatchStart$OutNormalizedTablesLoomFrontEnd  <- Sys.time()
   
-  normalized_count_matrix <- as.matrix(seurat.object.integrated@assays[["RNA"]]@data)
+  for (ASSAY in DefaultParameters[["AssaysForLoom"]]) {
+    assay <- tolower(ASSAY)
+    normalized_count_matrix <- as.matrix(seurat.object.integrated@assays[[ASSAY]]@data)
   
-  # all genes/features in matrix
-  features_tsv <- data.frame(features = rownames(normalized_count_matrix))
-  features_tsv_ordered <- as.data.frame(features_tsv[mixedorder(features_tsv$features),])
-  write.table(features_tsv_ordered, file=paste0(Tempdir, "/CRESCENT_CLOUD/frontend_raw/","features.tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
-  
-  # generating loom file of normalized count matrix
-  loom_file <- paste0(Tempdir, "/CRESCENT_CLOUD/frontend_normalized/","normalized_counts.loom")
-  create(loom_file, normalized_count_matrix, overwrite = T)
+    # all genes/features in matrix
+    features_tsv <- data.frame(features = rownames(normalized_count_matrix))
+    features_tsv_ordered <- as.data.frame(features_tsv[mixedorder(features_tsv$features),])
+    write.table(features_tsv_ordered, file=paste0(Tempdir, "/CRESCENT_CLOUD/frontend_features/","features_", assay, ".tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
+    
+    # generating loom file of normalized count matrix
+    loom_file <- paste0(Tempdir, "/CRESCENT_CLOUD/frontend_counts/","counts_", assay, ".loom")
+    create(loom_file, normalized_count_matrix, overwrite = T, display.progress = T)
+  }
   
   StopWatchEnd$OutNormalizedTablesLoomFrontEnd <- Sys.time()
   
@@ -659,16 +677,18 @@ writeLines("\n*** Generate a matrix with each gene (rows) marginals of SCTransfo
 
 StopWatchStart$SaveSctransformClustersInColumns  <- Sys.time()
 
+Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data[["dataset"]]
 seurat.object.integrated.list <- SplitObject(seurat.object.integrated, split.by = "dataset")
 
 for (assay_expression in DefaultParameters$AssaysForPseudoBulk) {
   mat_for_correl_each_cluster.df <- data.frame(row.names = rownames(seurat.object.integrated.list[[1]]@assays[[assay_expression]]))
+
   for (DatasetId in rownames(InputsTable)) {
     if (exists(x = "seurat.object.each_dataset") == T) {
       rm(seurat.object.each_dataset)
     }
     seurat.object.each_dataset <- subset(x = seurat.object.integrated, subset = dataset == DatasetId)
-    
+
     for (cluster_number in sort(unique(seurat.object.integrated$GlobalCellClusterIdentities))) {
       dataset_cluster <- (paste(DatasetId, cluster_number, sep = "_c", collapse = ""))
       res <- try(subset(x = seurat.object.each_dataset, subset = seurat_clusters == cluster_number), silent = TRUE)
@@ -1023,8 +1043,7 @@ for (dataset in rownames(InputsTable)) {
     rm(seurat.object.each_dataset)
   }
   seurat.object.each_dataset <- subset(x = seurat.object.integrated, idents = dataset)
-  print(seurat.object.each_dataset)
-  
+
   for (dim_red_method in names(DimensionReductionMethods)) {
     
     ####################################
