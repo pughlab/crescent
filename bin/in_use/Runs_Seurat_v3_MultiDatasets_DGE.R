@@ -77,7 +77,6 @@ suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-lin
 suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be plotted
 suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables quicker than read.table
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
-suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 ####################################

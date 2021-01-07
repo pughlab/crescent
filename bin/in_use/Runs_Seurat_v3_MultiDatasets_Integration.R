@@ -55,7 +55,6 @@ suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables qu
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
-suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(stringr))      # (CRAN) to regex and extract matching string. Only needed if using `-w Y` and `-x`.
 suppressPackageStartupMessages(library(STACAS))       # (GitHub carmonalab/STACAS) tested with v1.0.1 (compatible with Seurat v3.2.1). Needed for STACAS-based dataset integration
