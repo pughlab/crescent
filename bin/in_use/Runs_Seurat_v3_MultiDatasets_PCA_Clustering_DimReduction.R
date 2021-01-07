@@ -46,7 +46,6 @@ suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables qu
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
-suppressPackageStartupMessages(library(gtools))       # (CRAN) to do alphanumeric sorting. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 ####################################
@@ -506,7 +505,7 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   
   # all genes/features in matrix
   features_tsv <- data.frame(features = rownames(normalized_count_matrix))
-  features_tsv_ordered <- as.data.frame(features_tsv[mixedorder(features_tsv$features),])
+  features_tsv_ordered <- as.data.frame(sort(features_tsv$features))
   write.table(features_tsv_ordered, file=paste0(Tempdir, "/CRESCENT_CLOUD/frontend_raw/","features.tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
   
   # generating loom file of normalized count matrix
