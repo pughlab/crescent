@@ -1027,9 +1027,9 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
     dataset <- rownames(InputsTable)[[i]]
     print(dataset)
 
-    if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    if ((regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) & (!(regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1))) {
       OutfileRDS<-paste0("R_OBJECTS_CWL/", list_DatasetMinioIDs[[dataset]], ".", PrefixOutfiles, ".", ProgramOutdir, "_", dataset , "_QC_Normalization", ".rds")
-    }else{
+    } else {
       OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset , "_QC_Normalization", ".rds")
     }
     saveRDS(seurat.object.list[[i]], file = OutfileRDS)
