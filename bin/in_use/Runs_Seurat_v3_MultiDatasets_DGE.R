@@ -90,7 +90,7 @@ suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles
 writeLines("\n**** SETUP RUN ****\n")
 
 ####################################
-### Turning warnings off for the sake of a cleaner aoutput
+### Turning warnings off for the sake of a cleaner output
 ####################################
 oldw <- getOption("warn")
 options( warn = -1 )
@@ -178,8 +178,8 @@ option_list <- list(
 
                 Default = 'NA'"),
   #
-  make_option(c("-t", "--assay_to_use_for_dge"), default="SCT",
-              help="Only needed if using -f 1 to 12. Either 'SCT' or 'RNA'
+  make_option(c("-t", "--assay_to_use_for_dge"), default="RNA",
+              help="Only needed if using -f 1 to 12. Either 'RNA' or 'SCT'
 
                 Default = 'SCT'"),
   #
@@ -257,13 +257,13 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
   Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F)
+  dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F)
 
   FILE_TYPE_OUT_DIRECTORIES = c(
     "CRESCENT_CLOUD",
     "CRESCENT_CLOUD/frontend_markers",
     "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
-    "LOG_FILES",
-    "R_OBJECTS"
+    "LOG_FILES"
   )
 
 }else{
@@ -497,7 +497,7 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
 }
 
 if (all(names(listAttributesToSearchInSeuratObject) %in% names(seurat.object.integrated@meta.data)) == T) {
-    writeLines("\nOk\n")
+  writeLines("\nOk\n")
 }else{
   stop(paste0(paste0("\n\nERROR!!! couldn't find all '", length(names(listAttributesToSearchInSeuratObject)), "' requested properties in Seurat object metadata:", "\n\n"),
               paste0("Requested: '"    , paste(names(listAttributesToSearchInSeuratObject), collapse = "' '"), "'\n\n"),
@@ -1186,8 +1186,11 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   writeLines("\n*** Saving the full run R object ***\n")
   
   StopWatchStart$SaveRDSFull  <- Sys.time()
-  
-  OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_full_run", ".rds")
+  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    OutfileRDS<-paste0("R_OBJECTS_CWL/", PrefixOutfiles, ".", ProgramOutdir, "_full_run", ".rds")
+  }else{
+    OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_full_run", ".rds")
+  }
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDSFull  <- Sys.time()
