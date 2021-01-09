@@ -60,7 +60,6 @@ suppressPackageStartupMessages(library(stringr))      # (CRAN) to regex and extr
 suppressPackageStartupMessages(library(STACAS))       # (GitHub carmonalab/STACAS) tested with v1.0.1 (compatible with Seurat v3.2.1). Needed for STACAS-based dataset integration
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 suppressPackageStartupMessages(library(cluster))      # (CRAN) to cluster/sort the STACAS distances
-
 ####################################
 
 ################################################################################################################################################
@@ -72,7 +71,7 @@ suppressPackageStartupMessages(library(cluster))      # (CRAN) to cluster/sort t
 writeLines("\n**** SETUP RUN ****\n")
 
 ####################################
-### Turning warnings off for the sake of a cleaner aoutput
+### Turning warnings off for the sake of a cleaner output
 ####################################
 oldw <- getOption("warn")
 options( warn = -1 )
@@ -101,7 +100,7 @@ option_list <- list(
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-j", "--infile_r_objects"), default="NA",
-              help="Used with the 'run_cwl' option for mounting input R Object file directory in 'inputs_list' to CWL containers
+              help="Used with the --run_cwl to mount the --inputs_list R object into CWL containers
 
                 Default = 'NA'"),
   #
@@ -220,13 +219,12 @@ writeLines("\n*** Create outdirs ***\n")
 if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
   Tempdir         <- ProgramOutdir
-  dir.create(file.path(Tempdir), showWarnings = F) 
-  dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F) 
-  
+  dir.create(file.path(Tempdir), showWarnings = F)
+  dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F)
+
   FILE_TYPE_OUT_DIRECTORIES = c(
     "CRESCENT_CLOUD",
     "LOG_FILES",
-    "R_OBJECTS",
     "PSEUDO_BULK",
     "STACAS"
   )
@@ -251,8 +249,8 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   
   FILE_TYPE_OUT_DIRECTORIES = c(
     "LOG_FILES",
-    "R_OBJECTS",
     "PSEUDO_BULK",
+    "R_OBJECTS",
     "STACAS"
   )
 }
@@ -415,20 +413,19 @@ writeLines("\n*** Load each dataset R object ***\n")
 StopWatchStart$LoadRDSEachDataset  <- Sys.time()
 
 if ((regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) & (!(regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1))) {
-  RObjects <- list.files(InputRObjects, pattern="*_QC_Normalization.rds", full.names=TRUE)
+  RObjects <- list.files(InputRObjects, pattern="*_QC_Normalization.rds", full.names=T)
   seurat.object.list <- list()
-  
   for (object in RObjects) {
     MinioID <- str_extract(basename(object), regex("[^.]*"))
     for (dataset in rownames(InputsTable)) {
-      DatasetMinioID   <- InputsTable[dataset,"DatasetMinioID"]
+      DatasetMinioID <- InputsTable[dataset,"DatasetMinioID"]
       if (MinioID == DatasetMinioID) {
         DatasetIndexInInputsTable <- which(x = rownames(InputsTable) == dataset)
         seurat.object.list[[DatasetIndexInInputsTable]] <- readRDS(object)
       }
     }
   }
-} else {
+}else{
   seurat.object.list <- list()
   for (dataset in rownames(InputsTable)) {
     print(dataset)
@@ -480,7 +477,7 @@ for (assay_expression in DefaultParameters$AssaysForPseudoBulk) {
   write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(mat_for_correl_all_cells.df,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
   close(Outfile.con)
-
+  
   ### Get correlation
   mat_for_correl_all_cells.cor <- round(cor(mat_for_correl_all_cells.df), digits = 3)
   OutfilePathName <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor", ".tsv.bz2")
@@ -737,12 +734,12 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
   StopWatchStart$SaveRDSFull  <- Sys.time()
   
-    if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-      OutfileRDS<-paste0("R_OBJECTS_CWL/", PrefixOutfiles, ".", ProgramOutdir, "_Integration", ".rds")
-    } else {
-      OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_Integration", ".rds")
-    }
-
+  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    OutfileRDS<-paste0("R_OBJECTS_CWL/", PrefixOutfiles, ".", ProgramOutdir, "_Integration", ".rds")
+  } else {
+    OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_Integration", ".rds")
+  }
+  
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDSFull  <- Sys.time()
