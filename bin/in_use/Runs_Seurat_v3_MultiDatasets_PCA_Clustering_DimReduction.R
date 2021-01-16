@@ -33,14 +33,20 @@
 ### https://github.com/satijalab/seurat/issues/1788
 ### Some Seurat users report that the Integration results in cells with ScaleData=0, which produces NaN values afterwards
 ### Also some suggest to run FindVariableFeatures() before RunPCA()
-### but FindVariableFeatures() doesn't apply to SCTransform(), check if this works
+### but FindVariableFeatures() doesn't apply to SCTransform()
+####################################
+
+####################################
+### NOTES
+### 1) Seurat developers suggest to use slot 'data' for DGE, not scale.data
+###    Also, the @data slot has more genes than the @scale.data slot. For SCT @scale.data has only 3000 genes, and is empty for RNA.
+###    Thus, here we are saving @data in the loom files
 ####################################
 
 ####################################
 ### HOW TO RUN THIS SCRIPT 
-### Using one-line-commands in a console or terminal type:
+### For help using one-line-commands in a console or terminal type:
 ### 'Rscript ~/path_to_this_file/Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R -h'
-### for help
 ####################################
 
 ####################################
@@ -123,10 +129,10 @@ option_list <- list(
                 Default = '1'"),
   #
   make_option(c("-v", "--clustering_inputs"), default="1",
-              help="One or more of the following options. If more than one, pass the choice <comma> delimited, e.g. '1,2,3'
+              help="One or more of the following options. Use <comma> delimited for multiple options, e.g. '1,2,3'
                 '1' = globaly clusters the integrated datasets (mandatory in this script)
-                '2' = re-clusters each datasets split from the integrated datasets. Needed for `-f 6`
-                '3' = re-clusters each dataset type (column 3 from -inputs_list) from the integrated datasets. Needed for `-f 7`
+                '2' = re-clusters each datasets split from the integrated datasets
+                '3' = re-clusters each dataset type (column 3 from -inputs_list) from the integrated datasets
                 
                 Default = '1'"),
   #
@@ -183,14 +189,28 @@ option_list <- list(
                 
                 Default = 'Y'"),
   #
-  make_option(c("-w", "--run_cwl"), default="N",
-              help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME' . Type 'y/Y' or 'n/N'.
-                Note, if using 'y/Y' this supersedes option -o
+  make_option(c("-t", "--save_loom_files"), default="Y",
+              help="Indicates if loom files should be saved
+                Note that this may be time consuming. Type 'y/Y' or 'n/N'
                 
-                Default = 'N'"),
+                Default = 'Y'"),
+  #
+  make_option(c("-b", "--assays_for_loom"), default="RNA",
+              help="Only needed if using '-t Y'.  It indicates <comma> delimited 'RNA' and/or 'SCT'.
+                Note that this may be time consuming
+                
+                Default = 'Y'"),
+  #
+  make_option(c("-w", "--run_cwl"), default="0",
+              help="Indicates if this script should produce 'frontend' files for crescent.cloud
+                0 = no frontend files should be produced
+                1 = frontend files should be produced and '--minio_path path' is provided
+                2 = frontend files should be produced but '--minio_path path' is not provided (i.e local run)
+
+                Default = '0'"),
   #
   make_option(c("-x", "--minio_path"), default="NA",
-              help="Used with the 'run_cwl' option above for mounting input data files in 'inputs_list' to CWL containers
+              help="Only needed if using '-w 1' to mount input data files in 'inputs_list' to CWL containers
               
                 Default = 'NA'"),
   #
@@ -217,7 +237,9 @@ ApplySelectedGenes      <- opt$apply_list_genes
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
-RunsCwl                 <- opt$run_cwl
+SaveLoom                <- opt$save_loom_files
+AssaysForLoom           <- opt$assays_for_loom
+RunsCwl                 <- as.numeric(opt$run_cwl)
 MinioPath               <- opt$minio_path
 MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
 
@@ -228,6 +250,18 @@ for (optionInput in option_list) {
 }
 OneLineCommands <- paste0(OneLineCommands, paste0("`\n"))
 writeLines(OneLineCommands)
+
+####################################
+### Check that mandatory parameters are not 'NA' (default)
+####################################
+writeLines("\n*** Check that mandatory parameters are not 'NA' (default) ***\n")
+
+ListMandatory<-list("inputs_list", "infile_r_object", "outdir", "prefix_outfiles")
+for (param in ListMandatory) {
+  if (length(grep('^NA$',opt[[param]], perl = T))) {
+    stop(paste0("Parameter -", param, " can't be 'NA' (default). Use option -h for help."))
+  }
+}
 
 ####################################
 ### Start stopwatches
@@ -243,36 +277,54 @@ StopWatchStart$Overall  <- Sys.time()
 ####################################
 writeLines("\n*** Create outdirs ***\n")
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
-  Tempdir         <- ProgramOutdir
-  dir.create(file.path(Tempdir), showWarnings = F)
-  dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F)
-  
+FILE_TYPE_OUT_DIRECTORIES = c(
+  "AVERAGE_GENE_EXPRESSION_TABLES",
+  "CELL_CLUSTER_IDENTITIES", 
+  "CELL_FRACTIONS", 
+  "DIMENSION_REDUCTION_COORDINATE_TABLES", 
+  "DIMENSION_REDUCTION_PLOTS",
+  "LOG_FILES",
+  "QC_PLOTS",
+  "PSEUDO_BULK",
+  "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS",
+  "UNFILTERED_DATA_MATRICES"
+)
+
+if (RunsCwl == 0 || RunsCwl == 2) {
   FILE_TYPE_OUT_DIRECTORIES = c(
+    FILE_TYPE_OUT_DIRECTORIES,
+    "R_OBJECTS"
+  )
+}
+
+if (RunsCwl == 1 || RunsCwl == 2) {
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    FILE_TYPE_OUT_DIRECTORIES,
     "CRESCENT_CLOUD",
     "CRESCENT_CLOUD/frontend_features",
     "CRESCENT_CLOUD/frontend_counts",
     "CRESCENT_CLOUD/frontend_coordinates",
     "CRESCENT_CLOUD/frontend_groups",
-    "AVERAGE_GENE_EXPRESSION_TABLES",
-    "CELL_CLUSTER_IDENTITIES", 
-    "CELL_FRACTIONS", 
-    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
-    "DIMENSION_REDUCTION_PLOTS",
-    "LOG_FILES",
-    "QC_PLOTS",
-    "PSEUDO_BULK",
-    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS",
-    "UNFILTERED_DATA_MATRICES"
+    "CRESCENT_CLOUD/frontend_metadata",
+    "CRESCENT_CLOUD/frontend_raw",
+    "CRESCENT_CLOUD/frontend_normalized"
   )
-  
-}else{
-  ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+}
+
+if (RunsCwl == 1) {
+  ### Using `-w 1` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
+  ### for most outfiles, except R objects, which will be written into R_OBJECTS_CWL
+  Tempdir         <- ProgramOutdir
+  dir.create(file.path(Tempdir), showWarnings = F)
+  dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F)
+  dir.create(file.path("LOOM_FILES_CWL"), showWarnings = F)
+}else if (RunsCwl == 0 || RunsCwl == 2) {
+  ## Using `-w 0` or `-w 2` will create a Tempdir/DIRECTORY for temporary storage of outfiles because sometimes
+  ## long paths of outdirectories casuse R to leave outfiles unfinished
   ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
-  Tempdir        <- "~/temp" 
-  #
+  ## The difference between `-w 0` and `-w 2` is that the first one doesn't produce frontend outfiles for crescent.cloud
+  Tempdir           <- "~/temp"
   UserHomeDirectory <- Sys.getenv("HOME")[[1]]
   #
   Outdir<-gsub("^~/",paste0(UserHomeDirectory,"/"), Outdir)
@@ -284,20 +336,8 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
-
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "AVERAGE_GENE_EXPRESSION_TABLES",
-    "CELL_CLUSTER_IDENTITIES", 
-    "CELL_FRACTIONS", 
-    "DIMENSION_REDUCTION_COORDINATE_TABLES", 
-    "DIMENSION_REDUCTION_PLOTS",
-    "LOG_FILES",
-    "QC_PLOTS",
-    "R_OBJECTS",
-    "PSEUDO_BULK",
-    "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS",
-    "UNFILTERED_DATA_MATRICES"
-  )
+}else{
+  stop(paste0("ERROR unexpected option '-w ", RunsCwl))
 }
 
 sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(eachdir) {
@@ -365,8 +405,9 @@ options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 ####################################
 ### Some of these default parameters are provided by Seurat developers, others are tailored empirically
 
-RequestedClusteringInputs        = unlist(strsplit(ClusteringInputs, ","))
-RequestedApplySelectedGenes      = unlist(strsplit(ApplySelectedGenes, ","))
+RequestedClusteringInputs   = unlist(strsplit(ClusteringInputs, ","))
+RequestedApplySelectedGenes = unlist(strsplit(ApplySelectedGenes, ","))
+RequestedAssaysForLoom      = unlist(strsplit(AssaysForLoom, ","))
 
 DefaultParameters <- list(
   ### Parameters for QC plots
@@ -395,18 +436,6 @@ DimensionReductionMethods$umap$name <-"UMAP"
 DimensionReductionMethods$tsne$name <-"TSNE"
 DimensionReductionMethods$umap$run  <-as.function(RunUMAP)
 DimensionReductionMethods$tsne$run  <-as.function(RunTSNE)
-
-####################################
-### Check that mandatory parameters are not 'NA' (default)
-####################################
-writeLines("\n*** Check that mandatory parameters are not 'NA' (default) ***\n")
-
-ListMandatory<-list("infiles_list", "infile_r_object", "outdir", "prefix_outfiles")
-for (param in ListMandatory) {
-  if (length(grep('^NA$',opt[[param]], perl = T))) {
-    stop(paste0("Parameter -", param, " can't be 'NA' (default). Use option -h for help."))
-  }
-}
 
 ####################################
 ### Check that optional parameters are compatible with each other
@@ -452,35 +481,28 @@ writeLines("\n**** LOAD DATASETS ****\n")
 ####################################
 writeLines("\n*** Load --inputs_list ***\n")
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  if (regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1) {
-    
-    InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-    colnames(InputsTable)<-c("DatasetType")
-    
-  } else {
-    MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
-    MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
-    
-    for (i in seq_along(MinioPaths)) {
-      MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
-    }
-    
-    InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
-    
-    MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name", "dataset_ID", "dataset_type")
-    MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
-    MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
-    rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID", "DatasetType")
-    
-    InputsTable <- MergedInputsTableFilteredFinal
-  }
-} else {
+if (RunsCwl == 0 || RunsCwl == 2) {
   InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
   colnames(InputsTable)<-c("DatasetType")
+}else if (RunsCwl == 1) {
+  MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
+  MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
+  
+  for (i in seq_along(MinioPaths)) {
+    MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
+  }
+  
+  InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
+  
+  MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
+  MergeFilter <- c("name", "dataset_ID", "dataset_type")
+  MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
+  MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
+  rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
+  colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID", "DatasetType")
+  
+  InputsTable <- MergedInputsTableFilteredFinal
 }
 
 ##### Replace low dashes by dots in rownames(InputsTable) or DatasetType
@@ -559,27 +581,40 @@ if (regexpr("^NA$", InfileSelectBarcodes , ignore.case = T)[1] == 1) {
 ### Outfiles for web app: save count matrices as loom
 ####################################
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  writeLines("\n*** Outfiles for web app: save normalized count matrix as loom ***\n")
+if (regexpr("^Y$", SaveLoom, ignore.case = T)[1] == 1) {
   
-  StopWatchStart$OutNormalizedTablesLoomFrontEnd  <- Sys.time()
+  writeLines("\n*** Saving loom files ***\n")
   
-  for (ASSAY in DefaultParameters[["AssaysForLoom"]]) {
-    assay <- tolower(ASSAY)
-    normalized_count_matrix <- as.matrix(seurat.object.integrated@assays[[ASSAY]]@data)
+  StopWatchStart$LoomFiles  <- Sys.time()
   
-    # all genes/features in matrix
-    features_tsv <- data.frame(features = rownames(normalized_count_matrix))
-    features_tsv_ordered <- as.data.frame(sort(features_tsv$features))
-    write.table(features_tsv_ordered, file=paste0(Tempdir, "/CRESCENT_CLOUD/frontend_features/","features_", assay, ".tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
+    if (RunsCwl == 1 || RunsCwl == 2) {
+    writeLines("\n*** Outfiles for web app: save normalized count matrix as loom ***\n")
+  
+      for (ASSAY in RequestedAssaysForLoom) {
+        assay <- tolower(ASSAY)
+        raw_count_matrix <- as.matrix(seurat.object.integrated@assays[[ASSAY]]@data)
+  
+        # all genes/features in matrix
+        features_tsv <- data.frame(features = rownames(raw_count_matrix))
+        features_tsv_ordered <- as.data.frame(sort(features_tsv$features))
+        write.table(features_tsv_ordered, file=paste0(Tempdir, "/CRESCENT_CLOUD/frontend_features/","features_", assay, ".tsv"), sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
+  
+        # generating loom file of count matrix
+        if (RunsCwl == 1) {
+          loom_file <- paste0("LOOM_FILES_CWL/", "counts_", assay, ".loom")
+        }else if (RunsCwl == 2) {
+          loom_file <- paste0(Tempdir, "/CRESCENT_CLOUD/frontend_counts/","counts_", assay, ".loom")
+        }
+        create(loom_file, raw_count_matrix, overwrite = T, display.progress = T)
+      }
+    }
+  
+  StopWatchEnd$LoomFiles  <- Sys.time()
+
+}else{
     
-    # generating loom file of count matrix
-    loom_file <- paste0(Tempdir, "/CRESCENT_CLOUD/frontend_counts/","counts_", assay, ".loom")
-    create(loom_file, normalized_count_matrix, overwrite = T, display.progress = T)
-  }
-  
-  StopWatchEnd$OutNormalizedTablesLoomFrontEnd <- Sys.time()
-  
+  writeLines("\n*** Not saving the loom files ***\n")
+    
 }
 
 ####################################
@@ -690,7 +725,7 @@ close(Outfile.con)
 StopWatchEnd$AllCellClusterTables  <- Sys.time()
 
 ## Creates dataframe to merge for groups.tsv
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+if (RunsCwl == 1 || RunsCwl == 2) {
   writeLines("\n*** Creates dataframe to merge for groups.tsv ***\n")
   
   StopWatchStart$SaveGlobalCellClusterIdentitiesFrontEnd  <- Sys.time()
@@ -798,7 +833,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
 
   StopWatchEnd$DimensionReductionWriteCoords[[dim_red_method]]  <- Sys.time()
   
-  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  if (RunsCwl == 1 || RunsCwl == 2) {
     ####################################
     ### Outfiles for web app: dimension reduction coordinates
     ####################################
@@ -1219,6 +1254,7 @@ for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
 
 StopWatchEnd$AverageGeneExpressionEachDatasetGlobalClustersPerDataset  <- Sys.time()
 
+
 ################################################################################################################################################
 ################################################################################################################################################
 ### HERE ARE THE FUNCTIONS TO PROCESS EACH DATASET USING RE-CLUSTERED CELLS
@@ -1359,6 +1395,7 @@ if (2 %in% RequestedClusteringInputs == T) {
   system(paste("rm", OutfileEachDatasetNumbClusters, sep = " "))
   system(paste("bzip2 -f", OutfileEachDatasetNumbCellsPerCluster, sep = " "))
   system(paste("rm", OutfileEachDatasetNumbCellsPerCluster, sep = " "))
+  
 }
 
 ################################################################################################################################################
@@ -1412,7 +1449,7 @@ if (NumberOfDatasetsTypes >= 1) {
 
   StopWatchEnd$WriteOutDatasetTypeClusterAssignments  <- Sys.time()
   
-  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  if (RunsCwl == 1 || RunsCwl == 2) {
     ####################################
     ### Outfiles for web app: each dataset type global cluster assignments
     ####################################
@@ -1772,9 +1809,9 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
   StopWatchStart$SaveRDSFull  <- Sys.time()
   
-  if ((regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) & (!(regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1))) {
+  if (RunsCwl == 1) {
     OutfileRDS<-paste0("R_OBJECTS_CWL/", PrefixOutfiles, ".", ProgramOutdir, "_PCA_Clustering_DimReduction", ".rds")
-  } else {
+  }else{
     OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_PCA_Clustering_DimReduction", ".rds")
   }
   saveRDS(seurat.object.integrated, file = OutfileRDS)
@@ -1828,10 +1865,10 @@ lapply(names(StopWatchStart), function(stepToClock) {
 writeLines("\n*** Moving outfiles into outdir or keeping them at tempdir (if using CWL) ***\n")
 
 ### using two steps to copy files (`file.copy` and `file.remove`) instead of just `file.rename` to avoid issues with path to Tempdir in cluster systems
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+if (RunsCwl == 1) {
   writeLines("\n*** Keeping files at: ***\n")
   writeLines(Tempdir)
-} else {
+}else{
   writeLines("\n*** Moving outfiles into outdir ***\n")
   sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(DirName) {
     TempdirWithData <- paste0(Tempdir, "/", DirName)
@@ -1844,6 +1881,15 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
             file.copy(from=paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
             file.remove(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName))
           })
+        })
+      })
+    }else if (DirName == "CRESCENT_CLOUD") {
+      sapply(list.dirs(TempdirWithData, full.names = F, recursive = F), FUN=function(SubDirName) {
+        OutdirFinal <- gsub(pattern = Tempdir, replacement =  paste0(Outdir, "/", ProgramOutdir), x = paste0(TempdirWithData, "/", SubDirName))
+        dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
+        sapply(list.files(paste0(TempdirWithData, "/", SubDirName), pattern = ".tsv|.loom", full.names = F), FUN=function(EachFileName) {
+          file.copy(from=paste0(TempdirWithData, "/", SubDirName, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+          file.remove(paste0(TempdirWithData, "/", SubDirName, "/", EachFileName))
         })
       })
     }else{
