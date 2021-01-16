@@ -17,9 +17,8 @@
 
 ####################################
 ### HOW TO RUN THIS SCRIPT 
-### Using one-line-commands in a console or terminal type:
+### For help using one-line-commands in a console or terminal type:
 ### 'Rscript ~/path_to_this_file/Runs_Seurat_v3_MultiDatasets_QC_Normalization.R -h'
-### for help
 ####################################
 
 ####################################
@@ -40,7 +39,6 @@ suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables qu
 suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC violin plots
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
-suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 ####################################
 
@@ -140,14 +138,16 @@ option_list <- list(
                 
                 Default = 'Y'"),
   #
-  make_option(c("-w", "--run_cwl"), default="N",
-              help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME' . Type 'y/Y' or 'n/N'.
-                Note, if using 'y/Y' this supersedes option -o
-                
-                Default = 'N'"),
+  make_option(c("-w", "--run_cwl"), default="0",
+              help="Indicates if this script should produce 'frontend' files for crescent.cloud and if CWL is used
+                0 = no frontend files should be produced and CWL is not used
+                1 = frontend files should be produced and CWL is used
+                2 = frontend files should be produced but CWL is not used (e.g. run locally)
+
+                Default = '0'"),
   #
   make_option(c("-x", "--minio_path"), default="NA",
-              help="Used with the 'run_cwl' option above for mounting input data files in 'inputs_list' to CWL containers
+              help="Only needed if using '-w 1' to mount input data files in 'inputs_list' to CWL containers
               
                 Default = 'NA'"),
   #
@@ -169,7 +169,7 @@ Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
-RunsCwl                 <- opt$run_cwl
+RunsCwl                 <- as.numeric(opt$run_cwl)
 MinioPath               <- opt$minio_path
 MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
 
@@ -180,6 +180,20 @@ for (optionInput in option_list) {
 }
 OneLineCommands <- paste0(OneLineCommands, paste0("`\n"))
 writeLines(OneLineCommands)
+
+####################################
+### Check that mandatory parameters are not 'NA' (default)
+####################################
+writeLines("\n*** Check that mandatory parameters are not 'NA' (default) ***\n")
+
+ListMandatory<-list("inputs_list", "outdir", "prefix_outfiles")
+for (param in ListMandatory) {
+  if (length(grep('^NA$',opt[[param]], perl = T))) {
+    stop(paste0("Parameter -", param, " can't be 'NA' (default). Use option -h for help."))
+  }else{
+    print(paste0(param, "'", opt[[param]], "'"))
+  }
+}
 
 ####################################
 ### Start stopwatches
@@ -195,28 +209,42 @@ StopWatchStart$Overall  <- Sys.time()
 ####################################
 writeLines("\n*** Create outdirs ***\n")
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
+FILE_TYPE_OUT_DIRECTORIES = c(
+  "FILTERED_DATA_MATRICES",
+  "LOG_FILES",
+  "QC_PLOTS", 
+  "QC_TABLES",
+  "UNFILTERED_DATA_MATRICES"
+)
+
+if (RunsCwl == 0 || RunsCwl == 2) {
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    FILE_TYPE_OUT_DIRECTORIES,
+    "R_OBJECTS"
+  )
+}
+
+if (RunsCwl == 1 || RunsCwl == 2) {
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    FILE_TYPE_OUT_DIRECTORIES,
+    "CRESCENT_CLOUD",
+    "CRESCENT_CLOUD/frontend_qc"
+  )
+}
+
+if (RunsCwl == 1) {
+  ### Using `-w 1` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
+  ### for most outfiles, except R objects, which will be written into R_OBJECTS_CWL
   Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F)
   dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F)
-
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "CRESCENT_CLOUD",
-    "CRESCENT_CLOUD/frontend_qc",
-    "FILTERED_DATA_MATRICES",
-    "LOG_FILES",
-    "QC_PLOTS", 
-    "QC_TABLES", 
-    "UNFILTERED_DATA_MATRICES"
-  )
-  
-}else{
-  ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+}else if (RunsCwl == 0 || RunsCwl == 2) {
+  ## Using `-w 0` or `-w 2` will create a Tempdir/DIRECTORY for temporary storage of outfiles because sometimes
+  ## long paths of outdirectories casuse R to leave outfiles unfinished
   ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
-  Tempdir        <- "~/temp" 
-  #
+  ## The difference between `-w 0` and `-w 2` is that the first one doesn't produce frontend outfiles for crescent.cloud
+  Tempdir           <- "~/temp"
   UserHomeDirectory <- Sys.getenv("HOME")[[1]]
   #
   Outdir<-gsub("^~/",paste0(UserHomeDirectory,"/"), Outdir)
@@ -228,15 +256,8 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
-  
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "FILTERED_DATA_MATRICES",
-    "LOG_FILES",
-    "QC_PLOTS", 
-    "QC_TABLES", 
-    "R_OBJECTS",
-    "UNFILTERED_DATA_MATRICES"
-  )
+}else{
+  stop(paste0("ERROR unexpected option '-w ", RunsCwl))
 }
 
 sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(eachdir) {
@@ -330,18 +351,6 @@ ColourDefinitions<-list("orange"        = "#E69F00",
 )
 ColoursQCViolinPlots <- c(ColourDefinitions[["skyblue"]][[1]], ColourDefinitions[["orange"]][[1]])
 
-####################################
-### Check that mandatory parameters are not 'NA' (default)
-####################################
-writeLines("\n*** Check that mandatory parameters are not 'NA' (default) ***\n")
-
-ListMandatory<-list("infiles_list", "outdir", "prefix_outfiles")
-for (param in ListMandatory) {
-  if (length(grep('^NA$',opt[[param]], perl = T))) {
-    stop(paste0("Parameter -", param, " can't be 'NA' (default). Use option -h for help."))
-  }
-}
-
 ################################################################################################################################################
 ################################################################################################################################################
 ### HERE ARE THE FUNCTIONS TO LOAD AND QC DATASETS
@@ -355,35 +364,28 @@ writeLines("\n**** LOAD AND QC DATASETS ****\n")
 ####################################
 writeLines("\n*** Load --inputs_list ***\n")
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  if (regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1) {
-    
-    InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-    colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
-    
-  } else {
-    MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
-    MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
-    
-    for (i in seq_along(MinioPaths)) {
-      MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
-    }
-    
-    InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
-    
-    MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name","dataset_ID","dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
-    MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
-    MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
-    rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
-    
-    InputsTable <- MergedInputsTableFilteredFinal
-  }
-} else {
+if (RunsCwl == 0 || RunsCwl == 2) {
   InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
   colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+}else if (RunsCwl == 1) {
+  MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
+  MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
+  
+  for (i in seq_along(MinioPaths)) {
+    MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
+  }
+  
+  InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
+  
+  MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
+  MergeFilter <- c("name","dataset_ID","dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
+  MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
+  MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
+  rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
+  colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+  
+  InputsTable <- MergedInputsTableFilteredFinal
 }
 
 ##### Replace low dashes by dots in rownames(InputsTable) or DatasetType
@@ -410,7 +412,7 @@ list_MaxNGenes          <-list()
 list_MinNReads          <-list()
 list_MaxNReads          <-list()
 
-if ((regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) & (!(regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1))) {
+if (RunsCwl == 1) {
   list_DatasetMinioIDs <- list()
 }
 
@@ -420,9 +422,9 @@ for (dataset in rownames(InputsTable)) {
   print(NumberOfDatasets)
   Dataset.SO <-paste0(dataset, ".so")
   
-  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  if (RunsCwl == 1) {
     PathToDataset <- InputsTable[dataset,"PathToDataset"]
-  } else {
+  }else{
     PathToDataset <- gsub("^~/",paste0(UserHomeDirectory,"/"), InputsTable[dataset,"PathToDataset"])
   }
   
@@ -440,7 +442,7 @@ for (dataset in rownames(InputsTable)) {
   list_MinNReads[[dataset]]          <- as.numeric(InputsTable[dataset,"MinNReads"])
   list_MaxNReads[[dataset]]          <- as.numeric(InputsTable[dataset,"MaxNReads"])
   
-  if ((regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) & (!(regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1))) {
+  if (RunsCwl == 1) {
     DatasetMinioID <- InputsTable[dataset,"DatasetMinioID"]
     list_DatasetMinioIDs[[dataset]] <- DatasetMinioID
   }
@@ -724,7 +726,8 @@ for (dataset in rownames(InputsTable)) {
     
     StopWatchEnd$QCviolinplots[[dataset]]  <- Sys.time()
     
-    if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    if (RunsCwl == 1 || RunsCwl == 2) {
+      
       ####################################
       ### Outfiles for web app: interactive qc plots
       ####################################
@@ -828,7 +831,8 @@ for (dataset in rownames(InputsTable)) {
     
     StopWatchEnd$OutTablesFilterDetailsAndFilteredCells[[dataset]]  <- Sys.time()
     
-    if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+    if (RunsCwl == 1 || RunsCwl == 2) {
+      
       ####################################
       ### Outfiles for web app: write out QC metrics for each dataset
       ####################################
@@ -1027,11 +1031,12 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
     dataset <- rownames(InputsTable)[[i]]
     print(dataset)
 
-    if ((regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) & (!(regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1))) {
+    if (RunsCwl == 1) {
       OutfileRDS<-paste0("R_OBJECTS_CWL/", list_DatasetMinioIDs[[dataset]], ".", PrefixOutfiles, ".", ProgramOutdir, "_", dataset , "_QC_Normalization", ".rds")
-    } else {
+    }else{
       OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_", dataset , "_QC_Normalization", ".rds")
     }
+    print(OutfileRDS)
     saveRDS(seurat.object.list[[i]], file = OutfileRDS)
   }
   
@@ -1088,10 +1093,10 @@ for (stepToClock in names(StopWatchStart)) {
 writeLines("\n*** Moving outfiles into outdir or keeping them at tempdir (if using CWL) ***\n")
 
 ### using two steps to copy files (`file.copy` and `file.remove`) instead of just `file.rename` to avoid issues with path to Tempdir in cluster systems
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+if (RunsCwl == 1) {
   writeLines("\n*** Keeping files at: ***\n")
   writeLines(Tempdir)
-} else {
+}else{
   writeLines("\n*** Moving outfiles into outdir ***\n")
   sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(DirName) {
     TempdirWithData <- paste0(Tempdir, "/", DirName)
@@ -1104,6 +1109,15 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
             file.copy(from=paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
             file.remove(paste0(TempdirWithData, "/", SubDirName, "/", SubSubDirName, "/", EachFileName))
           })
+        })
+      })
+    }else if (DirName == "CRESCENT_CLOUD") {
+      sapply(list.dirs(TempdirWithData, full.names = F, recursive = F), FUN=function(SubDirName) {
+        OutdirFinal <- gsub(pattern = Tempdir, replacement =  paste0(Outdir, "/", ProgramOutdir), x = paste0(TempdirWithData, "/", SubDirName))
+        dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
+        sapply(list.files(paste0(TempdirWithData, "/", SubDirName), pattern = ".tsv", full.names = F), FUN=function(EachFileName) {
+          file.copy(from=paste0(TempdirWithData, "/", SubDirName, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+          file.remove(paste0(TempdirWithData, "/", SubDirName, "/", EachFileName))
         })
       })
     }else{
