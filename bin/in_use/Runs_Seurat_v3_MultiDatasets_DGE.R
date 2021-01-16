@@ -38,9 +38,10 @@
 
 ####################################
 ### COMMENTS ON FINDING DIFFERENTIALLY EXPRESSED GENES
-### Finding markers for every cluster compared to all remaining cells
-### only.pos allows to report only the positive ones
-### Using min.pct and thresh.use (renamed logfc.threshold in latest Seurat versions) to speed comparisons up. Other options to further speed are min.diff.pct, and  max.cells.per.ident
+### Finding markers for every cluster/class compared to all remaining cells
+### only.pos allows to report only the positive ones, here using only.pos=F
+### Using min.pct and thresh.use (renamed logfc.threshold in latest Seurat versions) to speed comparisons up.
+### Other options to further speed are min.diff.pct, and  max.cells.per.ident
 ### See http://satijalab.org/seurat/de_vignette.html
 ### Other options
 ### find all markers of cluster 1
@@ -60,6 +61,14 @@
 ###    Now using the inverse of the number of cells in the data.
 ###    This is sufficiently small as to not compress logGER magnitudes,
 ###    while keeping comparisons with zero reasonably close to the range of potential logGER values (Innes and Bader, 2018, F1000 Research)
+###
+### 3) Seurat developers suggest to use slot 'data' for DGE, not scale.data, and that's what we are using here.
+###    However, there is some discussion here https://github.com/satijalab/seurat/issues/62
+###
+### 4) Seurat developers suggest to use assay 'RNA' for DGE, not 'SCT' or 'integrated'.
+###    However, there is considerable debate if 'SCT' can/should ne used instead
+###    Thus, here we allow the user to select assay(s) to use for DGE
+###    
 ####################################
 
 ####################################
@@ -77,9 +86,9 @@ suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-lin
 suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be plotted
 suppressPackageStartupMessages(library(data.table))   # (CRAN) to read tables quicker than read.table
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
-suppressPackageStartupMessages(library(loomR))        # (GitHub mojaveazure/loomR) needed for fron-end display of data. Only needed if using `-w Y`.
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 ####################################
+
 
 ################################################################################################################################################
 ################################################################################################################################################
@@ -133,7 +142,7 @@ option_list <- list(
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-c", "--infile_metadata"), default="NA",
-              help="A <tab> delimited table of barcodes and discrete properties to colour the dimension reduction plots, like:
+              help="A <tab> delimited table of barcodes and discrete properties to use for DGE calculation, like:
                 Barcode                CellClass    InOtherDatasets
                 d1_AAACCTGAGCGGCTTC-1  1            yes
                 d2_AAACCTGAGTCGAGTG-1  1            no
@@ -178,10 +187,10 @@ option_list <- list(
 
                 Default = 'NA'"),
   #
-  make_option(c("-t", "--assay_to_use_for_dge"), default="RNA",
-              help="Only needed if using -f 1 to 12. Either 'RNA' or 'SCT'
+  make_option(c("-t", "--assays_to_use_for_dge"), default="RNA",
+              help="Only needed if using -f 1 to 12. It indicates <comma> delimited 'RNA' and/or 'SCT'.
 
-                Default = 'SCT'"),
+                Default = 'RNA'"),
   #
   make_option(c("-u", "--number_cores"), default="MAX",
               help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
@@ -194,11 +203,13 @@ option_list <- list(
                 
                 Default = 'Y'"),
   #
-  make_option(c("-w", "--run_cwl"), default="N",
-              help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME'. Type 'y/Y' or 'n/N'.
-                Note, if using 'y/Y' this supersedes option -o
+  make_option(c("-w", "--run_cwl"), default="0",
+              help="Indicates if this script should produce 'frontend' files for crescent.cloud
+                0 = no frontend files should be produced
+                1 = frontend files should be produced and '--minio_path path' is provided
+                2 = frontend files should be produced but '--minio_path path' is not provided (i.e local run)
 
-                Default = 'N'"),
+                Default = '0'"),
   #
   make_option(c("-x", "--minio_path"), default="NA",
               help="Used with the 'run_cwl' option above for mounting input data files in 'inputs_list' to CWL containers
@@ -224,7 +235,7 @@ ThreshReturn            <- as.numeric(opt$return_threshold)
 DiffGeneExprComparisons <- opt$diff_gene_expr_comparisons
 MetadataColNamesForDge  <- opt$metadata_column_names_for_dge
 InfileListSubclasses    <- opt$infile_list_metadata_subclasses
-AssayForDge             <- opt$assay_to_use_for_dge
+AssaysForDge            <- opt$assays_to_use_for_dge
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- opt$run_cwl
@@ -253,25 +264,38 @@ StopWatchStart$Overall  <- Sys.time()
 ####################################
 writeLines("\n*** Create outdirs ***\n")
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
+FILE_TYPE_OUT_DIRECTORIES = c(
+  "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
+  "LOG_FILES"
+)
+
+if (RunsCwl == 0 || RunsCwl == 2) {
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    FILE_TYPE_OUT_DIRECTORIES,
+    "R_OBJECTS"
+  )
+}
+
+if (RunsCwl == 1 || RunsCwl == 2) {
+  FILE_TYPE_OUT_DIRECTORIES = c(
+    FILE_TYPE_OUT_DIRECTORIES,
+    "CRESCENT_CLOUD",
+    "CRESCENT_CLOUD/frontend_markers"
+  )
+}
+if (RunsCwl == 1) {
+  ### Using `-w 1` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
+  ### for most outfiles, except R objects, which will be written into R_OBJECTS_CWL
   Tempdir         <- ProgramOutdir
   dir.create(file.path(Tempdir), showWarnings = F)
   dir.create(file.path("R_OBJECTS_CWL"), showWarnings = F)
-
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "CRESCENT_CLOUD",
-    "CRESCENT_CLOUD/frontend_markers",
-    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
-    "LOG_FILES"
-  )
-
-}else{
-  ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+}else if (RunsCwl == 0 || RunsCwl == 2) {
+  ## Using `-w 0` or `-w 2` will create a Tempdir/DIRECTORY for temporary storage of outfiles because sometimes
+  ## long paths of outdirectories casuse R to leave outfiles unfinished
   ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
-  Tempdir        <- "~/temp"
-  #
+  ## The difference between `-w 0` and `-w 2` is that the first one doesn't produce frontend outfiles for crescent.cloud
+  Tempdir           <- "~/temp"
   UserHomeDirectory <- Sys.getenv("HOME")[[1]]
   #
   Outdir<-gsub("^~/",paste0(UserHomeDirectory,"/"), Outdir)
@@ -283,12 +307,8 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
-
-  FILE_TYPE_OUT_DIRECTORIES = c(
-    "DIFFERENTIAL_GENE_EXPRESSION_TABLES",
-    "LOG_FILES",
-    "R_OBJECTS"
-  )
+}else{
+  stop(paste0("ERROR unexpected option '-w ", RunsCwl))
 }
 
 sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(eachdir) {
@@ -357,6 +377,7 @@ options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 ### Some of these default parameters are provided by Seurat developers, others are tailored empirically
 
 RequestedDiffGeneExprComparisons = unlist(strsplit(DiffGeneExprComparisons, ","))
+RequestedAssaysForDge            = unlist(strsplit(AssaysForDge, ","))
 
 DefaultParameters <- list(
   ### Parameters for Cluster Biomarkers
@@ -390,35 +411,29 @@ writeLines("\n**** LOAD DATASETS ****\n")
 ####################################
 writeLines("\n*** Load --inputs_list ***\n")
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  if (regexpr("^NA$", MinioPath , ignore.case = T)[1] == 1) {
-    
-    InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-    colnames(InputsTable)<-c("DatasetType")
-    
-  } else {
-    MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
-    MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
-    
-    for (i in seq_along(MinioPaths)) {
-      MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
-    }
-    
-    InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
-    
-    MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-    MergeFilter <- c("name","dataset_ID","dataset_type")
-    MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
-    MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
-    rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-    colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","DatasetType")
-    
-    InputsTable <- MergedInputsTableFilteredFinal
-  }
-} else {
+if (RunsCwl == 0 || RunsCwl == 2) {
   InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
   colnames(InputsTable)<-c("DatasetType")
+  
+}else{
+  MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
+  MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
+  
+  for (i in seq_along(MinioPaths)) {
+    MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
+  }
+  
+  InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
+  
+  MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
+  MergeFilter <- c("name", "dataset_ID", "dataset_type")
+  MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
+  MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
+  rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
+  colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID", "DatasetType")
+  
+  InputsTable <- MergedInputsTableFilteredFinal
 }
 
 ##### Replace low dashes by dots in rownames(InputsTable) or DatasetType
@@ -526,43 +541,46 @@ writeLines("\n**** COMPUTE DGE USING GLOBAL CLUSTERS ****\n")
 ### Finding differentially expressed genes (1): using global cell clusers, compares each cell cluster vs. the rest of cells
 ####################################
 
-ClusterIdent <-seurat.object.integrated@meta.data$seurat_clusters
-NumberOfClusters<-length(unique(ClusterIdent))
-
 if (1 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes (1): using global cell clusers, compares each cell cluster vs. the rest of cells ***\n")
 
-  Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$seurat_clusters
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
+    
+    Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$seurat_clusters
+
+    StopWatchStart$FindDiffMarkersGlobalClustersVsRestOfCells$ASSAY  <- Sys.time()
+    
+    print(paste0("Number of groups = ", length(unique(seurat.object.integrated@meta.data$seurat_clusters))))
+    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
+
+    if (exists(x = "seurat.object.integrated.markers") == T) {
+      rm(seurat.object.integrated.markers)
+    }
+    seurat.object.integrated.markers <- FindAllMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+    SimplifiedDiffExprGenes.df <- seurat.object.integrated.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
+    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering_", assay, ".tsv.bz2"), "w")
+    write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
+    close(Outfile.con)
+
+    StopWatchEnd$FindDiffMarkersGlobalClustersVsRestOfCells$ASSAY  <- Sys.time()
+
+    if (RunsCwl == 1 || RunsCwl == 2) {
+      ####################################
+      ### Outfiles for web app: top differentially expressed genes
+      ####################################
+      writeLines("\n*** Outfiles for web app: top differentially expressed genes ***\n")
   
-  StopWatchStart$FindDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
-
-  print(paste0("Number of groups = ", length(unique(seurat.object.integrated@meta.data$seurat_clusters))))
-
-  FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
-  seurat.object.integrated.markers <- FindAllMarkers(object = seurat.object.integrated, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-  SimplifiedDiffExprGenes.df <- seurat.object.integrated.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-  Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", ".tsv.bz2"), "w")
-  write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
-  close(Outfile.con)
-
-  StopWatchEnd$FindDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
-
-  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-    ####################################
-    ### Outfiles for web app: top differentially expressed genes
-    ####################################
-    writeLines("\n*** Outfiles for web app: top differentially expressed genes ***\n")
-
-    StopWatchStart$OutTopDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
-
-    top_genes_by_cluster<-(seurat.object.integrated.markers %>% group_by(cluster) %>% top_n(DefaultParameters$TopDGEForFrontEnd, avg_logFC))
-    globalMarkersFile <- top_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
-    write.table(globalMarkersFile, paste0(Tempdir, "/CRESCENT_CLOUD/frontend_markers/","TopMarkersPerCluster.tsv"), row.names = F, sep="\t", quote = F)
-
-    StopWatchEnd$OutTopDiffMarkersGlobalClustersVsRestOfCells  <- Sys.time()
-
-  }
+      StopWatchStart$OutTopDiffMarkersGlobalClustersVsRestOfCells$ASSAY  <- Sys.time()
+  
+      top_genes_by_cluster<-(seurat.object.integrated.markers %>% group_by(cluster) %>% top_n(DefaultParameters$TopDGEForFrontEnd, avg_logFC))
+      globalMarkersFile <- top_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
+      write.table(globalMarkersFile, paste0(Tempdir, "/CRESCENT_CLOUD/frontend_markers/","TopMarkersPerCluster_", assay, ".tsv"), row.names = F, sep="\t", quote = F)
+  
+      StopWatchEnd$OutTopDiffMarkersGlobalClustersVsRestOfCells$ASSAY  <- Sys.time()
+    }
+  })
 }
 
 ####################################
@@ -573,61 +591,65 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes (2): using global cell clusers, for each dataset, compares each cell cluster vs. the rest of cells ***\n")
 
-  ####################################
-  ### Loops each dataset
-  ####################################
-  NumberOfDatasets <- 0
-  for (dataset in rownames(InputsTable)) {
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
     
-    StopWatchStart$FindDiffMarkersEachDatasetGlobalClustersVsRestOfCells[[dataset]]  <- Sys.time()
-
-    NumberOfDatasets <- NumberOfDatasets + 1
-    print(NumberOfDatasets)
+    ####################################
+    ### Loops each dataset
+    ####################################
+    NumberOfDatasets <- 0
+    for (dataset in rownames(InputsTable)) {
+      
+      NumberOfDatasets <- NumberOfDatasets + 1
+      print(NumberOfDatasets)
+      
+      if (exists(x = "seurat.object.each_dataset") == T) {
+        rm(seurat.object.each_dataset)
+      }
+      Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$dataset
+      seurat.object.each_dataset <- subset(x = seurat.object.integrated, idents = dataset)
+      Idents(object = seurat.object.each_dataset) <- seurat.object.each_dataset@meta.data$EachDatasetGlobalCellClusters
+      
+      StopWatchStart$FindDiffMarkersEachDatasetGlobalClustersVsRestOfCells[[dataset]][[ASSAY]]  <- Sys.time()
+  
+      print(paste0("Number of groups = ", length(unique(seurat.object.each_dataset@meta.data$EachDatasetGlobalCellClusters))))
+  
+      FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
+      seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+      SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
+      Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_dataset_", dataset, "_", assay, ".tsv.bz2"), "w")
+      write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
+      close(Outfile.con)
+      
+      StopWatchEnd$FindDiffMarkersEachDatasetGlobalClustersVsRestOfCells[[dataset]][[ASSAY]]  <- Sys.time()
+  
+      if (RunsCwl == 1 || RunsCwl == 2) {
+        ####################################
+        ### Outfiles for web app: top differentially expressed genes oer dataset
+        ####################################
+        writeLines("\n*** Outfiles for web app: top differentially expressed genes per dataset ***\n")
+  
+        StopWatchStart$OutDiffMarkersEachDatasetGlobalClustersVsRestOfCellsFrontEnd[[dataset]][[ASSAY]]  <- Sys.time()
+  
+        # top markers per dataset
+        top_genes_by_cluster<-(seurat.object.each_dataset.markers %>% group_by(cluster) %>% top_n(DefaultParameters$TopDGEForFrontEnd, avg_logFC))
+        datasetMarkersFile <- top_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
+        write.table(datasetMarkersFile, paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_markers/",dataset,"_TopMarkersPerCluster_", assay, ".tsv"), row.names = F, sep="\t", quote = F)
+  
+        # groups.tsv per dataset
+        OutfileClustersPerDatasetDataframe  <- data.frame(NAME = rownames(seurat.object.each_dataset@meta.data), Seurat_Dataset_Clusters = seurat.object.each_dataset@meta.data$seurat_clusters)
+        groupsPerDatasetDataframeString <- sapply(OutfileClustersPerDatasetDataframe, as.character)
+        groupsPerDatasetDataframeStringTYPE <- rbind(data.frame(NAME = "TYPE", Seurat_Dataset_Clusters = "group"), groupsPerDatasetDataframeString)
+        colnames(groupsPerDatasetDataframeStringTYPE) <- c("NAME", paste("Seurat_",dataset,"_clusters", sep = "", collapse = ""))
+  
+        OutfileClustersPerDatasetFile<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_groups/",dataset,"_groups.tsv")
+        write.table(data.frame(groupsPerDatasetDataframeStringTYPE), file = OutfileClustersPerDatasetFile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
+  
+        StopWatchEnd$OutDiffMarkersEachDatasetGlobalClustersVsRestOfCellsFrontEnd[[dataset]][[ASSAY]]  <- Sys.time()
     
-    if (exists(x = "seurat.object.each_dataset") == T) {
-      rm(seurat.object.each_dataset)
+      }
     }
-    Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$dataset
-    seurat.object.each_dataset <- subset(x = seurat.object.integrated, idents = dataset)
-    Idents(object = seurat.object.each_dataset) <- seurat.object.each_dataset@meta.data$EachDatasetGlobalCellClusters
-    
-    print(paste0("Number of groups = ", length(unique(seurat.object.each_dataset@meta.data$EachDatasetGlobalCellClusters))))
-
-    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
-    seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-    SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_dataset_", dataset, ".tsv.bz2"), "w")
-    write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
-    close(Outfile.con)
-    
-    StopWatchEnd$FindDiffMarkersEachDatasetGlobalClustersVsRestOfCells[[dataset]]  <- Sys.time()
-
-    if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-      ####################################
-      ### Outfiles for web app: top differentially expressed genes oer dataset
-      ####################################
-      writeLines("\n*** Outfiles for web app: top differentially expressed genes per dataset ***\n")
-
-      StopWatchStart$OutDiffMarkersEachDatasetGlobalClustersVsRestOfCellsFrontEnd[[dataset]]  <- Sys.time()
-
-      # top markers per dataset
-      top_genes_by_cluster<-(seurat.object.each_dataset.markers %>% group_by(cluster) %>% top_n(DefaultParameters$TopDGEForFrontEnd, avg_logFC))
-      datasetMarkersFile <- top_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
-      write.table(datasetMarkersFile, paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_markers/",dataset,"_TopMarkersPerCluster.tsv"), row.names = F, sep="\t", quote = F)
-
-      # groups.tsv per dataset
-      OutfileClustersPerDatasetDataframe  <- data.frame(NAME = rownames(seurat.object.each_dataset@meta.data), Seurat_Dataset_Clusters = seurat.object.each_dataset@meta.data$seurat_clusters)
-      groupsPerDatasetDataframeString <- sapply(OutfileClustersPerDatasetDataframe, as.character)
-      groupsPerDatasetDataframeStringTYPE <- rbind(data.frame(NAME = "TYPE", Seurat_Dataset_Clusters = "group"), groupsPerDatasetDataframeString)
-      colnames(groupsPerDatasetDataframeStringTYPE) <- c("NAME", paste("Seurat_",dataset,"_Clusters_Resolution_", Resolution, sep = "", collapse = ""))
-
-      OutfileClustersPerDatasetFile<-paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_groups/",dataset,"_groups.tsv")
-      write.table(data.frame(groupsPerDatasetDataframeStringTYPE), file = OutfileClustersPerDatasetFile, row.names = F, col.names = T, sep="\t", quote = F, append = T)
-
-      StopWatchEnd$OutDiffMarkersEachDatasetGlobalClustersVsRestOfCellsFrontEnd[[dataset]]  <- Sys.time()
-
-    }
-  }
+  })
 }
 
 ####################################
@@ -638,39 +660,43 @@ if (3 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes (3): using global cell clusers, for each dataset, compares each cell cluster vs. the same cluster from other datasets ***\n")
 
-  StopWatchStart$FindDiffMarkersEachDatasetGlobalClustersVsSameClusterInOtherDatasets  <- Sys.time()
-
-  print(paste0("Number of groups = ", length(unique(seurat.object.integrated@meta.data$seurat_clusters))))
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
+    
+    StopWatchStart$FindDiffMarkersEachDatasetGlobalClustersVsSameClusterInOtherDatasets[[ASSAY]]  <- Sys.time()
   
-  FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
-  Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", "DatasetEquivalentClusters", ".tsv.bz2"), "w")
-  HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
-  write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
-
-  Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$EachDatasetGlobalCellClusters
-
-  for (cluster in unique(seurat.object.integrated@meta.data$seurat_clusters)) {
-    for (dataset1 in rownames(InputsTable)) {
-      for (dataset2 in rownames(InputsTable)) {
-        Cluster1 <- paste(dataset1, cluster, sep = "_c")
-        Cluster2 <- paste(dataset2, cluster, sep = "_c")
-        if (Cluster1 == Cluster2) {
-          ### Skip
-        }else if ((sum(seurat.object.integrated@meta.data$EachDatasetGlobalCellClusters == Cluster1) >= 3) & ((sum(seurat.object.integrated@meta.data$EachDatasetGlobalCellClusters == Cluster2) >= 3))) {
-          print (paste0(Cluster1, " vs. ", Cluster2))
-          seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, assay = AssayForDge, only.pos = F, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
-          seurat.object.integrated.each_equivalent_cluster.markers$cluster1 <- Cluster1
-          seurat.object.integrated.each_equivalent_cluster.markers$cluster2 <- Cluster2
-          seurat.object.integrated.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.integrated.each_equivalent_cluster.markers)
-          write.table(seurat.object.integrated.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-        }else{
-          print(paste0("Skip cluster ", Cluster1, " vs. ", Cluster2, " because there were not >= 3 cells in at least one of them"))
+    print(paste0("Number of groups = ", length(unique(seurat.object.integrated@meta.data$seurat_clusters))))
+    
+    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
+    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", "DatasetEquivalentClusters_", assay, ".tsv.bz2"), "w")
+    HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
+    write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
+  
+    Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$EachDatasetGlobalCellClusters
+  
+    for (cluster in unique(seurat.object.integrated@meta.data$seurat_clusters)) {
+      for (dataset1 in rownames(InputsTable)) {
+        for (dataset2 in rownames(InputsTable)) {
+          Cluster1 <- paste(dataset1, cluster, sep = "_c")
+          Cluster2 <- paste(dataset2, cluster, sep = "_c")
+          if (Cluster1 == Cluster2) {
+            ### Skip
+          }else if ((sum(seurat.object.integrated@meta.data$EachDatasetGlobalCellClusters == Cluster1) >= 3) & ((sum(seurat.object.integrated@meta.data$EachDatasetGlobalCellClusters == Cluster2) >= 3))) {
+            print (paste0(Cluster1, " vs. ", Cluster2))
+            seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = F, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
+            seurat.object.integrated.each_equivalent_cluster.markers$cluster1 <- Cluster1
+            seurat.object.integrated.each_equivalent_cluster.markers$cluster2 <- Cluster2
+            seurat.object.integrated.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.integrated.each_equivalent_cluster.markers)
+            write.table(seurat.object.integrated.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+          }else{
+            print(paste0("Skip cluster ", Cluster1, " vs. ", Cluster2, " because there were not >= 3 cells in at least one of them"))
+          }
         }
       }
     }
-  }
-  close(Outfile.con)
-  StopWatchEnd$FindDiffMarkersEachDatasetGlobalClustersVsSameClusterInOtherDatasets  <- Sys.time()
+    close(Outfile.con)
+    StopWatchEnd$FindDiffMarkersEachDatasetGlobalClustersVsSameClusterInOtherDatasets[[ASSAY]]  <- Sys.time()
+  })
 }
 
 ####################################
@@ -680,36 +706,40 @@ if (4 %in% RequestedDiffGeneExprComparisons == T) {
   
   writeLines("\n*** Finding differentially expressed genes (4): using global cell clusers, for each dataset type, compares each cell cluster vs. the rest of cells ***\n")
   
-  ####################################
-  ### Loops each dataset type
-  ####################################
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
+
+    ####################################
+    ### Loops each dataset type
+    ####################################
+    
+    NumberOfDatasetTypes <- 0
+    for (dataset_type in DatasetTypes) {
+      
+      StopWatchStart$FindDiffMarkersEachDatasetTypeGlobalClustersVsRestOfCells[[dataset_type]][[ASSAY]]  <- Sys.time()
   
-  NumberOfDatasetTypes <- 0
-  for (dataset_type in DatasetTypes) {
-    
-    StopWatchStart$FindDiffMarkersEachDatasetTypeGlobalClustersVsRestOfCells[[dataset_type]]  <- Sys.time()
-
-    NumberOfDatasetTypes <- NumberOfDatasetTypes + 1
-    print(NumberOfDatasetTypes)
-    
-    if (exists(x = "seurat.object.each_dataset_type") == T) {
-      rm(seurat.object.each_dataset_type)
+      NumberOfDatasetTypes <- NumberOfDatasetTypes + 1
+      print(NumberOfDatasetTypes)
+      
+      if (exists(x = "seurat.object.each_dataset_type") == T) {
+        rm(seurat.object.each_dataset_type)
+      }
+      Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$dataset_type
+      seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
+      Idents(object = seurat.object.each_dataset_type) <- seurat.object.each_dataset_type@meta.data$EachDatasetTypeGlobalCellClusters
+  
+      print(paste0("Number of groups = ", length(unique(seurat.object.each_dataset_type@meta.data$EachDatasetTypeGlobalCellClusters))))
+  
+      FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
+      seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+      SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
+      Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_dataset_type_", dataset_type, "_", assay, ".tsv.bz2"), "w")
+      write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
+      close(Outfile.con)
+      
+      StopWatchEnd$FindDiffMarkersEachDatasetTypeGlobalClustersVsRestOfCells[[dataset_type]][[ASSAY]]  <- Sys.time()
     }
-    Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$dataset_type
-    seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
-    Idents(object = seurat.object.each_dataset_type) <- seurat.object.each_dataset_type@meta.data$EachDatasetTypeGlobalCellClusters
-
-    print(paste0("Number of groups = ", length(unique(seurat.object.each_dataset_type@meta.data$EachDatasetTypeGlobalCellClusters))))
-
-    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
-    seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-    SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_dataset_type_", dataset_type, ".tsv.bz2"), "w")
-    write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
-    close(Outfile.con)
-    
-    StopWatchEnd$FindDiffMarkersEachDatasetTypeGlobalClustersVsRestOfCells[[dataset_type]]  <- Sys.time()
-  }
+  })
 }
 
 ####################################
@@ -720,42 +750,46 @@ if (5 %in% RequestedDiffGeneExprComparisons == T) {
   
   writeLines("\n*** Finding differentially expressed genes (5): using global cell clusers, compares each cell cluster from each dataset type vs. the same cluster from other dataset types ***\n")
 
-  StopWatchStart$FindDiffMarkersEachDatasetTypeGlobalClustersVsSameClusterInOtherDatasets  <- Sys.time()
-  
-  print(paste0("Number of groups = ", length(unique(seurat.object.integrated@meta.data$seurat_clusters))))
-  
-  FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
-  
-  Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", "DatasetTypeEquivalentClusters", ".tsv.bz2"), "w")
-  HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
-  write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
-  
-  Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$EachDatasetTypeGlobalCellClusters
-  
-  for (cluster in unique(seurat.object.integrated@meta.data$seurat_clusters)) {
-    for (dataset_type1 in unique(InputsTable[,"DatasetType"])) {
-      for (dataset_type2 in unique(InputsTable[,"DatasetType"])) {
-        Cluster1 <- paste(dataset_type1, cluster, sep = "_c")
-        Cluster2 <- paste(dataset_type2, cluster, sep = "_c")
-        if (Cluster1 == Cluster2) {
-          ### Skip
-        }else if ((sum(seurat.object.integrated@meta.data$EachDatasetTypeGlobalCellClusters == Cluster1) >= 3) & ((sum(seurat.object.integrated@meta.data$EachDatasetTypeGlobalCellClusters == Cluster2) >= 3))) {
-          print (paste0("Diff gene expression: ", Cluster1, " vs. ", Cluster2))
-          seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, assay = AssayForDge, only.pos = F, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
-          seurat.object.integrated.each_equivalent_cluster.markers$cluster1 <- Cluster1
-          seurat.object.integrated.each_equivalent_cluster.markers$cluster2 <- Cluster2
-          seurat.object.integrated.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.integrated.each_equivalent_cluster.markers)
-          write.table(seurat.object.integrated.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-          rm(seurat.object.integrated.each_equivalent_cluster.markers)
-          
-        }else{
-          print(paste0("Skip cluster ", Cluster1, " vs. ", Cluster2, " because there were not >= 3 cells in at least one of them"))
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
+
+    StopWatchStart$FindDiffMarkersEachDatasetTypeGlobalClustersVsSameClusterInOtherDatasets[[ASSAY]]  <- Sys.time()
+    
+    print(paste0("Number of groups = ", length(unique(seurat.object.integrated@meta.data$seurat_clusters))))
+    
+    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
+    
+    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", "DatasetTypeEquivalentClusters_", assay, ".tsv.bz2"), "w")
+    HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
+    write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
+    
+    Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$EachDatasetTypeGlobalCellClusters
+    
+    for (cluster in unique(seurat.object.integrated@meta.data$seurat_clusters)) {
+      for (dataset_type1 in unique(InputsTable[,"DatasetType"])) {
+        for (dataset_type2 in unique(InputsTable[,"DatasetType"])) {
+          Cluster1 <- paste(dataset_type1, cluster, sep = "_c")
+          Cluster2 <- paste(dataset_type2, cluster, sep = "_c")
+          if (Cluster1 == Cluster2) {
+            ### Skip
+          }else if ((sum(seurat.object.integrated@meta.data$EachDatasetTypeGlobalCellClusters == Cluster1) >= 3) & ((sum(seurat.object.integrated@meta.data$EachDatasetTypeGlobalCellClusters == Cluster2) >= 3))) {
+            print (paste0("Diff gene expression: ", Cluster1, " vs. ", Cluster2))
+            seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = F, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
+            seurat.object.integrated.each_equivalent_cluster.markers$cluster1 <- Cluster1
+            seurat.object.integrated.each_equivalent_cluster.markers$cluster2 <- Cluster2
+            seurat.object.integrated.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.integrated.each_equivalent_cluster.markers)
+            write.table(seurat.object.integrated.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+            rm(seurat.object.integrated.each_equivalent_cluster.markers)
+            
+          }else{
+            print(paste0("Skip cluster ", Cluster1, " vs. ", Cluster2, " because there were not >= 3 cells in at least one of them"))
+          }
         }
       }
     }
-  }
-  close(Outfile.con)
-  StopWatchEnd$FindDiffMarkersEachDatasetTypeGlobalClustersVsSameClusterInOtherDatasets  <- Sys.time()
+    close(Outfile.con)
+    StopWatchEnd$FindDiffMarkersEachDatasetTypeGlobalClustersVsSameClusterInOtherDatasets[[ASSAY]]  <- Sys.time()
+  })
 }
 
 ################################################################################################################################################
@@ -773,35 +807,39 @@ if (6 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes (6): using re-clustered cells, for each dataset, compares each cell cluster vs. the rest of cells ***\n")
   
-  ####################################
-  ### Loops each dataset
-  ####################################
-  NumberOfDatasets <- 0
-  for (dataset in rownames(InputsTable)) {
-    
-    StopWatchStart$FindDiffMarkersReclusteredVsRestOfCells[[dataset]]  <- Sys.time()
-    
-    NumberOfDatasets <- NumberOfDatasets + 1
-    print(NumberOfDatasets)
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
 
-    if (exists(x = "seurat.object.each_dataset") == T) {
-      rm(seurat.object.each_dataset)
+    ####################################
+    ### Loops each dataset
+    ####################################
+    NumberOfDatasets <- 0
+    for (dataset in rownames(InputsTable)) {
+      
+      StopWatchStart$FindDiffMarkersReclusteredVsRestOfCells[[dataset]][[ASSAY]]  <- Sys.time()
+      
+      NumberOfDatasets <- NumberOfDatasets + 1
+      print(NumberOfDatasets)
+  
+      if (exists(x = "seurat.object.each_dataset") == T) {
+        rm(seurat.object.each_dataset)
+      }
+      Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$dataset
+      seurat.object.each_dataset <- subset(x = seurat.object.integrated, idents = dataset)
+      Idents(object = seurat.object.each_dataset) <- seurat.object.each_dataset@meta.data$EachDatasetCellReClusters
+  
+      print(paste0("Number of clusters = ", length(unique(seurat.object.each_dataset@meta.data$EachDatasetCellReClusters))))
+  
+      FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
+      seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+      SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
+      Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "EachDatasetReclustered_", dataset, "_", assay, ".tsv.bz2"), "w")
+      write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
+      close(Outfile.con)
+      
+      StopWatchEnd$FindDiffMarkersReclusteredVsRestOfCells[[dataset]][[ASSAY]]  <- Sys.time()
     }
-    Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$dataset
-    seurat.object.each_dataset <- subset(x = seurat.object.integrated, idents = dataset)
-    Idents(object = seurat.object.each_dataset) <- seurat.object.each_dataset@meta.data$EachDatasetCellReClusters
-
-    print(paste0("Number of clusters = ", length(unique(seurat.object.each_dataset@meta.data$EachDatasetCellReClusters))))
-
-    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
-    seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-    SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "EachDatasetReclustered_", dataset, ".tsv.bz2"), "w")
-    write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
-    close(Outfile.con)
-    
-    StopWatchEnd$FindDiffMarkersReclusteredVsRestOfCells[[dataset]]  <- Sys.time()
-  }
+  })
 }
 
 ####################################
@@ -812,32 +850,35 @@ if (7 %in% RequestedDiffGeneExprComparisons == T) {
   
   writeLines("\n*** Finding differentially expressed genes (7): using re-clustered cells, for each dataset type, compares each cell cluster vs. the rest of cells ***\n")
   
-  ####################################
-  ### Loops each dataset type
-  ####################################
-  for (dataset_type in DatasetTypes) {
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
     
-    StopWatchStart$FindDiffMarkersEachDatasetTypeReclusteredVsRestOfCells[[dataset_type]]  <- Sys.time()
-    
-    if (exists(x = "seurat.object.each_dataset_type") == T) {
-      rm(seurat.object.each_dataset_type)
+    ####################################
+    ### Loops each dataset type
+    ####################################
+    for (dataset_type in DatasetTypes) {
+      
+      StopWatchStart$FindDiffMarkersEachDatasetTypeReclusteredVsRestOfCells[[dataset_type]][[ASSAY]]  <- Sys.time()
+      
+      if (exists(x = "seurat.object.each_dataset_type") == T) {
+        rm(seurat.object.each_dataset_type)
+      }
+      Idents(object = seurat.object.integrated) <- seurat.object.integrated$dataset_type
+      seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
+      Idents(object = seurat.object.each_dataset_type) <- seurat.object.each_dataset_type@meta.data$EachDatasetTypeCellReClusters
+  
+      print(paste0("Number of groups = ", length(unique(seurat.object.each_dataset_type@meta.data$EachDatasetTypeCellReClusters))))
+  
+      FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
+      seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+      SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
+      Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "EachDatasetTypeReclustered_", dataset_type, "_", assay, ".tsv.bz2"), "w")
+      write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
+      close(Outfile.con)
+  
+      StopWatchEnd$FindDiffMarkersEachDatasetTypeReclusteredVsRestOfCells[[dataset_type]][[ASSAY]]  <- Sys.time()
     }
-    Idents(object = seurat.object.integrated) <- seurat.object.integrated$dataset_type
-    seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
-    Idents(object = seurat.object.each_dataset_type) <- seurat.object.each_dataset_type@meta.data$EachDatasetTypeCellReClusters
-
-    print(paste0("Number of groups = ", length(unique(seurat.object.each_dataset_type@meta.data$EachDatasetTypeCellReClusters))))
-
-    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
-    seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-    SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-    Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "EachDatasetTypeReclustered_", dataset_type, ".tsv.bz2"), "w")
-    write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
-    close(Outfile.con)
-
-    StopWatchEnd$FindDiffMarkersEachDatasetTypeReclusteredVsRestOfCells[[dataset_type]]  <- Sys.time()
-
-  }
+  })
 }
 
 ################################################################################################################################################
@@ -855,34 +896,38 @@ if (8 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes (8): using metadata, compares each cell class vs. the rest of cells ***\n")
 
-  for (property in MetadataColNamesForDge.list) {
-
-    NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
-    print(paste0("Number of groups in '", property, "' = ", NumberOfClassesInThisProperty))
-    if (NumberOfClassesInThisProperty > 1) {
-
-      StopWatchStart$FindDiffMarkersEachMetadataClassVsRestOfCells[[property]]  <- Sys.time()
-      
-      if (exists(x = "seurat.object.each_property") == T) {
-        rm(seurat.object.each_property)
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
+    
+    for (property in MetadataColNamesForDge.list) {
+  
+      NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
+      print(paste0("Number of groups in '", property, "' = ", NumberOfClassesInThisProperty))
+      if (NumberOfClassesInThisProperty > 1) {
+  
+        StopWatchStart$FindDiffMarkersEachMetadataClassVsRestOfCells[[property]][[ASSAY]]  <- Sys.time()
+        
+        if (exists(x = "seurat.object.each_property") == T) {
+          rm(seurat.object.each_property)
+        }
+        Idents(object = seurat.object.integrated) <- seurat.object.integrated[[property]]
+        seurat.object.each_property <- seurat.object.integrated
+  
+        ####################################
+        ### Finding differentially expressed genes
+        ####################################
+        FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
+        seurat.object.each_property.markers <- FindAllMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+        SimplifiedDiffExprGenes.df <- seurat.object.each_property.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
+        colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
+        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_", "AllDatasets_", assay, ".tsv.bz2"), "w")
+        write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
+        close(Outfile.con)
+        
+        StopWatchEnd$FindDiffMarkersEachMetadataClassVsRestOfCells[[property]][[ASSAY]]  <- Sys.time()
       }
-      Idents(object = seurat.object.integrated) <- seurat.object.integrated[[property]]
-      seurat.object.each_property <- seurat.object.integrated
-
-      ####################################
-      ### Finding differentially expressed genes
-      ####################################
-      FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
-      seurat.object.each_property.markers <- FindAllMarkers(object = seurat.object.each_property, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-      SimplifiedDiffExprGenes.df <- seurat.object.each_property.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-      colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
-      Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_", "AllDatasets", ".tsv.bz2"), "w")
-      write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
-      close(Outfile.con)
-      
-      StopWatchEnd$FindDiffMarkersEachMetadataClassVsRestOfCells[[property]]  <- Sys.time()
     }
-  }
+  })
 }
 
 ####################################
@@ -892,38 +937,42 @@ if (9 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes (9): using metadata annotations, for each dataset, compares each cell class vs. the rest of cells ***\n")
 
-  ####################################
-  ### Loops each dataset
-  ####################################
-  for (dataset in rownames(InputsTable)) {
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
 
-    if (exists(x = "seurat.object.each_dataset") == T) {
-      rm(seurat.object.each_dataset)
-    }
-    Idents(object = seurat.object.integrated) <- seurat.object.integrated$dataset
-    seurat.object.each_dataset <- subset(x = seurat.object.integrated, idents = dataset)
-
-    for (property in MetadataColNamesForDge.list) {
-      
-      StopWatchStart$FindDiffMarkersEachMetadataClassEachDatasetVsRestOfCells[[dataset]][[property]] <- Sys.time()
-
-      NumberOfClassesInThisProperty <- length(unique(seurat.object.each_dataset@meta.data[[property]]))
-      print(paste0("Number of groups in '", property, " in dataset ", dataset, "' = ", NumberOfClassesInThisProperty))
-      if (NumberOfClassesInThisProperty > 1) {
-        
-        Idents(object = seurat.object.each_dataset) <- seurat.object.each_dataset@meta.data[[property]]
-
-        FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
-        seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-        SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-        colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
-        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  dataset, ".tsv.bz2"), "w")
-        write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
-        close(Outfile.con)
+    ####################################
+    ### Loops each dataset
+    ####################################
+    for (dataset in rownames(InputsTable)) {
+  
+      if (exists(x = "seurat.object.each_dataset") == T) {
+        rm(seurat.object.each_dataset)
       }
-      StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetVsRestOfCells[[dataset]][[property]] <- Sys.time()
+      Idents(object = seurat.object.integrated) <- seurat.object.integrated$dataset
+      seurat.object.each_dataset <- subset(x = seurat.object.integrated, idents = dataset)
+  
+      for (property in MetadataColNamesForDge.list) {
+        
+        StopWatchStart$FindDiffMarkersEachMetadataClassEachDatasetVsRestOfCells[[dataset]][[property]][[ASSAY]] <- Sys.time()
+  
+        NumberOfClassesInThisProperty <- length(unique(seurat.object.each_dataset@meta.data[[property]]))
+        print(paste0("Number of groups in '", property, " in dataset ", dataset, "' = ", NumberOfClassesInThisProperty))
+        if (NumberOfClassesInThisProperty > 1) {
+          
+          Idents(object = seurat.object.each_dataset) <- seurat.object.each_dataset@meta.data[[property]]
+  
+          FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
+          seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+          SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
+          colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
+          Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  dataset, "_", assay, ".tsv.bz2"), "w")
+          write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
+          close(Outfile.con)
+        }
+        StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetVsRestOfCells[[dataset]][[property]][[ASSAY]] <- Sys.time()
+      }
     }
-  }
+  })
 }
 
 ####################################
@@ -933,59 +982,63 @@ if (10 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes (10): using metadata annotations, for each dataset, compares each cell class specified vs. the same class from other datasets ***\n")
 
-  for (property in MetadataColNamesForDge.list) {
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
 
-    NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
-    print(paste0("Number of groups in '", property, "' = ", NumberOfClassesInThisProperty))
-    if (NumberOfClassesInThisProperty > 1) {
-
-      StopWatchStart$FindDiffMarkersEachMetadataClassEachDatasetVsSameClassInOtherDatasets[[property]]  <- Sys.time()
-
-      ####################################
-      ### Subsets seurat object per property
-      ####################################
-      if (exists(x = "seurat.object.each_property") == T) {
-        rm(seurat.object.each_property)
-      }
-      seurat.object.each_property <- seurat.object.integrated
-      DatasetAndProperty <- unlist(x = strsplit(x = paste(seurat.object.each_property@meta.data$dataset, seurat.object.each_property@meta.data[[property]], sep = "_", collapse = "\n"), split = "\n"))
-      seurat.object.each_property <- AddMetaData(object = seurat.object.each_property, metadata = DatasetAndProperty, col.name = "DatasetAndProperty")
-
-      FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
-      Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "DatasetEquivalentClasses", ".tsv.bz2"), "w")
-      HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
-      write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
-      
-      Idents(object = seurat.object.each_property) <- DatasetAndProperty
-      
-      for (class in unique(seurat.object.each_property@meta.data[[property]])) {
-        for (dataset_1 in rownames(InputsTable)) {
-          for (dataset_2 in rownames(InputsTable)) {
-            Class_Dataset1 <- paste0(dataset_1, "_", class)
-            Class_Dataset2 <- paste0(dataset_2, "_", class)
-            N_Class_Dataset1 <- sum(seurat.object.each_property$DatasetAndProperty == Class_Dataset1)
-            N_Class_Dataset2 <- sum(seurat.object.each_property$DatasetAndProperty == Class_Dataset2)
-
-            if (Class_Dataset1 == Class_Dataset2) {
-              ### Skip
-            }else if (N_Class_Dataset1 >= 3 & N_Class_Dataset2 >= 3) {
-              print (paste0(Class_Dataset1, " vs. ", Class_Dataset2))
-              seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = AssayForDge, only.pos = F, ident.1 = Class_Dataset1, ident.2 = Class_Dataset2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
-              seurat.object.each_property.each_equivalent_cluster.markers$class1 <- Class_Dataset1
-              seurat.object.each_property.each_equivalent_cluster.markers$class2 <- Class_Dataset2
-              seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
-              write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-              rm(seurat.object.each_property.each_equivalent_cluster.markers)
-            }else{
-              print(paste0("Skip class ", Class_Dataset1, " vs. ", Class_Dataset2, " because there were not >= 3 cells in at least one of them"))
+    for (property in MetadataColNamesForDge.list) {
+  
+      NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
+      print(paste0("Number of groups in '", property, "' = ", NumberOfClassesInThisProperty))
+      if (NumberOfClassesInThisProperty > 1) {
+  
+        StopWatchStart$FindDiffMarkersEachMetadataClassEachDatasetVsSameClassInOtherDatasets[[property]][[ASSAY]]  <- Sys.time()
+  
+        ####################################
+        ### Subsets seurat object per property
+        ####################################
+        if (exists(x = "seurat.object.each_property") == T) {
+          rm(seurat.object.each_property)
+        }
+        seurat.object.each_property <- seurat.object.integrated
+        DatasetAndProperty <- unlist(x = strsplit(x = paste(seurat.object.each_property@meta.data$dataset, seurat.object.each_property@meta.data[[property]], sep = "_", collapse = "\n"), split = "\n"))
+        seurat.object.each_property <- AddMetaData(object = seurat.object.each_property, metadata = DatasetAndProperty, col.name = "DatasetAndProperty")
+  
+        FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
+        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "DatasetEquivalentClasses_", assay, ".tsv.bz2"), "w")
+        HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
+        write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
+        
+        Idents(object = seurat.object.each_property) <- DatasetAndProperty
+        
+        for (class in unique(seurat.object.each_property@meta.data[[property]])) {
+          for (dataset_1 in rownames(InputsTable)) {
+            for (dataset_2 in rownames(InputsTable)) {
+              Class_Dataset1 <- paste0(dataset_1, "_", class)
+              Class_Dataset2 <- paste0(dataset_2, "_", class)
+              N_Class_Dataset1 <- sum(seurat.object.each_property$DatasetAndProperty == Class_Dataset1)
+              N_Class_Dataset2 <- sum(seurat.object.each_property$DatasetAndProperty == Class_Dataset2)
+  
+              if (Class_Dataset1 == Class_Dataset2) {
+                ### Skip
+              }else if (N_Class_Dataset1 >= 3 & N_Class_Dataset2 >= 3) {
+                print (paste0(Class_Dataset1, " vs. ", Class_Dataset2))
+                seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = F, ident.1 = Class_Dataset1, ident.2 = Class_Dataset2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
+                seurat.object.each_property.each_equivalent_cluster.markers$class1 <- Class_Dataset1
+                seurat.object.each_property.each_equivalent_cluster.markers$class2 <- Class_Dataset2
+                seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
+                write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+                rm(seurat.object.each_property.each_equivalent_cluster.markers)
+              }else{
+                print(paste0("Skip class ", Class_Dataset1, " vs. ", Class_Dataset2, " because there were not >= 3 cells in at least one of them"))
+              }
             }
           }
         }
+        close(Outfile.con)
+        StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetVsSameClassInOtherDatasets[[property]][[ASSAY]]  <- Sys.time()
       }
-      close(Outfile.con)
-      StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetVsSameClassInOtherDatasets[[property]]  <- Sys.time()
-     }
-  }
+    }
+  })
 }
 
 ####################################
@@ -995,105 +1048,117 @@ if (11 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes (11): using metadata annotations, for each dataset_type, compares each cell class vs. the rest of cells ***\n")
 
-  ####################################
-  ### Loops each dataset_type
-  ####################################
-  for (dataset_type in DatasetTypes) {
-
-    if (exists(x = "seurat.object.each_dataset_type") == T) {
-      rm(seurat.object.each_dataset_type)
-    }
-    Idents(object = seurat.object.integrated) <- seurat.object.integrated$dataset_type
-    seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
-
-    for (property in MetadataColNamesForDge.list) {
-      
-      StopWatchStart$FindDiffMarkersEachMetadataClassEachDatasetTypeVsRestOfCells[[dataset_type]][[property]] <- Sys.time()
-      
-      NumberOfClassesInThisProperty <- length(unique(seurat.object.each_dataset_type@meta.data[[property]]))
-      print(paste0("Number of classes in '", property, " in dataset_type ", dataset_type, " = ", NumberOfClassesInThisProperty))
-      if (NumberOfClassesInThisProperty > 1) {
-
-        Idents(object = seurat.object.each_dataset_type) <- seurat.object.each_dataset_type@meta.data[[property]]
-
-        FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
-        seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = AssayForDge, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-        SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
-        colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
-        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_", dataset_type, ".tsv.bz2"), "w")
-        write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
-        close(Outfile.con)
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
+    
+    ####################################
+    ### Loops each dataset_type
+    ####################################
+    for (dataset_type in DatasetTypes) {
+  
+      if (exists(x = "seurat.object.each_dataset_type") == T) {
+        rm(seurat.object.each_dataset_type)
       }
-      StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetTypeVsRestOfCells[[dataset_type]][[property]] <- Sys.time()
+      Idents(object = seurat.object.integrated) <- seurat.object.integrated$dataset_type
+      seurat.object.each_dataset_type <- subset(x = seurat.object.integrated, idents = dataset_type)
+  
+      for (property in MetadataColNamesForDge.list) {
+        
+        StopWatchStart$FindDiffMarkersEachMetadataClassEachDatasetTypeVsRestOfCells[[dataset_type]][[property]][[ASSAY]] <- Sys.time()
+        
+        NumberOfClassesInThisProperty <- length(unique(seurat.object.each_dataset_type@meta.data[[property]]))
+        print(paste0("Number of classes in '", property, " in dataset_type ", dataset_type, " = ", NumberOfClassesInThisProperty))
+        if (NumberOfClassesInThisProperty > 1) {
+  
+          Idents(object = seurat.object.each_dataset_type) <- seurat.object.each_dataset_type@meta.data[[property]]
+  
+          FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
+          seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = F, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+          SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
+          colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
+          Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_", dataset_type, "_", assay, ".tsv.bz2"), "w")
+          write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = Outfile.con, row.names = F, sep="\t", quote = F)
+          close(Outfile.con)
+        }
+        StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetTypeVsRestOfCells[[dataset_type]][[property]][[ASSAY]] <- Sys.time()
+      }
     }
-  }
+  })
 }
 
 ####################################
 ### Finding differentially expressed genes (12): using metadata annotations, for each dataset type, compares each cell class vs. the same class from other dataset types
 ####################################
+
 if (12 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes (12): using metadata annotations, for each dataset type, compares each cell class vs. the same class from other dataset types ***\n")
 
-  if (NumberOfDatasetsTypes > 1) {
-
-    for (property in MetadataColNamesForDge.list) {
-
-      NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
-      print(paste0("Number of groups in '", property, "' = ", NumberOfClassesInThisProperty))
-      if (NumberOfClassesInThisProperty > 1) {
-        
-        StopWatchStart$FindDiffMarkersEachMetadataClassEachDatasetTypeVsSameClassInOtherDatasetTypes  <- Sys.time()
-
-        ####################################
-        ### Subsets seurat object per property
-        ####################################
-        if (exists(x = "seurat.object.each_property") == T) {
-          rm(seurat.object.each_property)
-        }
-        seurat.object.each_property <- seurat.object.integrated
-        DatasetTypeAndProperty <- unlist(x = strsplit(x = paste(seurat.object.each_property@meta.data$dataset_type, seurat.object.each_property@meta.data[[property]], sep = "_", collapse = "\n"), split = "\n"))
-        seurat.object.each_property <- AddMetaData(object = seurat.object.each_property, metadata = DatasetTypeAndProperty, col.name = "DatasetTypeAndProperty")
-
-        FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
-        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "DatasetTypeEquivalentClasses", ".tsv.bz2"), "w")
-        HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
-        write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
-
-        Idents(object = seurat.object.each_property) <- DatasetTypeAndProperty
-        
-        for (class in unique(seurat.object.each_property@meta.data[[property]])) {
-          for (dataset_type_1 in unique(InputsTable[,"DatasetType"])) {
-            for (dataset_type_2 in unique(InputsTable[,"DatasetType"])) {
-              Class_DatasetType1 <- paste0(dataset_type_1, "_", class)
-              Class_DatasetType2 <- paste0(dataset_type_2, "_", class)
-              N_Class_DatasetType1 <- sum(seurat.object.each_property$DatasetTypeAndProperty == Class_DatasetType1)
-              N_Class_DatasetType2 <- sum(seurat.object.each_property$DatasetTypeAndProperty == Class_DatasetType2)
-
-              if (Class_DatasetType1 == Class_DatasetType2) {
-                ### Skip
-              }else if (N_Class_DatasetType1 >= 3 & N_Class_DatasetType2 >= 3) {
-                print (paste0(Class_DatasetType1, " vs. ", Class_DatasetType2))
-                seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = AssayForDge, only.pos = F, ident.1 = Class_DatasetType1, ident.2 = Class_DatasetType2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
-                seurat.object.each_property.each_equivalent_cluster.markers$class1 <- Class_DatasetType1
-                seurat.object.each_property.each_equivalent_cluster.markers$class2 <- Class_DatasetType2
-                seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
-                write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-                rm(seurat.object.each_property.each_equivalent_cluster.markers)
-              }else{
-                print(paste0("Skip class ", Class_DatasetType1, " vs. ", Class_DatasetType2, " because there were not >= 3 cells in at least one of them"))
+  NumberOfDatasetsTypes <- length(unique(InputsTable[,"DatasetType"]))
+  
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
+    
+    if (NumberOfDatasetsTypes > 1) {
+  
+      for (property in MetadataColNamesForDge.list) {
+  
+        NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
+        print(paste0("Number of groups in '", property, "' = ", NumberOfClassesInThisProperty))
+        if (NumberOfClassesInThisProperty > 1) {
+          
+          StopWatchStart$FindDiffMarkersEachMetadataClassEachDatasetTypeVsSameClassInOtherDatasetTypes[[ASSAY]]  <- Sys.time()
+  
+          ####################################
+          ### Subsets seurat object per property
+          ####################################
+          if (exists(x = "seurat.object.each_property") == T) {
+            rm(seurat.object.each_property)
+          }
+          seurat.object.each_property <- seurat.object.integrated
+          DatasetTypeAndProperty <- unlist(x = strsplit(x = paste(seurat.object.each_property@meta.data$dataset_type, seurat.object.each_property@meta.data[[property]], sep = "_", collapse = "\n"), split = "\n"))
+          print(DatasetTypeAndProperty)
+          seurat.object.each_property <- AddMetaData(object = seurat.object.each_property, metadata = DatasetTypeAndProperty, col.name = "DatasetTypeAndProperty")
+  
+          FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
+          Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "DatasetTypeEquivalentClasses_", assay, ".tsv.bz2"), "w")
+          HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
+          write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
+  
+          Idents(object = seurat.object.each_property) <- DatasetTypeAndProperty
+          
+          for (class in unique(seurat.object.each_property@meta.data[[property]])) {
+            for (dataset_type_1 in unique(InputsTable[,"DatasetType"])) {
+              for (dataset_type_2 in unique(InputsTable[,"DatasetType"])) {
+                Class_DatasetType1 <- paste0(dataset_type_1, "_", class)
+                Class_DatasetType2 <- paste0(dataset_type_2, "_", class)
+                N_Class_DatasetType1 <- sum(seurat.object.each_property$DatasetTypeAndProperty == Class_DatasetType1)
+                N_Class_DatasetType2 <- sum(seurat.object.each_property$DatasetTypeAndProperty == Class_DatasetType2)
+  
+                if (Class_DatasetType1 == Class_DatasetType2) {
+                  ### Skip
+                }else if (N_Class_DatasetType1 >= 3 & N_Class_DatasetType2 >= 3) {
+                  print (paste0(Class_DatasetType1, " vs. ", Class_DatasetType2))
+                  seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = F, ident.1 = Class_DatasetType1, ident.2 = Class_DatasetType2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
+                  seurat.object.each_property.each_equivalent_cluster.markers$class1 <- Class_DatasetType1
+                  seurat.object.each_property.each_equivalent_cluster.markers$class2 <- Class_DatasetType2
+                  seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
+                  write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+                  rm(seurat.object.each_property.each_equivalent_cluster.markers)
+                }else{
+                  print(paste0("Skip class ", Class_DatasetType1, " vs. ", Class_DatasetType2, " because there were not >= 3 cells in at least one of them"))
+                }
               }
             }
           }
+          close(Outfile.con)
+          StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetTypeVsSameClassInOtherDatasetTypes[[ASSAY]]  <- Sys.time()
         }
-        close(Outfile.con)
-        StopWatchEnd$FindDiffMarkersEachMetadataClassEachDatasetTypeVsSameClassInOtherDatasetTypes  <- Sys.time()
       }
+    }else{
+      print(paste0("Skip because could find only '", NumberOfDatasetsTypes, "' dataset types"))
     }
-  }else{
-    print(paste0("Skip because could find only '", NumberOfDatasetsTypes, "' dataset types"))
-  }
+  })
 }
 
 ####################################
@@ -1103,70 +1168,74 @@ if (13 %in% RequestedDiffGeneExprComparisons == T) {
 
   writeLines("\n*** Finding differentially expressed genes (13): using metadata annotations, for each cell class specified by `-b` and `-c`, compares each subclass vs. other subclasses ***\n")
 
-  if (regexpr("^NA$", InfileListSubclasses, ignore.case = T)[1] == 1) {
-    writeLines("\n*** All subclass pairs will be compared ***\n")
-  }else{
-    writeLines("\n*** Load subclass pairs to compare ***\n")
-    SubclassesToUse.df<-read.table(InfileListSubclasses, header = F, row.names = NULL, stringsAsFactors = F)
-    colnames(SubclassesToUse.df)<-c("SubclassPair")
-    print(paste0("Will restrict comparisons to ", length(SubclassesToUse.df[,"SubclassPair"]), " subclass pairs"))
-  }
-
-  for (property in MetadataColNamesForDge.list) {
-    NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
-    print(paste0("Number of groups in '", property, "' = ", NumberOfClassesInThisProperty))
-    if (NumberOfClassesInThisProperty > 1) {
-      
-      StopWatchStart$FindDiffMarkersEachMetadataEachSubclassVsOtherSubclasses[[property]]  <- Sys.time()
-      
-      ####################################
-      ### Subsets seurat object per property
-      ####################################
-      if (exists(x = "seurat.object.each_property") == T) {
-        rm(seurat.object.each_property)
-      }
-      seurat.object.each_property <- seurat.object.integrated
-      
-      Idents(object = seurat.object.each_property) <- property
-
-      FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
-      Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "SubClassesAgainstEachOther", ".tsv.bz2"), "w")
-      HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
-      write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
-
-      for (subclass1 in unique(seurat.object.each_property@meta.data[[property]])) {
-        for (subclass2 in unique(seurat.object.each_property@meta.data[[property]])) {
-          N_Class_1 <- sum(seurat.object.each_property[[property]] == subclass1)
-          N_Class_2 <- sum(seurat.object.each_property[[property]] == subclass2)
-          
-          if (subclass1 == subclass2) {
-            ### Skip
-          }else if (N_Class_1 >= 3 & N_Class_2 >= 3) {
-            SubclassPairToCompare <- paste0(subclass1, ",", subclass2)
-            ToRunThisPair <- 0
-            if (regexpr("^NA$", InfileListSubclasses, ignore.case = T)[1] == 1) {
-              ToRunThisPair <- 1
-            }else if (SubclassPairToCompare %in% SubclassesToUse.df[,"SubclassPair"] == T) {
-              ToRunThisPair <- 1
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
+    
+    if (regexpr("^NA$", InfileListSubclasses, ignore.case = T)[1] == 1) {
+      writeLines("\n*** All subclass pairs will be compared ***\n")
+    }else{
+      writeLines("\n*** Load subclass pairs to compare ***\n")
+      SubclassesToUse.df<-read.table(InfileListSubclasses, header = F, row.names = NULL, stringsAsFactors = F)
+      colnames(SubclassesToUse.df)<-c("SubclassPair")
+      print(paste0("Will restrict comparisons to ", length(SubclassesToUse.df[,"SubclassPair"]), " subclass pairs"))
+    }
+  
+    for (property in MetadataColNamesForDge.list) {
+      NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
+      print(paste0("Number of groups in '", property, "' = ", NumberOfClassesInThisProperty))
+      if (NumberOfClassesInThisProperty > 1) {
+        
+        StopWatchStart$FindDiffMarkersEachMetadataEachSubclassVsOtherSubclasses[[property]][[ASSAY]]  <- Sys.time()
+        
+        ####################################
+        ### Subsets seurat object per property
+        ####################################
+        if (exists(x = "seurat.object.each_property") == T) {
+          rm(seurat.object.each_property)
+        }
+        seurat.object.each_property <- seurat.object.integrated
+        
+        Idents(object = seurat.object.each_property) <- property
+  
+        FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
+        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "SubClassesAgainstEachOther_", assay, ".tsv.bz2"), "w")
+        HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
+        write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
+  
+        for (subclass1 in unique(seurat.object.each_property@meta.data[[property]])) {
+          for (subclass2 in unique(seurat.object.each_property@meta.data[[property]])) {
+            N_Class_1 <- sum(seurat.object.each_property[[property]] == subclass1)
+            N_Class_2 <- sum(seurat.object.each_property[[property]] == subclass2)
+            
+            if (subclass1 == subclass2) {
+              ### Skip
+            }else if (N_Class_1 >= 3 & N_Class_2 >= 3) {
+              SubclassPairToCompare <- paste0(subclass1, ",", subclass2)
+              ToRunThisPair <- 0
+              if (regexpr("^NA$", InfileListSubclasses, ignore.case = T)[1] == 1) {
+                ToRunThisPair <- 1
+              }else if (SubclassPairToCompare %in% SubclassesToUse.df[,"SubclassPair"] == T) {
+                ToRunThisPair <- 1
+              }
+              if (ToRunThisPair == 1) {
+                print (paste0(subclass1, " vs. ", subclass2))
+                seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = F, ident.1 = subclass1, ident.2 = subclass2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
+                seurat.object.each_property.each_equivalent_cluster.markers$class1 <- subclass1
+                seurat.object.each_property.each_equivalent_cluster.markers$class2 <- subclass2
+                seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
+                write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+                rm(seurat.object.each_property.each_equivalent_cluster.markers)
+              }
+            }else{
+              print(paste0("Skip class ", subclass1, " vs. ", subclasss2, " because there were not >= 3 cells in at least one of them"))
             }
-            if (ToRunThisPair == 1) {
-              print (paste0(subclass1, " vs. ", subclass2))
-              seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = AssayForDge, only.pos = F, ident.1 = subclass1, ident.2 = subclass2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
-              seurat.object.each_property.each_equivalent_cluster.markers$class1 <- subclass1
-              seurat.object.each_property.each_equivalent_cluster.markers$class2 <- subclass2
-              seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
-              write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
-              rm(seurat.object.each_property.each_equivalent_cluster.markers)
-            }
-          }else{
-            print(paste0("Skip class ", subclass1, " vs. ", subclasss2, " because there were not >= 3 cells in at least one of them"))
           }
         }
+        close(Outfile.con)
+        StopWatchEnd$FindDiffMarkersEachMetadataEachSubclassVsOtherSubclasses[[property]][[ASSAY]]  <- Sys.time()
       }
-      close(Outfile.con)
-      StopWatchEnd$FindDiffMarkersEachMetadataEachSubclassVsOtherSubclasses[[property]]  <- Sys.time()
     }
-  }
+  })
 }
 
 ################################################################################################################################################
@@ -1186,7 +1255,7 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   writeLines("\n*** Saving the full run R object ***\n")
   
   StopWatchStart$SaveRDSFull  <- Sys.time()
-  if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+  if (RunsCwl == 1) {
     OutfileRDS<-paste0("R_OBJECTS_CWL/", PrefixOutfiles, ".", ProgramOutdir, "_full_run", ".rds")
   }else{
     OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_full_run", ".rds")
@@ -1242,20 +1311,31 @@ lapply(names(StopWatchStart), function(stepToClock) {
 writeLines("\n*** Moving outfiles into outdir or keeping them at tempdir (if using CWL) ***\n")
 
 ### using two steps to copy files (`file.copy` and `file.remove`) instead of just `file.rename` to avoid issues with path to Tempdir in cluster systems
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+if (RunsCwl == 1) {
   writeLines("\n*** Keeping files at: ***\n")
   writeLines(Tempdir)
 } else {
   writeLines("\n*** Moving outfiles into outdir ***\n")
   sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(DirName) {
     TempdirWithData <- paste0(Tempdir, "/", DirName)
-    OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
-    print(OutdirFinal)
-    dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
-    sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(EachFileName) {
-      file.copy(from=paste0(TempdirWithData, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
-      file.remove(paste0(TempdirWithData, "/", EachFileName))
-    })
+    if (DirName == "CRESCENT_CLOUD") {
+      sapply(list.dirs(TempdirWithData, full.names = F, recursive = F), FUN=function(SubDirName) {
+        OutdirFinal <- gsub(pattern = Tempdir, replacement =  paste0(Outdir, "/", ProgramOutdir), x = paste0(TempdirWithData, "/", SubDirName))
+        dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
+        sapply(list.files(paste0(TempdirWithData, "/", SubDirName), pattern = ".tsv", full.names = F), FUN=function(EachFileName) {
+          file.copy(from=paste0(TempdirWithData, "/", SubDirName, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+          file.remove(paste0(TempdirWithData, "/", SubDirName, "/", EachFileName))
+        })
+      })
+    }else{
+      OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
+      print(OutdirFinal)
+      dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
+      sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(EachFileName) {
+        file.copy(from=paste0(TempdirWithData, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+        file.remove(paste0(TempdirWithData, "/", EachFileName))
+      })
+    }
   })
 }
 
