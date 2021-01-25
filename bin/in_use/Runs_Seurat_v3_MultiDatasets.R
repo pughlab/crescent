@@ -292,10 +292,10 @@ option_list <- list(
 
                 Default = 'NA'"),
   #
-  make_option(c("-t", "--assay_to_use_for_dge"), default="SCT",
+  make_option(c("-t", "--assay_to_use_for_dge"), default="RNA",
               help="Only needed if using -f 1 to 12. Either 'SCT' or 'RNA'
 
-                Default = 'SCT'"),
+                Default = 'RNA'"),
   #
   make_option(c("-u", "--number_cores"), default="MAX",
               help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
