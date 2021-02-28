@@ -171,7 +171,8 @@ option_list <- list(
                 '10' = using metadata annotations, for each dataset, compares each cell class specified by `-b` and `-c` vs. the same class from other datasets
                 '11' = using metadata annotations, for each dataset type, compares each cell class specified by `-b` and `-c` vs. the rest of cells
                 '12' = using metadata annotations, for each dataset type, compares each cell class specified by `-b` and `-c` vs. the same class from other dataset types
-                '13' = using metadata annotations, for each cell class specified by `-b` and `-c`, compares each subclass vs. other subclasses
+                '13' = using metadata annotations, for each cell class specified by `-b` and `-c`, compares each subclass vs. all other subclasses of the same class
+                '14' = using metadata annotations, for each cell class specified by `-b` and `-c`, compares pairs of subclasses specified by `-d`
 
                 Default = '1'"),
   #
@@ -182,8 +183,7 @@ option_list <- list(
                 Default = 'NA'"),
   #
   make_option(c("-d", "--infile_list_metadata_subclasses"), default="NA",
-              help="Only needed if using -f 13. It indicates <comma> delimited subclass pairs to compare, one pair per row.
-                Type 'NA' to use all subclass pairs indicated by `-b`, `-c` and `-f 13`
+              help="Only needed if using -f 14. It indicates <comma> delimited subclass pairs to compare, one pair per row.
 
                 Default = 'NA'"),
   #
@@ -238,7 +238,7 @@ InfileListSubclasses    <- opt$infile_list_metadata_subclasses
 AssaysForDge            <- opt$assays_to_use_for_dge
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
-RunsCwl                 <- opt$run_cwl
+RunsCwl                 <- as.numeric(opt$run_cwl)
 MinioPath               <- opt$minio_path
 MaxGlobalVariables      <- as.numeric(opt$max_global_variables)
 
@@ -503,7 +503,8 @@ if ((8 %in% RequestedDiffGeneExprComparisons == T) |
     (10 %in% RequestedDiffGeneExprComparisons == T) |
     (11 %in% RequestedDiffGeneExprComparisons == T) |
     (12 %in% RequestedDiffGeneExprComparisons == T) |
-    (13 %in% RequestedDiffGeneExprComparisons == T)
+    (13 %in% RequestedDiffGeneExprComparisons == T) |
+    (14 %in% RequestedDiffGeneExprComparisons == T)
 ) {
   MetadataColNamesForDge.list  = unlist(strsplit(MetadataColNamesForDge, ","))
   for (property in MetadataColNamesForDge.list) {
@@ -519,13 +520,19 @@ if (all(names(listAttributesToSearchInSeuratObject) %in% names(seurat.object.int
               paste0("Seurat_object: '", paste(names(seurat.object.integrated@meta.data),   collapse = "' '"), "'\n\n")))
 }
 
-if (regexpr("^NA$", InfileListSubclasses, ignore.case = T)[1] == 1) {
-  writeLines("\nOk\n")
-}else{
-  if (13 %in% RequestedDiffGeneExprComparisons == T) {
+if (13 %in% RequestedDiffGeneExprComparisons == T) {
+  if (regexpr("^NA$", InfileListSubclasses, ignore.case = T)[1] == 1) {
     writeLines("\nOk\n")
   }else{
-    stop(paste0("\n\nERROR!!! option '-d INFILE' requires '-f 13'"))
+    stop(paste0("\n\nERROR!!! option '-f 13' requires -d NA"))
+  }
+}
+
+if (14 %in% RequestedDiffGeneExprComparisons == T) {
+  if (regexpr("^NA$", InfileListSubclasses, ignore.case = T)[1] == 1) {
+    stop(paste0("\n\nERROR!!! option '-f 14' requires -d FILE"))
+  }else{
+  writeLines("\nOk\n")
   }
 }
 
@@ -575,7 +582,7 @@ if (1 %in% RequestedDiffGeneExprComparisons == T) {
       StopWatchStart$OutTopDiffMarkersGlobalClustersVsRestOfCells$ASSAY  <- Sys.time()
   
       top_genes_by_cluster<-(seurat.object.integrated.markers %>% group_by(cluster) %>% top_n(DefaultParameters$TopDGEForFrontEnd, avg_logFC))
-      globalMarkersFile <- top_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
+      globalMarkersFile <- top_genes_by_cluster[,c("gene","cluster","p_val_adj","avg_logFC")]
       write.table(globalMarkersFile, paste0(Tempdir, "/CRESCENT_CLOUD/frontend_markers/","TopMarkersPerCluster_", assay, ".tsv"), row.names = F, sep="\t", quote = F)
   
       StopWatchEnd$OutTopDiffMarkersGlobalClustersVsRestOfCells$ASSAY  <- Sys.time()
@@ -633,7 +640,7 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
   
         # top markers per dataset
         top_genes_by_cluster<-(seurat.object.each_dataset.markers %>% group_by(cluster) %>% top_n(DefaultParameters$TopDGEForFrontEnd, avg_logFC))
-        datasetMarkersFile <- top_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
+        datasetMarkersFile <- top_genes_by_cluster[,c("gene","cluster","p_val_adj","avg_logFC")]
         write.table(datasetMarkersFile, paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_markers/",dataset,"_TopMarkersPerCluster_", assay, ".tsv"), row.names = F, sep="\t", quote = F)
   
         # groups.tsv per dataset
@@ -1117,7 +1124,6 @@ if (12 %in% RequestedDiffGeneExprComparisons == T) {
           }
           seurat.object.each_property <- seurat.object.integrated
           DatasetTypeAndProperty <- unlist(x = strsplit(x = paste(seurat.object.each_property@meta.data$dataset_type, seurat.object.each_property@meta.data[[property]], sep = "_", collapse = "\n"), split = "\n"))
-          print(DatasetTypeAndProperty)
           seurat.object.each_property <- AddMetaData(object = seurat.object.each_property, metadata = DatasetTypeAndProperty, col.name = "DatasetTypeAndProperty")
   
           FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
@@ -1162,24 +1168,15 @@ if (12 %in% RequestedDiffGeneExprComparisons == T) {
 }
 
 ####################################
-### Finding differentially expressed genes (13): using metadata annotations, for each cell class specified by `-b` and `-c`, compares each subclass vs. other subclasses
+### Finding differentially expressed genes (13): using metadata annotations, for each cell class specified by `-b` and `-c`, compares each subclass vs. all other subclasses of the same class
 ####################################
 if (13 %in% RequestedDiffGeneExprComparisons == T) {
 
-  writeLines("\n*** Finding differentially expressed genes (13): using metadata annotations, for each cell class specified by `-b` and `-c`, compares each subclass vs. other subclasses ***\n")
+  writeLines("\n*** Finding differentially expressed genes (13): using metadata annotations, for each cell class specified by `-b` and `-c`, compares each subclass vs. all other subclasses of the same class ***\n")
 
   sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
     assay <- tolower(ASSAY)
     
-    if (regexpr("^NA$", InfileListSubclasses, ignore.case = T)[1] == 1) {
-      writeLines("\n*** All subclass pairs will be compared ***\n")
-    }else{
-      writeLines("\n*** Load subclass pairs to compare ***\n")
-      SubclassesToUse.df<-read.table(InfileListSubclasses, header = F, row.names = NULL, stringsAsFactors = F)
-      colnames(SubclassesToUse.df)<-c("SubclassPair")
-      print(paste0("Will restrict comparisons to ", length(SubclassesToUse.df[,"SubclassPair"]), " subclass pairs"))
-    }
-  
     for (property in MetadataColNamesForDge.list) {
       NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
       print(paste0("Number of groups in '", property, "' = ", NumberOfClassesInThisProperty))
@@ -1198,7 +1195,7 @@ if (13 %in% RequestedDiffGeneExprComparisons == T) {
         Idents(object = seurat.object.each_property) <- property
   
         FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
-        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "SubClassesAgainstEachOther_", assay, ".tsv.bz2"), "w")
+        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "AllSubClassesAgainstEachOther_", assay, ".tsv.bz2"), "w")
         HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
         write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
   
@@ -1212,9 +1209,74 @@ if (13 %in% RequestedDiffGeneExprComparisons == T) {
             }else if (N_Class_1 >= 3 & N_Class_2 >= 3) {
               SubclassPairToCompare <- paste0(subclass1, ",", subclass2)
               ToRunThisPair <- 0
-              if (regexpr("^NA$", InfileListSubclasses, ignore.case = T)[1] == 1) {
-                ToRunThisPair <- 1
-              }else if (SubclassPairToCompare %in% SubclassesToUse.df[,"SubclassPair"] == T) {
+              print (paste0(subclass1, " vs. ", subclass2))
+              seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = F, ident.1 = subclass1, ident.2 = subclass2, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount))
+              seurat.object.each_property.each_equivalent_cluster.markers$class1 <- subclass1
+              seurat.object.each_property.each_equivalent_cluster.markers$class2 <- subclass2
+              seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
+              write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
+              rm(seurat.object.each_property.each_equivalent_cluster.markers)
+            }else{
+              print(paste0("Skip class ", subclass1, " vs. ", subclasss2, " because there were not >= 3 cells in at least one of them"))
+            }
+          }
+        }
+        close(Outfile.con)
+        StopWatchEnd$FindDiffMarkersEachMetadataEachSubclassVsOtherSubclasses[[property]][[ASSAY]]  <- Sys.time()
+      }
+    }
+  })
+}
+
+
+####################################
+### Finding differentially expressed genes (14): using metadata annotations, for each cell class specified by `-b` and `-c`, compares pairs of subclasses specified by `-d`
+####################################
+if (14 %in% RequestedDiffGeneExprComparisons == T) {
+  
+  writeLines("\n*** Finding differentially expressed genes (14): using metadata annotations, for each cell class specified by `-b` and `-c`,  compares pairs of subclasses specified by `-d` ***\n")
+  
+  sapply(RequestedAssaysForDge, FUN=function(ASSAY) {
+    assay <- tolower(ASSAY)
+    
+    writeLines("\n*** Load subclass pairs to compare ***\n")
+    SubclassesToUse.df<-read.table(InfileListSubclasses, header = F, row.names = NULL, stringsAsFactors = F)
+    colnames(SubclassesToUse.df)<-c("SubclassPair")
+    print(paste0("Will restrict comparisons to ", length(SubclassesToUse.df[,"SubclassPair"]), " subclass pairs"))
+
+    for (property in MetadataColNamesForDge.list) {
+      NumberOfClassesInThisProperty <- length(unique(seurat.object.integrated@meta.data[[property]]))
+      print(paste0("Number of groups in '", property, "' = ", NumberOfClassesInThisProperty))
+      if (NumberOfClassesInThisProperty > 1) {
+        
+        StopWatchStart$FindDiffMarkersEachMetadataEachSubclassVsOtherSubclasses[[property]][[ASSAY]]  <- Sys.time()
+        
+        ####################################
+        ### Subsets seurat object per property
+        ####################################
+        if (exists(x = "seurat.object.each_property") == T) {
+          rm(seurat.object.each_property)
+        }
+        seurat.object.each_property <- seurat.object.integrated
+        
+        Idents(object = seurat.object.each_property) <- property
+        
+        FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
+        Outfile.con <- bzfile(paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "SelectedSubClassesAgainstEachOther_", assay, ".tsv.bz2"), "w")
+        HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
+        write.table(HeadersOrder, file = Outfile.con, row.names = F, col.names = F, sep="", quote = F)
+        
+        for (subclass1 in unique(seurat.object.each_property@meta.data[[property]])) {
+          for (subclass2 in unique(seurat.object.each_property@meta.data[[property]])) {
+            N_Class_1 <- sum(seurat.object.each_property[[property]] == subclass1)
+            N_Class_2 <- sum(seurat.object.each_property[[property]] == subclass2)
+            
+            if (subclass1 == subclass2) {
+              ### Skip
+            }else if (N_Class_1 >= 3 & N_Class_2 >= 3) {
+              SubclassPairToCompare <- paste0(subclass1, ",", subclass2)
+              ToRunThisPair <- 0
+              if (SubclassPairToCompare %in% SubclassesToUse.df[,"SubclassPair"] == T) {
                 ToRunThisPair <- 1
               }
               if (ToRunThisPair == 1) {
