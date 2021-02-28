@@ -170,6 +170,11 @@ option_list <- list(
                 
                 Default = '0'"),
   #
+  make_option(c("-y", "--assays_for_gene_plots"), default="RNA,SCT",
+              help="Only needed if using '-g INFILE -m [1-3]'.  It indicates <comma> delimited 'RNA' and/or 'SCT'.
+
+                Default = 'RNA,SCT'"),
+  #
   make_option(c("-d", "--pca_dimensions"), default="10",
               help="Max value of PCA dimensions to use for clustering and t-SNE functions
                 FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
@@ -185,21 +190,18 @@ option_list <- list(
   #
   make_option(c("-s", "--save_r_object"), default="Y",
               help="Indicates if a R object with the data and analyzes from the run should be saved
-                Note that this may be time consuming. Type 'y/Y' or 'n/N'
-                
+
                 Default = 'Y'"),
   #
-  make_option(c("-t", "--save_loom_files"), default="Y",
+  make_option(c("-b", "--save_loom_files"), default="Y",
               help="Indicates if loom files should be saved
-                Note that this may be time consuming. Type 'y/Y' or 'n/N'
-                
+
                 Default = 'Y'"),
   #
-  make_option(c("-b", "--assays_for_loom"), default="RNA",
+  make_option(c("-t", "--assays_for_loom"), default="RNA,SCT",
               help="Only needed if using '-t Y'.  It indicates <comma> delimited 'RNA' and/or 'SCT'.
-                Note that this may be time consuming
-                
-                Default = 'Y'"),
+
+                Default = 'RNA,SCT'"),
   #
   make_option(c("-w", "--run_cwl"), default="0",
               help="Indicates if this script should produce 'frontend' files for crescent.cloud
@@ -234,6 +236,7 @@ PrefixOutfiles          <- opt$prefix_outfiles
 InfileMetadata          <- opt$infile_metadata
 InfileSelectedGenes     <- opt$infile_selected_genes
 ApplySelectedGenes      <- opt$apply_list_genes
+AssaysForGenePlots      <- opt$assays_for_gene_plots
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
@@ -408,6 +411,7 @@ options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 RequestedClusteringInputs   = unlist(strsplit(ClusteringInputs, ","))
 RequestedApplySelectedGenes = unlist(strsplit(ApplySelectedGenes, ","))
 RequestedAssaysForLoom      = unlist(strsplit(AssaysForLoom, ","))
+RequestedAssaysForGenePlots = unlist(strsplit(AssaysForGenePlots, ","))
 
 DefaultParameters <- list(
   ### Parameters for QC plots
@@ -931,24 +935,28 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     
     StopWatchStart$DimRedPlotsColuredByGenes[[dim_red_method]]  <- Sys.time()
     
-    ### Making a new Seurat object `seurat.object.integrated.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
-    ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
-    seurat.object.integrated.sa <- CreateSeuratObject(seurat.object.integrated@assays$RNA@data)
-    seurat.object.integrated.sa@reductions$umap <- seurat.object.integrated@reductions$umap
-    seurat.object.integrated.sa@reductions$tsne <- seurat.object.integrated@reductions$tsne
-    
-    OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/ALL_CELLS/", DimensionReductionMethods[[dim_red_method]][["name"]])
-    dir.create(path = OutDirThisOption, recursive = T)
-    sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
-      if (eachGene %in% rownames(seurat.object.integrated.sa) == T)  {
-        OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_all_cells_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
-        pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
-        print(FeaturePlot(object = seurat.object.integrated.sa, features = eachGene, cols = c("lightgrey", "blue"),
-                          reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
-        dev.off()
-      }else{
-        print(paste0("Missing ", eachGene))
-      }
+    sapply(RequestedAssaysForGenePlots, FUN=function(ASSAY) {
+
+      ### Making a new Seurat object `seurat.object.integrated.sa` with one single slot `@assays[[ASSAY]]@data` to avoid `FeaturePlot` calling:
+      ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
+      seurat.object.integrated.sa <- CreateSeuratObject(seurat.object.integrated@assays[[ASSAY]]@data)
+      seurat.object.integrated.sa@reductions$umap <- seurat.object.integrated@reductions$umap
+      seurat.object.integrated.sa@reductions$tsne <- seurat.object.integrated@reductions$tsne
+      
+      OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/ALL_CELLS/", DimensionReductionMethods[[dim_red_method]][["name"]], "/", ASSAY)
+      dir.create(path = OutDirThisOption, recursive = T)
+      sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
+        if (eachGene %in% rownames(seurat.object.integrated.sa) == T)  {
+          OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_all_cells_", ASSAY, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
+          pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
+          print(FeaturePlot(object = seurat.object.integrated.sa, features = eachGene, cols = c("lightgrey", "blue"),
+                            reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
+          dev.off()
+        }else{
+          print(paste0("Missing ", eachGene))
+        }
+      })
+    rm(seurat.object.integrated.sa)
     })
     
     StopWatchEnd$DimRedPlotsColuredByGenes[[dim_red_method]]  <- Sys.time()
@@ -1156,29 +1164,31 @@ for (dataset in rownames(InputsTable)) {
       
       StopWatchStart$DimRedPlotsColuredByGenesEachDataset[[dim_red_method]]  <- Sys.time()
       
-      ### Making a new Seurat object `seurat.object.each_dataset.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
-      ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
-      seurat.object.each_dataset.sa <- CreateSeuratObject(seurat.object.each_dataset@assays$RNA@data)
-      seurat.object.each_dataset.sa@reductions$umap <- seurat.object.each_dataset@reductions$umap
-      seurat.object.each_dataset.sa@reductions$tsne <- seurat.object.each_dataset@reductions$tsne
-      
-      OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/DATASETS/", DimensionReductionMethods[[dim_red_method]][["name"]])
-      dir.create(path = OutDirThisOption, recursive = T)
-      sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
-        if (eachGene %in% rownames(seurat.object.each_dataset.sa) == T)  {
-          OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
-          pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
-          print(FeaturePlot(object = seurat.object.each_dataset.sa, features = eachGene, cols = c("lightgrey", "blue"),
-                            reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
-          dev.off()
-        }else{
-          print(paste0("Missing ", eachGene))
-        }
+      sapply(RequestedAssaysForGenePlots, FUN=function(ASSAY) {
+
+        ### Making a new Seurat object `seurat.object.each_dataset.sa` with one single slot `@assays[[ASSAY]]@data` to avoid `FeaturePlot` calling:
+        ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
+        seurat.object.each_dataset.sa <- CreateSeuratObject(seurat.object.each_dataset@assays[[ASSAY]]@data)
+        seurat.object.each_dataset.sa@reductions$umap <- seurat.object.each_dataset@reductions$umap
+        seurat.object.each_dataset.sa@reductions$tsne <- seurat.object.each_dataset@reductions$tsne
+        
+        OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/DATASETS/", DimensionReductionMethods[[dim_red_method]][["name"]], "/", ASSAY)
+        dir.create(path = OutDirThisOption, recursive = T)
+        sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
+          if (eachGene %in% rownames(seurat.object.each_dataset.sa) == T)  {
+            OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_", dataset, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
+            pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
+            print(FeaturePlot(object = seurat.object.each_dataset.sa, features = eachGene, cols = c("lightgrey", "blue"),
+                              reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
+            dev.off()
+          }else{
+            print(paste0("Missing ", eachGene))
+          }
+        })
+        rm(seurat.object.each_dataset.sa)
       })
       
       StopWatchEnd$DimRedPlotsColuredByGenesEachDataset[[dim_red_method]]  <- Sys.time()
-      
-      rm(seurat.object.each_dataset.sa)
       
     }
     
@@ -1521,31 +1531,33 @@ if (NumberOfDatasetsTypes >= 1) {
         
         StopWatchStart$DimRedPlotsColuredByGenesEachDatasetType[[dim_red_method]]  <- Sys.time()
         
-        ### Making a new Seurat object `seurat.object.each_dataset_type.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
-        ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
-        seurat.object.each_dataset_type.sa <- CreateSeuratObject(seurat.object.each_dataset_type@assays$RNA@data)
-        seurat.object.each_dataset_type.sa@reductions$umap <- seurat.object.each_dataset_type@reductions$umap
-        seurat.object.each_dataset_type.sa@reductions$tsne <- seurat.object.each_dataset_type@reductions$tsne
-        
-        OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/DATASET_TYPES/", DimensionReductionMethods[[dim_red_method]][["name"]])
-        dir.create(path = OutDirThisOption, recursive = T)
-        sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
-          if (eachGene %in% rownames(seurat.object.each_dataset_type.sa) == T)  {
-            OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
-            pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
-            print(FeaturePlot(object = seurat.object.each_dataset_type.sa, features = eachGene, cols = c("lightgrey", "blue"),
-                              reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
-            dev.off()
-          }else{
-            print(paste0("Missing ", eachGene))
-          }
+        sapply(RequestedAssaysForGenePlots, FUN=function(ASSAY) {
+
+          ### Making a new Seurat object `seurat.object.each_dataset_type.sa` with one single slot `@assays$RNA@data` to avoid `FeaturePlot` calling:
+          ### Warning: Found the following features in more than one assay, excluding the default. We will not include these in the final dataframe:...
+          seurat.object.each_dataset_type.sa <- CreateSeuratObject(seurat.object.each_dataset_type@assays[[ASSAY]]@data)
+          seurat.object.each_dataset_type.sa@reductions$umap <- seurat.object.each_dataset_type@reductions$umap
+          seurat.object.each_dataset_type.sa@reductions$tsne <- seurat.object.each_dataset_type@reductions$tsne
+          
+          OutDirThisOption <- paste0(Tempdir, "/SELECTED_GENE_DIMENSION_REDUCTION_PLOTS/DATASET_TYPES/", DimensionReductionMethods[[dim_red_method]][["name"]], "/", ASSAY)
+          dir.create(path = OutDirThisOption, recursive = T)
+          sapply(ListOfGenesForDimRedPlots, FUN=function(eachGene) {
+            if (eachGene %in% rownames(seurat.object.each_dataset_type.sa) == T)  {
+              OutfilePathAndName <- paste0(OutDirThisOption, "/", eachGene, "_", dataset_type, "_", DimensionReductionMethods[[dim_red_method]][["name"]], ".pdf")
+              pdf(file=OutfilePathAndName, width=DefaultParameters$BaseSizeMultiplePlotPdfWidth, height=DefaultParameters$BaseSizeMultiplePlotPdfHeight)
+              print(FeaturePlot(object = seurat.object.each_dataset_type.sa, features = eachGene, cols = c("lightgrey", "blue"),
+                                reduction = dim_red_method, order = T, slot = "data", pt.size = 0.3, min.cutoff = "q0.1", max.cutoff = "q90"))
+              dev.off()
+            }else{
+              print(paste0("Missing ", eachGene))
+            }
+          })
+        rm(seurat.object.each_dataset_type.sa)
         })
         
         StopWatchEnd$DimRedPlotsColuredByGenesEachDatasetType[[dim_red_method]]  <- Sys.time()
-        
-        rm(seurat.object.each_dataset_type.sa)
       }
-      
+
       ####################################
       ### Colour dimension reduction plots for each dataset type by -infile_metadata using integrated data
       ####################################
