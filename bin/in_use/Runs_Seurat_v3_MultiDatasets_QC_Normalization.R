@@ -984,14 +984,13 @@ for (i in 1:length(seurat.object.list)) {
   print(dataset)
   seurat.object.list[[i]] <- SCTransform(seurat.object.list[[i]], verbose = T)
   
-  ####################################
-  ### Save filtered data as MTX files
-  ####################################
-  writeLines("\n*** Save filtered data as MTX files ***\n")
-  
-  StopWatchStart$SaveFilteredData[[dataset]]  <- Sys.time()
-  
   if (regexpr("^Y$", SaveFilteredData, ignore.case = T)[1] == 1) {
+    ####################################
+    ### Save filtered data as MTX files
+    ####################################
+    writeLines("\n*** Save filtered data as MTX files ***\n")
+    
+    StopWatchStart$SaveFilteredData[[dataset]]  <- Sys.time()
     
     OutDirFilteredRaw <-paste0(Tempdir, "/FILTERED_DATA_MATRICES/", dataset, "/RAW")
     dir.create(file.path(OutDirFilteredRaw), showWarnings = F, recursive = T)
@@ -1000,10 +999,9 @@ for (i in 1:length(seurat.object.list)) {
     OutDirFilteredNorm<-paste0(Tempdir, "/FILTERED_DATA_MATRICES/", dataset, "/NORMALIZED_SCT")
     dir.create(file.path(OutDirFilteredNorm), showWarnings = F, recursive = T)
     write10xCounts(path = OutDirFilteredNorm, x = round(seurat.object.list[[i]]@assays[["SCT"]]@data, digits = 4), gene.type="SCTransform_Gene_Expression", overwrite=T, type="sparse", version="3")
+    
+    StopWatchEnd$SaveFilteredData[[dataset]]  <- Sys.time()
   }
-  
-  StopWatchEnd$SaveFilteredData[[dataset]]  <- Sys.time()
-  
 }
 
 StopWatchEnd$SCTransform  <- Sys.time()
