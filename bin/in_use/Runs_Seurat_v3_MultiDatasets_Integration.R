@@ -131,13 +131,11 @@ option_list <- list(
               
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
-  make_option(c("-d", "--pca_dimensions"), default="10",
-              help="Max value of PCA dimensions to use for clustering and t-SNE functions
-                FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
-                Typically '10' is enough, if unsure use '10' and afterwards check file:
-                *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
-                
-                Default = '10'"),
+  make_option(c("-d", "--pca_dimensions_anchors"), default="30",
+              help="Max value of PCA dimensions to use for anchor detection
+                FindIntegrationAnchors(..., dims = 1:-d)
+
+                Default = '30'"),
   #
   make_option(c("-n", "--k_filter"), default="200",
               help="Integrating highly heterogenous datasets can lead to a too small number of anchors,
@@ -186,7 +184,7 @@ AnchorsFunction         <- opt$anchors_function
 ReferenceDatasets       <- opt$reference_datasets
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
-PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
+PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions_anchors))
 KFilter                 <- as.numeric(opt$k_filter)
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
@@ -691,7 +689,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   writeLines("\n*** Run FindIntegrationAnchors() ***\n")
   print(paste0("Using k.filter = ", KFilter))
-  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", anchor.features = seurat.object.integratedfeatures, reference = ReferenceDatasets.indices, verbose = T)
+  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", dims=PcaDimsUse, anchor.features = seurat.object.integratedfeatures, reference = ReferenceDatasets.indices, verbose = T)
   SampleTree <- NULL
   
   StopWatchEnd$FindIntegrationAnchors  <- Sys.time()
