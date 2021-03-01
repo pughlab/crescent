@@ -536,8 +536,8 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   DensityPlots <- PlotAnchors.STACAS(seurat.object.anchors.unfiltered, obj.names=names(seurat.object.list))
   
-  OutfilePathName <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_distances.tsv.bz2")
-  Outfile.con <- bzfile(OutfilePathName, "w")
+  OutfileStacasDistances <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_distances.tsv.bz2")
+  Outfile.con <- bzfile(OutfileStacasDistances, "w")
   Headers<-paste("dataset1", "dataset2", "cell1", "cell2", "score", "dist1.2", "dist2.1", "dist.mean", sep = "\t", collapse = "")
   write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
   lapply(1:length(seurat.object.list), function(DatasetNumber) {
@@ -555,7 +555,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   StopWatchStart$GetMedianDistMeanStacas <- Sys.time()
   
-  Distances.df <- read.table(file = paste0(OutfilesTsv, ".gz"), header = T, sep = "\t", row.names = NULL)
+  Distances.df <- read.table(file = OutfileStacasDistances, header = T, sep = "\t", row.names = NULL)
   Distances.df$datasets <- paste0(Distances.df[,"dataset1"],"---",Distances.df[,"dataset2"])
   MedianDistances.df <- aggregate(Distances.df[,"dist.mean"], list(Distances.df$datasets), median)
   SplitDatasets <- data.frame(do.call('rbind', strsplit(as.character(MedianDistances.df[,1]),'---', fixed=TRUE)))
@@ -568,14 +568,12 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   MedianDistances.mat[is.na(MedianDistances.mat)] <- 1
   MedianDistances.clust <- agnes(x = 1-MedianDistances.mat, metric = "manhattan")
   MedianDistances.order <- rownames(MedianDistances.mat)[MedianDistances.clust$order]
-  MedianDistances.mat   <- MedianDistances.mat[MedianDistances.order,MedianDistances.order]
-  
+  MedianDistances.mat   <- MedianDistances.mat[as.factor(MedianDistances.order),as.factor(MedianDistances.order)]
   OutfilePathName <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_inv_dist.mean_median_ordered.tsv.bz2")
   Outfile.con <- bzfile(OutfilePathName, "w")
   write.table(data.frame("InvDistMean_median"=MedianDistances.order, round(MedianDistances.mat,DefaultParameters$DigitsForRoundMedianDist)),
               file = OutfilePathName, row.names = F,sep="\t",quote = F)
   close(Outfile.con)
-  
   OutfilePathName <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_dist.mean_median_ordered.tsv.bz2")
   Outfile.con <- bzfile(OutfilePathName, "w")
   write.table(data.frame("DistMean_median"=MedianDistances.order, round(1-MedianDistances.mat,DefaultParameters$DigitsForRoundMedianDist)),
@@ -638,8 +636,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   StopWatchStart$GetFilteredAnchorsStacas <- Sys.time()
   
   seurat.object.anchors <- FilterAnchors.STACAS(seurat.object.anchors.unfiltered)
-  print(seurat.object.anchors)
-  
+
   OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.tsv.bz2")
   OutfilePdf  <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.pdf")
   so.anchors  <- seurat.object.anchors
@@ -693,10 +690,9 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   SampleTree <- NULL
   
   StopWatchEnd$FindIntegrationAnchors  <- Sys.time()
-  
-  print(seurat.object.anchors)
-  
+
 }
+print(seurat.object.anchors)
 
 ####################################
 ### Integrating datasets
@@ -726,7 +722,7 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
   writeLines("\n*** Saving the Integration R object ***\n")
   
-  StopWatchStart$SaveRDSFull  <- Sys.time()
+  StopWatchStart$SaveRDSIntegration  <- Sys.time()
   
   if (RunsCwl == 1) {
     OutfileRDS<-paste0("R_OBJECTS_CWL/", PrefixOutfiles, ".", ProgramOutdir, "_Integration", ".rds")
@@ -735,11 +731,22 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   }
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
-  StopWatchEnd$SaveRDSFull  <- Sys.time()
+  StopWatchEnd$SaveRDSIntegration  <- Sys.time()
+
+  StopWatchStart$SaveRDSAnchors  <- Sys.time()
   
+  if (RunsCwl == 1) {
+    OutfileRDS<-paste0("R_OBJECTS_CWL/", PrefixOutfiles, ".", ProgramOutdir, "_Anchors", ".rds")
+  }else{
+    OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_Anchors", ".rds")
+  }
+  saveRDS(seurat.object.anchors, file = OutfileRDS)
+  
+  StopWatchEnd$SaveRDSAnchors  <- Sys.time()
+
 }else{
   
-  writeLines("\n*** Not saving the Integration R object ***\n")
+  writeLines("\n*** Not saving the Integration R objects ***\n")
   
 }
 
