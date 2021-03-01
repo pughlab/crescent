@@ -328,6 +328,7 @@ options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 DefaultParameters <- list(
   ### Parameters for QC plots
   CellPropertiesToQC = c("nFeature_RNA", "nCount_RNA", "mito.fraction", "ribo.fraction"),
+  BaseSizeSinglePlotPdf = 7,
   
   ### Parameters for Seurat filters
   MinCells = 3
