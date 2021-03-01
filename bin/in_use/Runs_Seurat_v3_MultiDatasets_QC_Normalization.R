@@ -637,10 +637,10 @@ for (dataset in rownames(InputsTable)) {
     mean_ribo.fraction.u       <- round(mean(seurat.object.u@meta.data[,"ribo.fraction"]),3)
     median_ribo.fraction.u     <- round(median(seurat.object.u@meta.data[,"ribo.fraction"]),3)
     #
-    nFeature_RNAStats.u <-paste0(c("mean = ", mean_nFeature_RNAStats.u, "\n", "median = ", median_nFeature_RNAStats.u))
-    nCount_RNAStats.u   <-paste0(c("mean = ", mean_nCount_RNAStats.u,   "\n", "median = ", median_nCount_RNAStats.u))
-    mito.fraction.u     <-paste0(c("mean = ", mean_mito.fraction.u,     "\n", "median = ", median_mito.fraction.u))
-    ribo.fraction.u     <-paste0(c("mean = ", mean_ribo.fraction.u,     "\n", "median = ", median_ribo.fraction.u))
+    nFeature_RNAStats.u <-paste0("mean = ", mean_nFeature_RNAStats.u, "\n", "median = ", median_nFeature_RNAStats.u)
+    nCount_RNAStats.u   <-paste0("mean = ", mean_nCount_RNAStats.u,   "\n", "median = ", median_nCount_RNAStats.u)
+    mito.fraction.u     <-paste0("mean = ", mean_mito.fraction.u,     "\n", "median = ", median_mito.fraction.u)
+    ribo.fraction.u     <-paste0("mean = ", mean_ribo.fraction.u,     "\n", "median = ", median_ribo.fraction.u)
     
     ### Get filtered data QC statistics
     nFeature_RNA.f.df   <-data.frame(Expression_level = seurat.object.f@meta.data$nFeature_RNA, nGenes = 2)
@@ -657,11 +657,11 @@ for (dataset in rownames(InputsTable)) {
     mean_ribo.fraction.f       <- round(mean(seurat.object.f@meta.data[,"ribo.fraction"]),3)
     median_ribo.fraction.f     <- round(median(seurat.object.f@meta.data[,"ribo.fraction"]),3)
     #
-    nFeature_RNAStats.f <-paste0(c("mean = ", mean_nFeature_RNAStats.f, "\n", "median = ", median_nFeature_RNAStats.f))
-    nCount_RNAStats.f   <-paste0(c("mean = ", mean_nCount_RNAStats.f,   "\n", "median = ", median_nCount_RNAStats.f))
-    mito.fraction.f     <-paste0(c("mean = ", mean_mito.fraction.f,     "\n", "median = ", median_mito.fraction.f))
-    ribo.fraction.f     <-paste0(c("mean = ", mean_ribo.fraction.f,     "\n", "median = ", median_ribo.fraction.f))
-    
+    nFeature_RNAStats.f <-paste0("mean = ", mean_nFeature_RNAStats.f, "\n", "median = ", median_nFeature_RNAStats.f)
+    nCount_RNAStats.f   <-paste0("mean = ", mean_nCount_RNAStats.f,   "\n", "median = ", median_nCount_RNAStats.f)
+    mito.fraction.f     <-paste0("mean = ", mean_mito.fraction.f,     "\n", "median = ", median_mito.fraction.f)
+    ribo.fraction.f     <-paste0("mean = ", mean_ribo.fraction.f,     "\n", "median = ", median_ribo.fraction.f)
+
     ### Put QC statistics together
     nFeature_RNA.m.df  <-data.frame(rbind(nFeature_RNA.u.df,nFeature_RNA.f.df))
     nCount_RNA.m.df    <-data.frame(rbind(nCount_RNA.u.df,nCount_RNA.f.df))
