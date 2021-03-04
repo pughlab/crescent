@@ -193,15 +193,11 @@ option_list <- list(
 
                 Default = 'Y'"),
   #
-  make_option(c("-b", "--save_loom_files"), default="Y",
-              help="Indicates if loom files should be saved
+  make_option(c("-t", "--assays_for_loom"), default="NA",
+              help="Indicates which assays should be saved as loom files, <comma> delimited 'RNA' and/or 'SCT'
+                Or type 'NA' to don't save loom files
 
-                Default = 'Y'"),
-  #
-  make_option(c("-t", "--assays_for_loom"), default="RNA,SCT",
-              help="Only needed if using '-t Y'.  It indicates <comma> delimited 'RNA' and/or 'SCT'.
-
-                Default = 'RNA,SCT'"),
+                Default = 'NA'"),
   #
   make_option(c("-w", "--run_cwl"), default="0",
               help="Indicates if this script should produce 'frontend' files for crescent.cloud
@@ -240,7 +236,6 @@ AssaysForGenePlots      <- opt$assays_for_gene_plots
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
-SaveLoom                <- opt$save_loom_files
 AssaysForLoom           <- opt$assays_for_loom
 RunsCwl                 <- as.numeric(opt$run_cwl)
 MinioPath               <- opt$minio_path
@@ -585,7 +580,9 @@ if (regexpr("^NA$", InfileSelectBarcodes , ignore.case = T)[1] == 1) {
 ### Outfiles for web app: save count matrices as loom
 ####################################
 
-if (regexpr("^Y$", SaveLoom, ignore.case = T)[1] == 1) {
+if (regexpr("^NA$", AssaysForLoom, ignore.case = T)[1] == 1) {
+  writeLines("\n*** Not saving the loom files ***\n")
+}else{
   
   writeLines("\n*** Saving loom files ***\n")
   
@@ -615,10 +612,6 @@ if (regexpr("^Y$", SaveLoom, ignore.case = T)[1] == 1) {
   
   StopWatchEnd$LoomFiles  <- Sys.time()
 
-}else{
-    
-  writeLines("\n*** Not saving the loom files ***\n")
-    
 }
 
 ####################################
