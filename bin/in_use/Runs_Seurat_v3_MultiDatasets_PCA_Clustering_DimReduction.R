@@ -102,7 +102,7 @@ option_list <- list(
                 (a) The order of the list of datasets in --inputs_list may influence the results, including number of clusters,
                 t-SNE/UMAP and differentially expressed genes. List datasets better measured first.
 
-                (b) middle dashes '-' are not allowed in columns 1 or 2, if ocurring they will be replaced by low dashes '_'
+                (b) middle dashes '-' in columns 1 or 2 will be replaced by low dashes '_'
 
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
@@ -111,7 +111,7 @@ option_list <- list(
 
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
-  make_option(c("-q", "--inputs_select_barcodes"), default="NA",
+  make_option(c("-q", "--infile_select_barcodes"), default="NA",
               help="Path/name to a <tab> delimited list of barcodes to be selected from --infile_r_object
                 and run the PCA, clustering and dimension reduction analyzes using only the selected barcodes, like:
                 d1  AAACCTGAGCTCCCAG
@@ -223,8 +223,8 @@ option_list <- list(
 opt <- parse_args(OptionParser(option_list=option_list))
 
 InputsList              <- opt$inputs_list
-InfileRobject           <- opt$infile_r_object
-InfileSelectBarcodes    <- opt$inputs_select_barcodes
+InfileRObject           <- opt$infile_r_object
+InfileSelectBarcodes    <- opt$infile_select_barcodes
 Resolution              <- as.numeric(opt$resolution)
 ClusteringInputs        <- opt$clustering_inputs
 Outdir                  <- opt$outdir
@@ -537,7 +537,7 @@ writeLines("\n*** Load integrated datasets R object ***\n")
 
 StopWatchStart$LoadRDSIntegratedDatasets  <- Sys.time()
 
-seurat.object.integrated <- readRDS(InfileRobject)
+seurat.object.integrated <- readRDS(InfileRObject)
 
 StopWatchEnd$LoadRDSIntegratedDatasets  <- Sys.time()
 
