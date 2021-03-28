@@ -4,8 +4,8 @@ Script name
 
 Description
 ================
-Runs Seurat version 3 scRNA-seq data QC and normalization
-The input is a table with paths to datasets and parameters for QC
+Runs Seurat version 3 scRNA-seq data QC and normalization<br />
+The input is a table with paths to datasets and parameters for QC<br />
 Datasets can be in either MTX or TSV format (descriptions below).
 
 The pipeline is based on these Seurat tutorials:<br />
@@ -19,7 +19,7 @@ Default parameters are set as defults based on the Seurat tutorial or from empir
 
 Outfiles
 ================
-Tables with differentially expressed genes
+Tables with differentially expressed genes<br />
 See 'Outputs Description' below for details.
 
 General workflow
@@ -44,8 +44,7 @@ To run the script type something like:<br />
 
 Inputs Description
 ================
-
-a) An R object from script Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R
+a) An R object from script Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R<br />
 b) A table indicating dataset types
 
 Outputs Description

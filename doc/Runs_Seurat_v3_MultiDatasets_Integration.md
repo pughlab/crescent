@@ -4,7 +4,7 @@ Script name
 
 Description
 ================
-Runs Seurat version 3 scRNA-seq data integration using CCA
+Runs Seurat version 3 scRNA-seq data integration using CCA<br />
 The input is a table with paths to R objects from 'Runs_Seurat_v3_MultiDatasets_QC_Normalization.R' script
 
 The pipeline is based on these Seurat tutorials:<br />
@@ -19,7 +19,7 @@ Default parameters are set as defults based on the Seurat tutorial or from empir
 
 Outfiles
 ================
-Tables with integration data and an R objects for downstream analyzes
+Tables with integration data and an R objects for downstream analyzes<br />
 See 'Outputs Description' below for details.
 
 General workflow
@@ -44,8 +44,7 @@ To run the script type something like:<br />
 
 Inputs Description
 ================
-
-a) For each dataset, an R object from script Runs_Seurat_v3_MultiDatasets_QC_Normalization.R
+a) For each dataset, an R object from script Runs_Seurat_v3_MultiDatasets_QC_Normalization.R<br />
 b) A table indicating dataset types
 
 Outputs Description

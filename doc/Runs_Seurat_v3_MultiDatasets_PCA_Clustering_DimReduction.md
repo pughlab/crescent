@@ -4,7 +4,7 @@ Script name
 
 Description
 ================
-Runs Seurat version 3 scRNA-seq data PCA, dimension reduction (UMAP and t-SNE), and Clustering
+Runs Seurat version 3 scRNA-seq data PCA, dimension reduction (UMAP and t-SNE), and Clustering<br />
 The input is an R object from 'Runs_Seurat_v3_MultiDatasets_Integration.R' script
 
 The pipeline is based on these Seurat tutorials:<br />
@@ -18,7 +18,7 @@ Default parameters are set as defults based on the Seurat tutorial or from empir
 
 Outfiles
 ================
-Tables with integration data and an R objects for downstream analyzes
+Tables with integration data and an R objects for downstream analyzes<br />
 See 'Outputs Description' below for details.
 
 General workflow
@@ -51,8 +51,7 @@ To run the script type something like:<br />
 
 Inputs Description
 ================
-
-a) An R object from script Runs_Seurat_v3_MultiDatasets_Integration.R
+a) An R object from script Runs_Seurat_v3_MultiDatasets_Integration.R<br />
 b) A table indicating dataset types
 
 Outputs Description

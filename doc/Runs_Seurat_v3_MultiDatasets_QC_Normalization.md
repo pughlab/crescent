@@ -4,8 +4,8 @@ Script name
 
 Description
 ================
-Runs Seurat version 3 scRNA-seq data QC and normalization
-The input is a table with paths to datasets and parameters for QC
+Runs Seurat version 3 scRNA-seq data QC and normalization<br />
+The input is a table with paths to datasets and parameters for QC<br />
 Datasets can be in either MTX or TSV format (descriptions below).
 
 The pipeline is based on these Seurat tutorials:<br />
@@ -19,7 +19,7 @@ Default parameters are set as defults based on the Seurat tutorial or from empir
 
 Outfiles
 ================
-Tables and plots with QC data, R objects for downstream analyzes, and files for CReSCENT's WebApp QC plots
+Tables and plots with QC data, R objects for downstream analyzes, and files for CReSCENT's WebApp QC plots<br />
 See 'Outputs Description' below for details.
 
 General workflow
@@ -44,7 +44,6 @@ To run the script type something like:<br />
 
 Inputs Description
 ================
-
 One of the following input types:<br />
 a) For each dataset, a *directory* with 10X files from Cell Ranger v3 (barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz) <br />
 b) For each dataset, a *file* in TSV <tab> delimited format with cell-barcodes in columns and genes in rows
