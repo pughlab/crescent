@@ -93,7 +93,7 @@ option_list <- list(
                 (a) The order of the list of datasets in --inputs_list may influence the results, including number of clusters,
                 t-SNE/UMAP and differentially expressed genes. List datasets better measured first.
                 
-                (b) middle dashes '-' are not allowed in columns 1 or 3, if ocurring they will be replaced by low dashes '_'
+                (b) middle dashes '-' in columns 1 or 3 will be replaced by low dashes '_'
 
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
@@ -104,10 +104,23 @@ option_list <- list(
   #
   make_option(c("-y", "--anchors_function"), default="Seurat",
               help="Indicates function to find integration anchors:
-                'STACAS' = use function FindAnchors.STACAS() from library(STACAS)
-                'Seurat' = use function FindIntegrationAnchors() from library(Seurat)
+                'STACAS'      = use function FindAnchors.STACAS() from library(STACAS)
+                'Seurat'      = use function FindIntegrationAnchors() from library(Seurat)
+                'precomputed' = use a precomputed 'anchors' object from STACAS or Seurat, provided by --anchors_infile
                 
                 Default = 'Seurat'"),
+  #
+  make_option(c("-k", "--anchors_infile"), default="NA",
+              help="Only needed if using '--anchors_function precomputed'
+                Provides a precomputed anchors R object from STACAS or Seurat
+
+                Default = 'NA'"),
+  #
+  make_option(c("-l", "--sample_tree_infile"), default="NA",
+              help="Only needed if using '--anchors_function precomputed' and the precomputed file comes from STACAS
+                Provides a precomputed sample.tree file from STACAS
+
+                Default = 'NA'"),
   #
   make_option(c("-z", "--reference_datasets"), default="NA",
               help="Indicates either of two options to use reference datasets for integration anchors:
@@ -179,8 +192,10 @@ option_list <- list(
 opt <- parse_args(OptionParser(option_list=option_list))
 
 InputsList              <- opt$inputs_list
-InputRObjects           <- opt$infile_r_objects
+InfileRObjects          <- opt$infile_r_objects
 AnchorsFunction         <- opt$anchors_function
+AnchorsInFile           <- opt$anchors_infile
+SampleTreeInFile        <- opt$sample_tree_infile
 ReferenceDatasets       <- opt$reference_datasets
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
@@ -229,7 +244,7 @@ writeLines("\n*** Create outdirs ***\n")
 FILE_TYPE_OUT_DIRECTORIES = c(
   "LOG_FILES",
   "PSEUDO_BULK",
-  "STACAS"
+  "ANCHORS"
 )
 
 if (RunsCwl == 0 || RunsCwl == 2) {
@@ -351,6 +366,33 @@ DefaultParameters <- list(
 ### Assay types for plot and table outfiles
 listAssaySuffixForOutfiles <- list(RNA="RNA", SCT="SCT", integrated="INT")
 
+####################################
+### Check anchor parameters are compatible with each other
+####################################
+writeLines("\n*** Check anchor parameters are compatible with each other ***\n")
+
+if (regexpr("^Seurta$|^STACAS$", AnchorsFunction, ignore.case = T)[1] == 1) {
+  if (regexpr("^NA$", AnchorsInFile, ignore.case = T)[1] == 1) {
+    print("Ok")
+  }else{
+    stop(paste("ERROR!!! parameters -y ", AnchorsFunction, " and -k ", AnchorsInFile, " are incompatible with each other"))
+  }
+}else if (regexpr("^precomputed$", AnchorsFunction, ignore.case = T)[1] == 1) {
+  if (regexpr("^NA$", AnchorsInFile, ignore.case = T)[1] == 1) {
+    stop(paste("ERROR!!! parameters -y ", AnchorsFunction, " and -k ", AnchorsInFile, " are incompatible with each other"))
+  }else{
+    if (regexpr("^STACAS$", AnchorsInFile, ignore.case = T)[1] == 1) {
+      if (regexpr("^NA$", SampleTreeInFile, ignore.case = T)[1] == 1) {
+        stop(paste("ERROR!!! parameters -k ", AnchorsInFile, " and -l ", SampleTreeInFile, " are incompatible with each other"))
+      }else{
+        print("Ok")
+      }
+    }else{
+      print("Ok")
+    }
+  }
+}
+
 ################################################################################################################################################
 ################################################################################################################################################
 ### HERE ARE THE FUNCTIONS TO LOAD DATASETS
@@ -362,75 +404,81 @@ writeLines("\n**** LOAD DATASETS ****\n")
 ####################################
 ### Load --inputs_list
 ####################################
-writeLines("\n*** Load --inputs_list ***\n")
-
-if (RunsCwl == 0 || RunsCwl == 2) {
-  InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
-  InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-  colnames(InputsTable)<-c("PathToRObject","DatasetType")
+if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
-}else{
-  MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
-  MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
+  writeLines("\n*** Load --inputs_list ***\n")
   
-  for (i in seq_along(MinioPaths)) {
-    MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
+  if (RunsCwl == 0 || RunsCwl == 2) {
+    InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
+    InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
+    colnames(InputsTable)<-c("PathToRObject","DatasetType")
+    
+  }else{
+    MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
+    MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
+    
+    for (i in seq_along(MinioPaths)) {
+      MinioDataPaths[i, ] = c(basename(MinioPaths[[i]]), MinioPaths[[i]])
+    }
+    
+    InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
+    
+    MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
+    MergeFilter <- c("name", "dataset_ID","dataset_path", "dataset_type")
+    MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
+    MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
+    rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
+    colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","PathToRObject","DatasetType")
+    
+    InputsTable <- MergedInputsTableFilteredFinal
   }
   
-  InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
+  ##### Replace low dashes by dots in rownames(InputsTable) or DatasetType
+  rownames(InputsTable) <- gsub(x=rownames(InputsTable), pattern = "-", replacement = "_")
+  InputsTable[,"DatasetType"] <- gsub(x=InputsTable[,"DatasetType"], pattern = "-", replacement = "_")
+  NumberOfDatasets <- nrow(InputsTable)
   
-  MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-  MergeFilter <- c("name", "dataset_ID","dataset_path", "dataset_type")
-  MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
-  MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
-  rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-  colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","PathToRObject","DatasetType")
-  
-  InputsTable <- MergedInputsTableFilteredFinal
-}
-
-##### Replace low dashes by dots in rownames(InputsTable) or DatasetType
-rownames(InputsTable) <- gsub(x=rownames(InputsTable), pattern = "-", replacement = "_")
-InputsTable[,"DatasetType"] <- gsub(x=InputsTable[,"DatasetType"], pattern = "-", replacement = "_")
-NumberOfDatasets <- nrow(InputsTable)
-
-DatasetIds <-list()
-for (i in 1:nrow(InputsTable)) {
-  DatasetIds[[i]] <- rownames(InputsTable)[[i]]
+  DatasetIds <-list()
+  for (i in 1:nrow(InputsTable)) {
+    DatasetIds[[i]] <- rownames(InputsTable)[[i]]
+  }
 }
 
 ####################################
 ### Load each dataset R object
 ####################################
-writeLines("\n*** Load each dataset R object ***\n")
-
-StopWatchStart$LoadRDSEachDataset  <- Sys.time()
-
-if (RunsCwl == 1) {
-  RObjects <- list.files(InputRObjects, pattern="*_QC_Normalization.rds", full.names=T)
-  seurat.object.list <- list()
-  for (object in RObjects) {
-    MinioID <- str_extract(basename(object), regex("[^.]*"))
-    for (dataset in rownames(InputsTable)) {
-      DatasetMinioID <- InputsTable[dataset,"DatasetMinioID"]
-      if (MinioID == DatasetMinioID) {
-        DatasetIndexInInputsTable <- which(x = rownames(InputsTable) == dataset)
-        seurat.object.list[[DatasetIndexInInputsTable]] <- readRDS(object)
+if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
+  writeLines("\n*** Load each dataset R object ***\n")
+  
+  StopWatchStart$LoadRDSEachDataset  <- Sys.time()
+  
+  if (RunsCwl == 1) {
+    RObjects <- list.files(InfileRObjects, pattern="*_QC_Normalization.rds", full.names=T)
+    seurat.object.list <- list()
+    for (object in RObjects) {
+      MinioID <- str_extract(basename(object), regex("[^.]*"))
+      for (dataset in rownames(InputsTable)) {
+        DatasetMinioID <- InputsTable[dataset,"DatasetMinioID"]
+        if (MinioID == DatasetMinioID) {
+          DatasetIndexInInputsTable <- which(x = rownames(InputsTable) == dataset)
+          seurat.object.list[[DatasetIndexInInputsTable]] <- readRDS(object)
+        }
       }
     }
+  }else{
+    seurat.object.list <- list()
+    for (dataset in rownames(InputsTable)) {
+      print(dataset)
+      DatasetIndexInInputsTable <- which(x = rownames(InputsTable) == dataset)
+      InputRobject <- InputsTable[dataset,"PathToRObject"]
+      seurat.object.list[[DatasetIndexInInputsTable]] <- readRDS(InputRobject)
+    }
   }
-}else{
-  seurat.object.list <- list()
-  for (dataset in rownames(InputsTable)) {
-    print(dataset)
-    DatasetIndexInInputsTable <- which(x = rownames(InputsTable) == dataset)
-    InputRobject <- InputsTable[dataset,"PathToRObject"]
-    seurat.object.list[[DatasetIndexInInputsTable]] <- readRDS(InputRobject)
-  }
+  
+  StopWatchEnd$LoadRDSEachDataset  <- Sys.time()
+  
 }
-
-StopWatchEnd$LoadRDSEachDataset  <- Sys.time()
-
+  
 ################################################################################################################################################
 ################################################################################################################################################
 ### HERE ARE THE FUNCTIONS TO INTEGRATE DATASETS
@@ -442,79 +490,76 @@ writeLines("\n**** INTEGRATE DATASETS ****\n")
 ####################################
 ### Get correlation between datasets using pseudo-bulk
 ####################################
-writeLines("\n*** Get correlation between datasets using pseudo-bulk ***\n")
-
-StopWatchStart$GetCorrelBetweenDatasetsUsingPseudoBulk  <- Sys.time()
-
-SeuratObjectsFilteredAndNormalized <- seurat.object.list
-FirstSeuratObject   <- SeuratObjectsFilteredAndNormalized[[1]]
-RestOfSeuratObjectsFiltered <- SeuratObjectsFilteredAndNormalized[c(2:NumberOfDatasets)]
-RestOfDatasetsIds    <- unlist(DatasetIds[c(2:NumberOfDatasets)])
-
-seurat.object.merged.normalized <- merge(FirstSeuratObject, y = RestOfSeuratObjectsFiltered, 
-                                         add.cell.ids = DatasetIds,
-                                         project = PrefixOutfiles)
-
-seurat.object.list.normalized <- SplitObject(seurat.object.merged.normalized, split.by = "dataset")
-
-for (assay_expression in DefaultParameters$AssaysForPseudoBulk) {
+if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
+  writeLines("\n*** Get correlation between datasets using pseudo-bulk ***\n")
   
-  ### Get pseudo-bulk matrices
-  mat_for_correl_all_cells.df <- data.frame(row.names = rownames(seurat.object.list.normalized[[1]]@assays[[assay_expression]]))
-  for (dataset in rownames(InputsTable)) {
-    mat_for_correl_all_cells.df[[dataset]] <- rowSums(as.matrix(seurat.object.list.normalized[[dataset]]@assays[[assay_expression]][,]))
+  StopWatchStart$GetCorrelBetweenDatasetsUsingPseudoBulk  <- Sys.time()
+  
+  SeuratObjectsFilteredAndNormalized <- seurat.object.list
+  FirstSeuratObject   <- SeuratObjectsFilteredAndNormalized[[1]]
+  RestOfSeuratObjectsFiltered <- SeuratObjectsFilteredAndNormalized[c(2:NumberOfDatasets)]
+  RestOfDatasetsIds    <- unlist(DatasetIds[c(2:NumberOfDatasets)])
+  
+  seurat.object.merged.normalized <- merge(FirstSeuratObject, y = RestOfSeuratObjectsFiltered, 
+                                           add.cell.ids = DatasetIds,
+                                           project = PrefixOutfiles)
+  
+  seurat.object.list.normalized <- SplitObject(seurat.object.merged.normalized, split.by = "dataset")
+  
+  for (assay_expression in DefaultParameters$AssaysForPseudoBulk) {
+    
+    ### Get pseudo-bulk matrices
+    mat_for_correl_all_cells.df <- data.frame(row.names = rownames(seurat.object.list.normalized[[1]]@assays[[assay_expression]]))
+    for (dataset in rownames(InputsTable)) {
+      mat_for_correl_all_cells.df[[dataset]] <- rowSums(as.matrix(seurat.object.list.normalized[[dataset]]@assays[[assay_expression]][,]))
+    }
+    
+    OutfilePathName <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2")
+    Outfile.con <- bzfile(OutfilePathName, "w")
+    Headers<-paste(paste0("PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]]), paste(colnames(mat_for_correl_all_cells.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
+    write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(mat_for_correl_all_cells.df,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+    close(Outfile.con)
+  
+    ### Get correlation
+    mat_for_correl_all_cells.cor <- round(cor(mat_for_correl_all_cells.df), digits = 3)
+    OutfilePathName <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor", ".tsv.bz2")
+    Outfile.con <- bzfile(OutfilePathName, "w")
+    Headers<-paste(paste0("PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor"), paste(colnames(mat_for_correl_all_cells.cor), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
+    write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+    write.table(mat_for_correl_all_cells.cor,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+    close(Outfile.con)
+    
   }
   
-  OutfilePathName <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2")
-  Outfile.con <- bzfile(OutfilePathName, "w")
-  Headers<-paste(paste0("PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]]), paste(colnames(mat_for_correl_all_cells.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
-  write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
-  write.table(mat_for_correl_all_cells.df,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-  close(Outfile.con)
-
-  ### Get correlation
-  mat_for_correl_all_cells.cor <- round(cor(mat_for_correl_all_cells.df), digits = 3)
-  OutfilePathName <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor", ".tsv.bz2")
-  Outfile.con <- bzfile(OutfilePathName, "w")
-  Headers<-paste(paste0("PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor"), paste(colnames(mat_for_correl_all_cells.cor), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
-  write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
-  write.table(mat_for_correl_all_cells.cor,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-  close(Outfile.con)
-  
+  StopWatchEnd$GetCorrelBetweenDatasetsUsingPseudoBulk  <- Sys.time()
 }
-
-StopWatchEnd$GetCorrelBetweenDatasetsUsingPseudoBulk  <- Sys.time()
 
 ####################################
 ### Get reference datasets
 ####################################
-writeLines("\n*** Get reference datasets ***\n")
+if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
+  writeLines("\n*** Get reference datasets ***\n")
 
-StopWatchStart$GetReferenceDatasets <- Sys.time()
-
-if (regexpr("^NA$", ReferenceDatasets , ignore.case = T)[1] == 1) {
-  writeLines("\n*** Will compare all-vs-all datasets to get anchors ***\n")
-  ReferenceDatasets.indices <- c(1:nrow(InputsTable))
-}else{
-
-  if (RunsCwl == 1) {
-    InputsTableReferenceID <- InputsTable$DatasetMinioID
-  } else {
-    InputsTableReferenceID <- rownames(InputsTable)
+  StopWatchStart$GetReferenceDatasets <- Sys.time()
+  
+  if (regexpr("^NA$", ReferenceDatasets , ignore.case = T)[1] == 1) {
+    writeLines("\n*** Will compare all-vs-all datasets to get anchors ***\n")
+    ReferenceDatasets.indices <- c(1:nrow(InputsTable))
+  }else{
+    writeLines("\n*** Determine reference dataset indices ***\n")
+    ReferenceDatasets.list <- unlist(strsplit(ReferenceDatasets, ","))
+    NumberOfFoundReferenceDatasetIDs <- sum(ReferenceDatasets.list %in% rownames(InputsTable) == T)
+    if (NumberOfFoundReferenceDatasetIDs == length(ReferenceDatasets.list)) {
+      ReferenceDatasets.indices <- match(ReferenceDatasets.list, rownames(InputsTable))
+    }else{
+      stop(paste0("Requested ", length(ReferenceDatasets.list), " datasets as references by parameter `-z`, but found ", NumberOfFoundReferenceDatasetIDs, " in --inputs_list row headers"))
+    }
+    print(paste0("Will use datasets: ", paste(as.character(ReferenceDatasets.indices), sep = "", collapse = ",")))
   }
   
-  writeLines("\n*** Determine reference dataset indices ***\n")
-  ReferenceDatasets.list <- unlist(strsplit(ReferenceDatasets, ","))
-  NumberOfFoundReferenceDatasetIDs <- sum(ReferenceDatasets.list %in% InputsTableReferenceID == T)
-  if (NumberOfFoundReferenceDatasetIDs == length(ReferenceDatasets.list)) {
-    ReferenceDatasets.indices <- match(ReferenceDatasets.list, InputsTableReferenceID)
-  }else{
-    stop(paste0("Requested ", length(ReferenceDatasets.list), " datasets as references by parameter `-z`, but found ", NumberOfFoundReferenceDatasetIDs, " in --inputs_list row headers"))
-  }
-  print(paste0("Will use datasets: ", paste(as.character(ReferenceDatasets.indices), sep = "", collapse = ",")))
+  StopWatchEnd$GetReferenceDatasets <- Sys.time()
 }
-
-StopWatchEnd$GetReferenceDatasets <- Sys.time()
 
 ####################################
 ### Get integration anchors
@@ -543,7 +588,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   DensityPlots <- PlotAnchors.STACAS(seurat.object.anchors.unfiltered, obj.names=names(seurat.object.list))
   
-  OutfileStacasDistances <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_distances.tsv.bz2")
+  OutfileStacasDistances <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_distances.tsv.bz2")
   Outfile.con <- bzfile(OutfileStacasDistances, "w")
   Headers<-paste("dataset1", "dataset2", "cell1", "cell2", "score", "dist1.2", "dist2.1", "dist.mean", sep = "\t", collapse = "")
   write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
@@ -576,12 +621,12 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   MedianDistances.clust <- agnes(x = 1-MedianDistances.mat, metric = "manhattan")
   MedianDistances.order <- rownames(MedianDistances.mat)[MedianDistances.clust$order]
   MedianDistances.mat   <- MedianDistances.mat[as.factor(MedianDistances.order),as.factor(MedianDistances.order)]
-  OutfilePathName <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_inv_dist.mean_median_ordered.tsv.bz2")
+  OutfilePathName <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_inv_dist.mean_median_ordered.tsv.bz2")
   Outfile.con <- bzfile(OutfilePathName, "w")
   write.table(data.frame("InvDistMean_median"=MedianDistances.order, round(MedianDistances.mat,DefaultParameters$DigitsForRoundMedianDist)),
               file = OutfilePathName, row.names = F,sep="\t",quote = F)
   close(Outfile.con)
-  OutfilePathName <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_dist.mean_median_ordered.tsv.bz2")
+  OutfilePathName <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_dist.mean_median_ordered.tsv.bz2")
   Outfile.con <- bzfile(OutfilePathName, "w")
   write.table(data.frame("DistMean_median"=MedianDistances.order, round(1-MedianDistances.mat,DefaultParameters$DigitsForRoundMedianDist)),
               file = OutfilePathName, row.names = F,sep="\t",quote = F)
@@ -627,8 +672,8 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   StopWatchStart$GetAllAnchorsStacas <- Sys.time()
   
-  OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.tsv.bz2")
-  OutfilePdf  <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.pdf")
+  OutfilesTsv <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.tsv.bz2")
+  OutfilePdf  <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.pdf")
   so.anchors  <- seurat.object.anchors.unfiltered
   sos.list    <- seurat.object.list
   TableAnchorNumbers(so.anchors,sos.list,OutfilesTsv,OutfilePdf,"BEFORE")
@@ -644,8 +689,8 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   seurat.object.anchors <- FilterAnchors.STACAS(seurat.object.anchors.unfiltered)
 
-  OutfilesTsv <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.tsv.bz2")
-  OutfilePdf  <- paste0(Tempdir, "/STACAS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.pdf")
+  OutfilesTsv <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.tsv.bz2")
+  OutfilePdf  <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.pdf")
   so.anchors  <- seurat.object.anchors
   sos.list    <- seurat.object.list
   TableAnchorNumbers(so.anchors,sos.list,OutfilesTsv,OutfilePdf,"AFTER")
@@ -666,6 +711,11 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   SampleTree <- SampleTree.STACAS(seurat.object.anchors)
   
+  OutfileSampleTree <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_SampleTree", ".tsv.bz2")
+  Outfile.con <- bzfile(OutfileSampleTree, "w")
+  write.table(SampleTree, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
+  close(Outfile.con)
+
   StopWatchEnd$GetOptimalIntegrationTreeStacas <- Sys.time()
   
 } else if (regexpr("^Seurat$", AnchorsFunction , ignore.case = T)[1] == 1) {
@@ -697,9 +747,35 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   SampleTree <- NULL
   
   StopWatchEnd$FindIntegrationAnchors  <- Sys.time()
+  
+  OutfileAnchors <- paste0(PrefixOutfiles, ".", ProgramOutdir, "_Anchors", ".rds")
+
+} else if (regexpr("^precomputed$", AnchorsFunction , ignore.case = T)[1] == 1) {
+  
+  ####################################
+  ### Load precomputed anchors
+  ####################################
+  writeLines("\n*** Load precomputed anchors ***\n")
+  
+  StopWatchStart$ReadAnchorsInFile  <- Sys.time()
+
+  seurat.object.anchors <- readRDS(AnchorsInFile)
+
+  StopWatchEnd$ReadAnchorsInFile  <- Sys.time()
+  
+  print(AnchorsInFile)
+  
+  if (grepl(AnchorsInFile, "STACAS", fixed = TRUE)) {
+    SampleTree <- read.table(AnchorsInFile, header = F, row.names = F)
+    print(SampleTree)
+    
+  }else{
+    SampleTree <- NULL
+  }
+  
+  OutfileAnchors <- paste0(PrefixOutfiles, ".", ProgramOutdir, "_STACAS_Anchors", ".rds")
 
 }
-print(seurat.object.anchors)
 
 ####################################
 ### Integrating datasets
@@ -719,7 +795,7 @@ StopWatchEnd$IntegrateData  <- Sys.time()
 ################################################################################################################################################
 ################################################################################################################################################
 
-writeLines("\n**** SAVE THE R_OBJECT AND LOG FILES ****\n")
+writeLines("\n**** SAVE THE R_OBJECTS AND LOG FILES ****\n")
 
 ####################################
 ### Saving the Integration R object
@@ -743,9 +819,9 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   StopWatchStart$SaveRDSAnchors  <- Sys.time()
   
   if (RunsCwl == 1) {
-    OutfileRDS<-paste0("R_OBJECTS_CWL/", PrefixOutfiles, ".", ProgramOutdir, "_Anchors", ".rds")
+    OutfileRDS<-paste0("R_OBJECTS_CWL/", OutfileAnchors)
   }else{
-    OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", PrefixOutfiles, ".", ProgramOutdir, "_Anchors", ".rds")
+    OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", OutfileAnchors)
   }
   saveRDS(seurat.object.anchors, file = OutfileRDS)
   
