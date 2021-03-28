@@ -84,7 +84,7 @@ option_list <- list(
                 (a) The order of the list of datasets in --inputs_list may influence the results, including number of clusters,
                 t-SNE/UMAP and differentially expressed genes. List datasets better measured first.
                 
-                (b) middle dashes '-' are not allowed in columns 1 or 3, if ocurring they will be replaced by low dashes '_'
+                (b) middle dashes '-' in columns 1 or 3 will be replaced by low dashes '_'
                 
                 (c) Column 4 indicates the dataset format. It must be in either:
                 'MTX'  and column 2 must be the path/name to an MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files
@@ -95,7 +95,7 @@ option_list <- list(
 
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
-  make_option(c("-j", "--inputs_remove_barcodes"), default="NA",
+  make_option(c("-j", "--infile_remove_barcodes"), default="NA",
               help="Path/name to a <tab> delimited list of barcodes to be removed from analysis, like:
                 d1  AAACCTGAGCTCCCAG
                 d2  AAACCTGTCACCATAG
@@ -162,7 +162,7 @@ option_list <- list(
 opt <- parse_args(OptionParser(option_list=option_list))
 
 InputsList              <- opt$inputs_list
-InfileRemoveBarcodes    <- opt$inputs_remove_barcodes
+InfileRemoveBarcodes    <- opt$infile_remove_barcodes
 SaveFilteredData        <- opt$save_filtered_data
 SaveUnFilteredData      <- opt$save_unfiltered_data
 Outdir                  <- opt$outdir
