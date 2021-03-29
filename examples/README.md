@@ -1,36 +1,22 @@
 # Example files for CReSCENT
 
-CELL RANGER
+CReSCENT SEURAT WRAPPERS
 ================
 
-We are using Cell Ranger v3.X
+Our four Seurat scripts are meant to run in the following order:
+1. `Runs_Seurat_v3_MultiDatasets_QC_Normalization.R`
+2. `Runs_Seurat_v3_MultiDatasets_Integration.R`
+3. `Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R`
+4. `Runs_Seurat_v3_MultiDatasets_DGE.R`
 
-Documentation of cellranger can be found here:
-https://support.10xgenomics.com/single-cell-gene-expression/software/pipelines/latest/what-is-cell-ranger
+They can run as one-line-commad tools and each script has its own documentation, which can be found here:
+https://github.com/pughlab/crescent/tree/master/doc
 
-Inputs: <br />
-Takes fastq files, each lane has three fastq files (R1, R2 and I1), which can be Gb in size. <br />
-You can download example files from 10X: <br />
-https://support.10xgenomics.com/single-cell-gene-expression/datasets/3.0.0/pbmc_1k_v3
+`Runs_Seurat_v3_MultiDatasets_QC_Normalization.R` uses MTX files as inputs (e.g. from 10X Cell Ranger); whereas the other three scripts use R objects produced in previous steps. Users can obtain example MTX files and input parameters from here:<br />
+https://zenodo.org/record/4642759/files/crescent_v2.0_pbmc_example_infiles_and_commands.tar.bz2?download=1
 
-Relevant outputs:
-Include three files with the sparse matrix in Matrix Market format with the mapped read counts per gene, per cell barcode: <br />
-`outs/filtered_feature_bc_matrices/` <br />
-barcodes.tsv.gz <br />
-features.tsv.gz <br />
-matrix.mtx.gz <br />
-
-
-SEURAT
-================
-
-Script name: Runs_Seurat_v3.R
-
-Infiles: <br />
-Either the Matrix Market (MTX) files from Cell Ranger `outs/filtered_feature_bc_matrices/`, or a matrix with genes (rows) and cell barcodes (columns), called Digital Gene Expression (DGE) matrix.
-
-Outfiles: <br />
-See `https://github.com/jdime/crescent/doc/Runs_Seurat_v3.md`
+And example outfiles producing these files and parameters:<br />
+https://zenodo.org/record/4642759/files/crescent_v2.0_pbmc_example_outfiles.tar.bz2?download=1
 
 
 INTER-CONVERTING MTX AND DGE FORMAT FILES
@@ -47,12 +33,3 @@ Note: the DGE file may be gzipped
 
 To convert MTX files into a DGE file use: <br />
 `Rscript ~/path_to/obtains_gene_x_barcode_matrix_from_mtx_files.R -i ~/path_to/filtered_feature_bc_matrices/ -o ~/path_to_store_outfiles/ -p prefix_for_log_files_outfiles` <br />
-Note: Cell Ranger v2 produces unzipped files and the features.tsv.gz file is called genes.tsv
-
-
-OLDER VERSIONS
-================
-
-10X provides example datasets: <br />
-https://support.10xgenomics.com/single-cell-gene-expression/datasets/
-
