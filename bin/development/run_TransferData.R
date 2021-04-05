@@ -49,16 +49,19 @@ Outdir<-gsub("/$", "", Outdir)
 
 dir.create(file.path(Outdir, "ALIGNED_MATRIX"), recursive = T)
 
-ref <- readRDS(Ref_input)
+#Read the reference and query Suerat object
 
+ref <- readRDS(Ref_input)
 query.list <- readRDS(Query_input)
 
+#Do SCTransform
 ref <- SCTransform(ref, verbose = F)
 
 for (dataset in names(query.list)) {
   query.list[[dataset]] <- SCTransform(query.list[[dataset]], verbose = FALSE)
 }
 
+#Align each query sample to the reference dataset, and save the aligned matrix in mtx format
 for (dataset in names(query.list)) {
   anchor.t <- FindTransferAnchors(ref, query.list[[dataset]], normalization.method='SCT',
                                   verbose = FALSE)
@@ -72,15 +75,21 @@ for (dataset in names(query.list)) {
   gzip(mtx.name)
 }
 
+# Save the reference matrix in mtx format. Note that we don't need to save this
+# file every time we want to predict the labels of any query dataset. For those public
+# datasets we suggest users to use as reference, we can save a copy of this mtx file
+# in the server and use it directly in the future.
 mtx <- ref@assays$SCT@data
 mtx <- as(mtx, "dgCMatrix")
 writeMM(mtx, paste(Outdir, "/", "Ref.mtx", sep=""))
 gzip(paste(Outdir, "/", "Ref.mtx", sep=""))
 
+# Obtain the labels of reference dataset and save it.
 Ref.label <- ref@meta.data$cell.type
 
 write.table(Ref.label, file.path(Outdir, 'Labels.tsv'),
             quote = F, row.names = F, col.names = F)
 
+# The Query_names.tsv file contains the name of the 
 write.table(names(query.list), file.path(Outdir, 'Query_names.tsv'),
             quote = F, row.names = F, col.names = F)
