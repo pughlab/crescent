@@ -227,7 +227,7 @@ for (optionInput in option_list) {
 ####################################
 ### Obtain computing time used
 ####################################
-writeLines("\n*** Obtain computing time used***\n")
+writeLines("\n*** Obtain computing time used ***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
