@@ -5,7 +5,7 @@ Script name
 Description
 ================
 Runs GSVA to predict cell type labels to cell clusters using average gene expression and cell type gene sets. Infiles are described in section 'Inputs Description'<br />
-The script is based on Diaz-Mejia F1000Res 20219 (https://f1000research.com/articles/8-296/v3)<br />
+The script is based on Diaz-Mejia F1000Res 2019 (https://f1000research.com/articles/8-296/v3)<br />
 
 It allows the user to provide parameters as one-line commands via R library(optparse).
 
