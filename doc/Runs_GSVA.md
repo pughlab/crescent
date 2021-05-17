@@ -34,7 +34,7 @@ To run the script type something like:<br />
 
 Inputs Description
 ================
-a) Average gene expression table with genes in rows and cell clusters in columns, e.g. from `Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R`
+a) Average gene expression table with genes in rows and cell clusters in columns, e.g. from `Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R`<br />
 b) Gene sets in GMT format, with one cell type per row<br />
 
 Outputs Description
