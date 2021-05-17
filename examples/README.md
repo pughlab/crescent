@@ -38,3 +38,41 @@ Note: the gene-vs-barcode file may be gzipped
 
 To convert MTX files into a gene-vs-barcode file use: <br />
 `Rscript ~/path_to/obtains_gene_x_barcode_matrix_from_mtx_files.R -i ~/path_to/filtered_feature_bc_matrices/ -o ~/path_to_store_outfiles/ -p prefix_for_log_files_outfiles` <br />
+
+
+INFERCNV WRAPPER (detect copy number variants)
+================
+
+Example infiles and outfiles for our R wrapper to run InferCNV are provided.
+
+The wrapper can run as a one-line-commad tool and its documentation can be found here:
+https://github.com/pughlab/crescent/tree/master/doc
+
+`Runs_InferCNV.R` uses an infile matrix with all cells (normal and cancer) in either format MTX or gene-vs-barcodes (DGE). Example infiles from glioblastoma can be downloaded from here:<br />
+https://zenodo.org/record/4766424/files/crescent_infercnv_glio_example_infiles_and_commands.tar.bz2?download=1
+
+And example outfiles producing these files and parameters:<br />
+https://zenodo.org/record/4766424/files/crescent_infercnv_glio_example_outfiles_and_commands.tar.bz2?download=1
+
+Example commands using the infiles above:<br />
+`Rscript ~/r_programs/Runs_InferCNV.R -i INPUTS/glio.wGtexBrain.counts.matrix.gz -t DGE -j INPUTS/glio.wGtexBrain.sample_annots.txt -k Brain_Cerebellum,Brain_Caudate_basal_ganglia,Brain_Cortex,Brain_Nucleus_accumbens_basal_ganglia,Brain_Cerebellar_Hemisphere,Brain_Frontal_Cortex_BA9,Brain_Hippocampus -g INPUTS/gencode_v19_gene_pos.txt -m 0.1 -n 0.1 -s 0.15 -o OUTPUTS -p glio.wGtexBrain -u MAX -w 0 -a 10000`
+
+
+GSVA WRAPPER (assign cell type labels to cell clusters)
+================
+
+Example infiles and outfiles for our R wrapper to run GSVA to predic cell-cluster labels are provided.
+
+The wrapper can run as a one-line-commad tool and its documentation can be found here:
+https://github.com/pughlab/crescent/tree/master/doc
+
+`Runs_GSVA.R` uses an infile matrix with the average gene expression of cell clusters, e.g. \*AverageGeneExpression_GlobalClustering_AllDatasets\* files from `Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R`, and a file with cell type gene sets in \*gmt format. Example infiles from PBMCs can be downloaded from here:<br />
+https://zenodo.org/record/4766424/files/crescent_gsva_pbmcs_example_infiles_and_commands.tar.bz2?download=1
+
+And example outfiles producing these files and parameters:<br />
+https://zenodo.org/record/4766424/files/crescent_gsva_pbmcs_example_outfiles_and_commands.tar.bz2?download=1
+
+Example commands using the infiles above:<br />
+`Rscript ~/r_programs/Runs_GSVA.R -i INFILES/pbmcs.SEURAT_AverageGeneExpression_GlobalClustering_AllDatasets_SCT.tsv.bz2 -t DGE -c INFILES/LM22_signature.cutoff3000.gmt -o OUTFILES -p pbmcs -u MAX -w 0`
+
+
