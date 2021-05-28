@@ -32,6 +32,8 @@ To display help commands type: <br />
 To run the script type something like:<br />
 `Rscript /path_to/Runs_InferCNV.R -i INPUTS/glio.wGtexBrain.counts.matrix.gz -t DGE -j INPUTS/glio.wGtexBrain.sample_annots.txt -k Brain_Cerebellum,Brain_Caudate_basal_ganglia,Brain_Cortex,Brain_Nucleus_accumbens_basal_ganglia,Brain_Cerebellar_Hemisphere,Brain_Frontal_Cortex_BA9,Brain_Hippocampus -g INPUTS/gencode_v19_gene_pos.txt -m 0.1 -n 0.1 -s 0.15 -o OUTPUTS -p glio.wGtexBrain -u MAX -w 0 -a 10000`
 
+Note: a run with ~64,000 cells requires at least 300GB of RAM, 10 cores and 75hrs of CPU usage.
+
 Inputs Description
 ================
 a) scRNA-seq raw data<br />
