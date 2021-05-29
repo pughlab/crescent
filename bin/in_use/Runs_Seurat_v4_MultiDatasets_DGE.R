@@ -1,14 +1,12 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Script based on:
-### https://satijalab.org/seurat/v3.2/sctransform_vignette.html (SCtransform normalization)
-### https://satijalab.org/seurat/v3.2/integration.html (general integration)
-### https://satijalab.org/seurat/v3.2/immune_alignment.html (control vs. treatment)
+### https://satijalab.org/seurat/articles/integration_introduction.html
 ####################################
 
 ####################################
 ### GENERAL OVERVIEW OF THIS SCRIPT
-### 1) Loads integrated datasets R object produced by script `Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R`
+### 1) Loads integrated datasets R object produced by script `Runs_Seurat_v4_MultiDatasets_PCA_Clustering_DimReduction.R`
 ### 2) Computes differential gene expression (DGE) for options specified by --diff_gene_expr_comparisons
 ###    Note, all clustering and metadata groups must be provided by --infile_r_object and --infile_metadata
 ### 3) Saves log files
@@ -17,7 +15,7 @@
 ####################################
 ### HOW TO RUN THIS SCRIPT
 ### Using one-line-commands in a console or terminal type:
-### 'Rscript ~/path_to_this_file/Runs_Seurat_v3_MultiDatasets_DGE.R -h'
+### 'Rscript ~/path_to_this_file/Runs_Seurat_v4_MultiDatasets_DGE.R -h'
 ### for help
 ####################################
 
@@ -82,7 +80,7 @@
 ####################################
 writeLines("\n**** LOAD REQUIRED LIBRARIES ****\n")
 
-suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v3.2.1. To run QC, differential gene expression and clustering analyses
+suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v4.0.2. To run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be plotted
@@ -105,7 +103,7 @@ writeLines("\n**** SETUP RUN ****\n")
 oldw <- getOption("warn")
 options( warn = -1 )
 
-ThisScriptName <- "Runs_Seurat_v3_MultiDatasets_DGE.R"
+ThisScriptName <- "Runs_Seurat_v4_MultiDatasets_DGE.R"
 ProgramOutdir  <- "SEURAT"
 
 ####################################
