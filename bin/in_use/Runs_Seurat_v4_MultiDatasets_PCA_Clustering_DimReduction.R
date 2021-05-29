@@ -1,14 +1,12 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Script based on:
-### https://satijalab.org/seurat/v3.2/sctransform_vignette.html (SCtransform normalization)
-### https://satijalab.org/seurat/v3.2/integration.html (general integration)
-### https://satijalab.org/seurat/v3.2/immune_alignment.html (control vs. treatment)
+### https://satijalab.org/seurat/articles/integration_introduction.html
 ####################################
 
 ####################################
 ### GENERAL OVERVIEW OF THIS SCRIPT
-### 1) Loads integrated datasets R object,  presumably produced by script `Runs_Seurat_v3_MultiDatasets_Integration.R'
+### 1) Loads integrated datasets R object produced by script `Runs_Seurat_v4_MultiDatasets_Integration.R'
 ### 2) Process integrated datasets as a whole, including:
 ###    - dimension reduction
 ###    - 'global' cell clustering
@@ -46,7 +44,7 @@
 ####################################
 ### HOW TO RUN THIS SCRIPT 
 ### For help using one-line-commands in a console or terminal type:
-### 'Rscript ~/path_to_this_file/Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R -h'
+### 'Rscript ~/path_to_this_file/Runs_Seurat_v4_MultiDatasets_PCA_Clustering_DimReduction.R -h'
 ####################################
 
 ####################################
@@ -58,7 +56,7 @@
 ####################################
 writeLines("\n**** LOAD REQUIRED LIBRARIES ****\n")
 
-suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v3.2.1. To run QC, differential gene expression and clustering analyses
+suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v4.0.2. To run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be plotted
@@ -84,7 +82,7 @@ writeLines("\n**** SETUP RUN ****\n")
 oldw <- getOption("warn")
 options( warn = -1 )
 
-ThisScriptName <- "Runs_Seurat_v3_MultiDatasets_PCA_Clustering_DimReduction.R"
+ThisScriptName <- "Runs_Seurat_v4_MultiDatasets_PCA_Clustering_DimReduction.R"
 ProgramOutdir  <- "SEURAT"
 
 ####################################
@@ -284,8 +282,7 @@ FILE_TYPE_OUT_DIRECTORIES = c(
   "LOG_FILES",
   "QC_PLOTS",
   "PSEUDO_BULK",
-  "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS",
-  "UNFILTERED_DATA_MATRICES"
+  "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS"
 )
 
 if (RunsCwl == 0 || RunsCwl == 2) {
