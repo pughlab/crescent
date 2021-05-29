@@ -1,15 +1,13 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Script based on:
-### https://satijalab.org/seurat/v3.2/sctransform_vignette.html (SCtransform normalization)
-### https://satijalab.org/seurat/v3.2/integration.html (general integration)
-### https://satijalab.org/seurat/v3.2/immune_alignment.html (control vs. treatment)
+### https://satijalab.org/seurat/articles/integration_introduction.html
 ### https://carmonalab.github.io/STACAS/tutorial.html (alternative anchor finder)
 ####################################
 
 ####################################
 ### GENERAL OVERVIEW OF THIS SCRIPT
-### 1) Loads each normalized dataset R object, presumably produced by script `Runs_Seurat_v3_MultiDatasets_QC_Normalization.R'
+### 1) Loads each normalized dataset R object produced by script `Runs_Seurat_v4_MultiDatasets_QC_Normalization.R'
 ### 2) Merges and integrates datasets correcting batch effects
 ### 3) Saves integrated datasets R object
 ### 4) Saves log files
@@ -18,7 +16,7 @@
 ####################################
 ### HOW TO RUN THIS SCRIPT
 ### For help using one-line-commands in a console or terminal type:
-### 'Rscript ~/path_to_this_file/Runs_Seurat_v3_MultiDatasets_Integration.R -h'
+### 'Rscript ~/path_to_this_file/Runs_Seurat_v4_MultiDatasets_Integration.R -h'
 ####################################
 
 ####################################
@@ -46,7 +44,7 @@
 ####################################
 writeLines("\n**** LOAD REQUIRED LIBRARIES ****\n")
 
-suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v3.2.1. To run QC, differential gene expression and clustering analyses
+suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v4.0.2. To run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be plotted
@@ -55,7 +53,7 @@ suppressPackageStartupMessages(library(ggplot2))      # (CRAN) to generate QC vi
 suppressPackageStartupMessages(library(cowplot))      # (CRAN) to arrange QC violin plots and top legend
 suppressPackageStartupMessages(library(future))       # (CRAN) to run parallel processes
 suppressPackageStartupMessages(library(stringr))      # (CRAN) to regex and extract matching string. Only needed if using `-w Y` and `-x`.
-suppressPackageStartupMessages(library(STACAS))       # (GitHub carmonalab/STACAS) tested with v1.0.1 (compatible with Seurat v3.2.1). Needed for STACAS-based dataset integration
+suppressPackageStartupMessages(library(STACAS))       # (GitHub carmonalab/STACAS) tested with v1.1.0 (compatible with Seurat v4.0.2). Needed for STACAS-based dataset integration
 suppressPackageStartupMessages(library(tidyr))        # (CRAN) to handle tibbles and data.frames
 suppressPackageStartupMessages(library(cluster))      # (CRAN) to cluster/sort the STACAS distances
 ####################################
@@ -74,7 +72,7 @@ writeLines("\n**** SETUP RUN ****\n")
 oldw <- getOption("warn")
 options( warn = -1 )
 
-ThisScriptName <- "Runs_Seurat_v3_MultiDatasets_Integration.R"
+ThisScriptName <- "Runs_Seurat_v4_MultiDatasets_Integration.R"
 ProgramOutdir  <- "SEURAT"
 
 ####################################
@@ -748,8 +746,6 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   StopWatchEnd$FindIntegrationAnchors  <- Sys.time()
   
-  OutfileAnchors <- paste0(PrefixOutfiles, ".", ProgramOutdir, "_Anchors", ".rds")
-
 } else if (regexpr("^precomputed$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   ####################################
@@ -772,9 +768,6 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   }else{
     SampleTree <- NULL
   }
-  
-  OutfileAnchors <- paste0(PrefixOutfiles, ".", ProgramOutdir, "_STACAS_Anchors", ".rds")
-
 }
 
 ####################################
@@ -818,11 +811,6 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
 
   StopWatchStart$SaveRDSAnchors  <- Sys.time()
   
-  if (RunsCwl == 1) {
-    OutfileRDS<-paste0("R_OBJECTS_CWL/", OutfileAnchors)
-  }else{
-    OutfileRDS<-paste0(Tempdir, "/R_OBJECTS/", OutfileAnchors)
-  }
   saveRDS(seurat.object.anchors, file = OutfileRDS)
   
   StopWatchEnd$SaveRDSAnchors  <- Sys.time()
