@@ -1,9 +1,7 @@
 ####################################
 ### Javier Diaz - javier.diazmejia@gmail.com
 ### Script based on:
-### https://satijalab.org/seurat/v3.2/sctransform_vignette.html (SCtransform normalization)
-### https://satijalab.org/seurat/v3.2/integration.html (general integration)
-### https://satijalab.org/seurat/v3.2/immune_alignment.html (control vs. treatment)
+### https://satijalab.org/seurat/articles/integration_introduction.html
 ####################################
 
 ####################################
@@ -18,7 +16,7 @@
 ####################################
 ### HOW TO RUN THIS SCRIPT 
 ### For help using one-line-commands in a console or terminal type:
-### 'Rscript ~/path_to_this_file/Runs_Seurat_v3_MultiDatasets_QC_Normalization.R -h'
+### 'Rscript ~/path_to_this_file/Runs_Seurat_v4_MultiDatasets_QC_Normalization.R -h'
 ####################################
 
 ####################################
@@ -31,7 +29,7 @@
 writeLines("\n**** LOAD REQUIRED LIBRARIES ****\n")
 
 suppressPackageStartupMessages(library(DropletUtils)) # (Bioconductor) to handle MTX/H5 format files. Note it has about the same speed than library(earlycross) which can't handle H5
-suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v3.2.1. To run QC, differential gene expression and clustering analyses
+suppressPackageStartupMessages(library(Seurat))       # (CRAN) tested with v4.0.2. To run QC, differential gene expression and clustering analyses
 suppressPackageStartupMessages(library(dplyr))        # (CRAN) needed by Seurat for data manupulation
 suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-line-commands
 suppressPackageStartupMessages(library(fmsb))         # (CRAN) to calculate the percentages of extra properties to be plotted
@@ -56,7 +54,7 @@ writeLines("\n**** SETUP RUN ****\n")
 oldw <- getOption("warn")
 options( warn = -1 )
 
-ThisScriptName <- "Runs_Seurat_v3_MultiDatasets_QC_Normalization.R"
+ThisScriptName <- "Runs_Seurat_v4_MultiDatasets_QC_Normalization.R"
 ProgramOutdir  <- "SEURAT"
 
 ####################################
@@ -421,8 +419,7 @@ NumberOfDatasets <- 0
 for (dataset in rownames(InputsTable)) {
   NumberOfDatasets <- NumberOfDatasets + 1
   print(NumberOfDatasets)
-  Dataset.SO <-paste0(dataset, ".so")
-  
+
   if (RunsCwl == 1) {
     PathToDataset <- InputsTable[dataset,"PathToDataset"]
   }else{
@@ -903,7 +900,7 @@ for (dataset in rownames(InputsTable)) {
     rm(UnfilteredData.df)
     
   }else{
-    stop(paste0("Unexpected type of input: ", DatasetType, "\n\nFor help type:\n\nRscript integrates_datasets_with_seurat.R -h\n\n"))
+    stop(paste0("Unexpected type of input: ", DatasetType,  "\n\nFor help type:\n\nRscript ", ThisScriptName, " -h\n\n"))
   }
 }
 
