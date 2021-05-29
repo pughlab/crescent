@@ -590,18 +590,14 @@ if (1 %in% RequestedDiffGeneExprComparisons == T) {
     StopWatchStart$FindDiffMarkersGlobalClustersVsRestOfCells$ASSAY  <- Sys.time()
     
     print(paste0("Number of groups = ", length(unique(seurat.object.integrated@meta.data$seurat_clusters))))
-    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
 
     if (exists(x = "seurat.object.integrated.markers") == T) {
       rm(seurat.object.integrated.markers)
     }
-    
+
+    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
     ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-    if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-      seurat.object.integrated.markers <- FindAllMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
-    }else{
-      seurat.object.integrated.markers <- FindAllMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount)
-    }
+    seurat.object.integrated.markers <- FindAllMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
     SimplifiedDiffExprGenes.df <- seurat.object.integrated.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
     
     ### Add -Log10(Pval) * sign of FC
@@ -668,11 +664,7 @@ if (2 %in% RequestedDiffGeneExprComparisons == T) {
   
       FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
       ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-      if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-        seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
-      }else{
-        seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount)
-      }
+      seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
       SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
 
       ### Add -Log10(Pval) * sign of FC
@@ -733,7 +725,6 @@ if (3 %in% RequestedDiffGeneExprComparisons == T) {
   
     print(paste0("Number of groups = ", length(unique(seurat.object.integrated@meta.data$seurat_clusters))))
     
-    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
     OutfileDGE <- paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", "DatasetEquivalentClusters_", assay, ".tsv.bz2")
     Outfile.con <- bzfile(OutfileDGE, "w")
     HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
@@ -750,15 +741,14 @@ if (3 %in% RequestedDiffGeneExprComparisons == T) {
             ### Skip
           }else if ((sum(seurat.object.integrated@meta.data$EachDatasetGlobalCellClusters == Cluster1) >= 3) & ((sum(seurat.object.integrated@meta.data$EachDatasetGlobalCellClusters == Cluster2) >= 3))) {
             print (paste0(Cluster1, " vs. ", Cluster2))
+            
+            FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
             ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-            if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-              seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = OnlyPos, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
-            }else{
-              seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = OnlyPos, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount))
-            }
+            seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = OnlyPos, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
             seurat.object.integrated.each_equivalent_cluster.markers$cluster1 <- Cluster1
             seurat.object.integrated.each_equivalent_cluster.markers$cluster2 <- Cluster2
             seurat.object.integrated.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.integrated.each_equivalent_cluster.markers)
+            
             write.table(seurat.object.integrated.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
           }else{
             print(paste0("Skip cluster ", Cluster1, " vs. ", Cluster2, " because there were not >= 3 cells in at least one of them"))
@@ -819,11 +809,7 @@ if (4 %in% RequestedDiffGeneExprComparisons == T) {
   
       FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
       ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-      if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-        seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
-      }else{
-        seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount)
-      }
+      seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
       SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
 
       ### Add -Log10(Pval) * sign of FC
@@ -858,7 +844,6 @@ if (5 %in% RequestedDiffGeneExprComparisons == T) {
     
     print(paste0("Number of groups = ", length(unique(seurat.object.integrated@meta.data$seurat_clusters))))
     
-    FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
     OutfileDGE <- paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "GlobalClustering", "_", "DatasetTypeEquivalentClusters_", assay, ".tsv.bz2")
     Outfile.con <- bzfile(OutfileDGE, "w")
     HeadersOrder <- paste("cluster1", "cluster2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
@@ -875,15 +860,14 @@ if (5 %in% RequestedDiffGeneExprComparisons == T) {
             ### Skip
           }else if ((sum(seurat.object.integrated@meta.data$EachDatasetTypeGlobalCellClusters == Cluster1) >= 3) & ((sum(seurat.object.integrated@meta.data$EachDatasetTypeGlobalCellClusters == Cluster2) >= 3))) {
             print (paste0("Diff gene expression: ", Cluster1, " vs. ", Cluster2))
+            
+            FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.integrated@meta.data))
             ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-            if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-              seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = OnlyPos, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
-            }else{
-              seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = OnlyPos, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount))
-            }
+            seurat.object.integrated.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.integrated, assay = ASSAY, only.pos = OnlyPos, ident.1 = Cluster1, ident.2 = Cluster2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
             seurat.object.integrated.each_equivalent_cluster.markers$cluster1 <- Cluster1
             seurat.object.integrated.each_equivalent_cluster.markers$cluster2 <- Cluster2
             seurat.object.integrated.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.integrated.each_equivalent_cluster.markers)
+
             write.table(seurat.object.integrated.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
             rm(seurat.object.integrated.each_equivalent_cluster.markers)
             
@@ -953,11 +937,7 @@ if (6 %in% RequestedDiffGeneExprComparisons == T) {
   
       FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
       ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-      if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-        seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
-      }else{
-        seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount)
-      }
+      seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
       SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
 
       ### Add -Log10(Pval) * sign of FC
@@ -1006,11 +986,7 @@ if (7 %in% RequestedDiffGeneExprComparisons == T) {
   
       FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
       ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-      if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-        seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
-      }else{
-        seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount)
-      }
+      seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
       SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
 
       ### Add -Log10(Pval) * sign of FC
@@ -1065,13 +1041,10 @@ if (8 %in% RequestedDiffGeneExprComparisons == T) {
         ### Finding differentially expressed genes
         ####################################
         Idents(object = seurat.object.each_property) <- seurat.object.each_property[[property]]
+        
         FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
         ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-        if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-          seurat.object.each_property.markers <- FindAllMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
-        }else{
-          seurat.object.each_property.markers <- FindAllMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount)
-        }
+        seurat.object.each_property.markers <- FindAllMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
         SimplifiedDiffExprGenes.df <- seurat.object.each_property.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
         colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
         
@@ -1126,11 +1099,7 @@ if (9 %in% RequestedDiffGeneExprComparisons == T) {
   
           FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset@meta.data))
           ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-          if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-            seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
-          }else{
-            seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount)
-          }
+          seurat.object.each_dataset.markers <- FindAllMarkers(object = seurat.object.each_dataset, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
           SimplifiedDiffExprGenes.df <- seurat.object.each_dataset.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
           colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
           
@@ -1180,7 +1149,6 @@ if (10 %in% RequestedDiffGeneExprComparisons == T) {
         DatasetAndProperty <- unlist(x = strsplit(x = paste(seurat.object.each_property@meta.data$dataset, seurat.object.each_property@meta.data[[property]], sep = "_", collapse = "\n"), split = "\n"))
         seurat.object.each_property <- AddMetaData(object = seurat.object.each_property, metadata = DatasetAndProperty, col.name = "DatasetAndProperty")
   
-        FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
         OutfileDGE <- paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "DatasetEquivalentClasses_", assay, ".tsv.bz2")
         Outfile.con <- bzfile(OutfileDGE, "w")
         HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
@@ -1200,15 +1168,14 @@ if (10 %in% RequestedDiffGeneExprComparisons == T) {
                 ### Skip
               }else if (N_Class_Dataset1 >= 3 & N_Class_Dataset2 >= 3) {
                 print (paste0(Class_Dataset1, " vs. ", Class_Dataset2))
+
+                FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
                 ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-                if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-                  seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = Class_Dataset1, ident.2 = Class_Dataset2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
-                }else{
-                  seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = Class_Dataset1, ident.2 = Class_Dataset2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount))
-                }
+                seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = Class_Dataset1, ident.2 = Class_Dataset2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
                 seurat.object.each_property.each_equivalent_cluster.markers$class1 <- Class_Dataset1
                 seurat.object.each_property.each_equivalent_cluster.markers$class2 <- Class_Dataset2
                 seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
+                
                 write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
                 rm(seurat.object.each_property.each_equivalent_cluster.markers)
               }else{
@@ -1272,11 +1239,7 @@ if (11 %in% RequestedDiffGeneExprComparisons == T) {
   
           FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_dataset_type@meta.data))
           ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-          if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-            seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
-          }else{
-            seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount)
-          }
+          seurat.object.each_dataset_type.markers <- FindAllMarkers(object = seurat.object.each_dataset_type, assay = ASSAY, only.pos = OnlyPos, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1))
           SimplifiedDiffExprGenes.df <- seurat.object.each_dataset_type.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")]
           colnames(SimplifiedDiffExprGenes.df) <- c("class","gene","p_val","p_val_adj","avg_logFC","pct.1","pct.2")
           
@@ -1330,7 +1293,6 @@ if (12 %in% RequestedDiffGeneExprComparisons == T) {
           DatasetTypeAndProperty <- unlist(x = strsplit(x = paste(seurat.object.each_property@meta.data$dataset_type, seurat.object.each_property@meta.data[[property]], sep = "_", collapse = "\n"), split = "\n"))
           seurat.object.each_property <- AddMetaData(object = seurat.object.each_property, metadata = DatasetTypeAndProperty, col.name = "DatasetTypeAndProperty")
   
-          FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
           OutfileDGE <- paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "DatasetTypeEquivalentClasses_", assay, ".tsv.bz2")
           Outfile.con <- bzfile(OutfileDGE, "w")
           HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
@@ -1350,15 +1312,14 @@ if (12 %in% RequestedDiffGeneExprComparisons == T) {
                   ### Skip
                 }else if (N_Class_DatasetType1 >= 3 & N_Class_DatasetType2 >= 3) {
                   print (paste0(Class_DatasetType1, " vs. ", Class_DatasetType2))
+                  
+                  FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))                  
                   ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-                  if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-                    seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = Class_DatasetType1, ident.2 = Class_DatasetType2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
-                  }else{
-                    seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = Class_DatasetType1, ident.2 = Class_DatasetType2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount))
-                  }
+                  seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = Class_DatasetType1, ident.2 = Class_DatasetType2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
                   seurat.object.each_property.each_equivalent_cluster.markers$class1 <- Class_DatasetType1
                   seurat.object.each_property.each_equivalent_cluster.markers$class2 <- Class_DatasetType2
                   seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
+                  
                   write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
                   rm(seurat.object.each_property.each_equivalent_cluster.markers)
                 }else{
@@ -1418,7 +1379,6 @@ if (13 %in% RequestedDiffGeneExprComparisons == T) {
         
         Idents(object = seurat.object.each_property) <- property
   
-        FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
         OutfileDGE <- paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "AllSubClassesAgainstEachOther_", assay, ".tsv.bz2")
         Outfile.con <- bzfile(OutfileDGE, "w")
         HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
@@ -1435,15 +1395,14 @@ if (13 %in% RequestedDiffGeneExprComparisons == T) {
               SubclassPairToCompare <- paste0(subclass1, ",", subclass2)
               ToRunThisPair <- 0
               print (paste0(subclass1, " vs. ", subclass2))
+              
+              FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
               ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-              if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-                seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = subclass1, ident.2 = subclass2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
-              }else{
-                seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = subclass1, ident.2 = subclass2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount))
-              }
+              seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = subclass1, ident.2 = subclass2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
               seurat.object.each_property.each_equivalent_cluster.markers$class1 <- subclass1
               seurat.object.each_property.each_equivalent_cluster.markers$class2 <- subclass2
               seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
+              
               write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
               rm(seurat.object.each_property.each_equivalent_cluster.markers)
             }else{
@@ -1505,7 +1464,6 @@ if (14 %in% RequestedDiffGeneExprComparisons == T) {
         
         Idents(object = seurat.object.each_property) <- property
         
-        FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
         OutfileDGE <- paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_DiffExprMarkers_", "Metadata", "_", property, "_",  "SelectedSubClassesAgainstEachOther_", assay, ".tsv.bz2")
         Outfile.con <- bzfile(OutfileDGE, "w")
         HeadersOrder <- paste("class1", "class2", "gene", "p_val","p_val_adj","avg_logFC","pct.1","pct.2", sep = "\t")
@@ -1526,15 +1484,14 @@ if (14 %in% RequestedDiffGeneExprComparisons == T) {
               }
               if (ToRunThisPair == 1) {
                 print (paste0(subclass1, " vs. ", subclass2))
+                
+                FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.each_property@meta.data))
                 ###  base = exp(1) is needed in Seurat v4 because the default uses Log2FC instead of LogNatFC, like v3 does
-                if (as.numeric(unlist(packageVersion("Seurat")))[[1]] == 4) {
-                  seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = subclass1, ident.2 = subclass2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
-                }else{
-                  seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = subclass1, ident.2 = subclass2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount))
-                }
+                seurat.object.each_property.each_equivalent_cluster.markers <- data.frame(FindMarkers(object = seurat.object.each_property, assay = ASSAY, only.pos = OnlyPos, ident.1 = subclass1, ident.2 = subclass2, min.pct = ReturnMinPctThresh, return.thresh = ReturnPvalThresh, logfc.threshold = ReturnLogFcThresh, pseudocount.use = FindMarkers.Pseudocount, base = exp(1)))
                 seurat.object.each_property.each_equivalent_cluster.markers$class1 <- subclass1
                 seurat.object.each_property.each_equivalent_cluster.markers$class2 <- subclass2
                 seurat.object.each_property.each_equivalent_cluster.markers$gene     <- rownames(seurat.object.each_property.each_equivalent_cluster.markers)
+                
                 write.table(seurat.object.each_property.each_equivalent_cluster.markers[,unlist(strsplit(HeadersOrder, "\t"))], file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F, append = T)
                 rm(seurat.object.each_property.each_equivalent_cluster.markers)
               }
