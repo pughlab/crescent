@@ -18,7 +18,7 @@ suppressPackageStartupMessages(library(optparse))     # (CRAN) to handle one-lin
 oldw <- getOption("warn")
 options( warn = -1 )
 
-ThisScriptName <- "obtains_submatrix_from_mtx_and_list_of_barcode_ids.R"
+ThisScriptName <- "obtains_submatrix_from_mtx_and_lists_of_barcode_ids_and_gene_ids.R"
 
 ####################################
 ### Get inputs from command line argumets
@@ -233,10 +233,9 @@ if ((grepl(pattern = "^[0-9]+$", x = SelectGenes)) == TRUE) {
   sampled.genes <- data.frame(read.table(SelectGenes, header = F, row.names = NULL, check.names = FALSE, sep = "\t"))
   sampled.genes <- as.character(sampled.genes[,1])
   sampled.genes <- gsub(x=sampled.genes, pattern = "_", replacement = "-") ## Because CreateSeuratObject() will do the same
-  seurat.object.subsampled.barcodes.genes <- CreateSeuratObject(counts = seurat.object.subsampled.barcodes@assays$RNA@counts[sampled.genes,], project = PrefixOutfiles)
+  print(paste0("Requested ", length(sampled.genes), " genes"))
+  seurat.object.subsampled.barcodes.genes <- subset(x = seurat.object.subsampled.barcodes, features = sampled.genes)
 }
-print("Seurat object with subsampled barcodes and genes:")
-seurat.object.subsampled.barcodes.genes
 
 StopWatchEnd$DetermineGenesToSubsampleAndSubsample  <- Sys.time()
 
