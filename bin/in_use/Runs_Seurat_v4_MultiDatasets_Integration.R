@@ -808,13 +808,6 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   saveRDS(seurat.object.integrated, file = OutfileRDS)
   
   StopWatchEnd$SaveRDSIntegration  <- Sys.time()
-
-  StopWatchStart$SaveRDSAnchors  <- Sys.time()
-  
-  saveRDS(seurat.object.anchors, file = OutfileRDS)
-  
-  StopWatchEnd$SaveRDSAnchors  <- Sys.time()
-
 }else{
   
   writeLines("\n*** Not saving the Integration R objects ***\n")
