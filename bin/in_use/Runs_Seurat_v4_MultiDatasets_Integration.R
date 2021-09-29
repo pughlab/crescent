@@ -573,7 +573,9 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   StopWatchStart$FindIntegrationAnchorsStacas  <- Sys.time()
   
-  seurat.object.anchors.unfiltered <- FindAnchors.STACAS(object.list = seurat.object.list, dims=PcaDimsUse, anchor.features=DefaultParameters$StacasVarGenesIntegratedN, reference = ReferenceDatasets.indices, verbose = T)
+  seurat.object.anchors.unfiltered <- FindAnchors.STACAS(object.list = seurat.object.list, dims=PcaDimsUse,
+                                                         anchor.features=DefaultParameters$StacasVarGenesIntegratedN, 
+                                                         reference = ReferenceDatasets.indices, verbose = T)
   
   StopWatchEnd$FindIntegrationAnchorsStacas  <- Sys.time()
   
