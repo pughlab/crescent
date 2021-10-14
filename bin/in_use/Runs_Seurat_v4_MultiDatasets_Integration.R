@@ -100,25 +100,13 @@ option_list <- list(
 
                 Default = 'NA'"),
   #
-  make_option(c("-y", "--anchors_function"), default="Seurat",
+  make_option(c("-y", "--anchors_function"), default="Seurat_CCA",
               help="Indicates function to find integration anchors:
                 'STACAS'      = use function FindAnchors.STACAS() from library(STACAS)
-                'Seurat'      = use function FindIntegrationAnchors() from library(Seurat)
-                'precomputed' = use a precomputed 'anchors' object from STACAS or Seurat, provided by --anchors_infile
+                'Seurat_CCA'  = use function FindIntegrationAnchors(..., reduction = 'cca') from library(Seurat)
+                'Seurat_RPCA' = use function FindIntegrationAnchors(..., reduction = 'rpca') from library(Seurat)
                 
-                Default = 'Seurat'"),
-  #
-  make_option(c("-k", "--anchors_infile"), default="NA",
-              help="Only needed if using '--anchors_function precomputed'
-                Provides a precomputed anchors R object from STACAS or Seurat
-
-                Default = 'NA'"),
-  #
-  make_option(c("-l", "--sample_tree_infile"), default="NA",
-              help="Only needed if using '--anchors_function precomputed' and the precomputed file comes from STACAS
-                Provides a precomputed sample.tree file from STACAS
-
-                Default = 'NA'"),
+                Default = 'Seurat_CCA'"),
   #
   make_option(c("-z", "--reference_datasets"), default="NA",
               help="Indicates either of two options to use reference datasets for integration anchors:
@@ -154,6 +142,18 @@ option_list <- list(
                 This can be avoided by using a -k_filter value smaller than the default (e.g. '150')
                 
                 Default = '200'"),
+  #
+  make_option(c("-q", "--dist_thr"), default="0.8",
+              help="Only needed if using '-y STACAS'
+                Distance threshold for anchor filtering. Distances are calculated by RPCA between pairs of datasets.
+                If not specified, dist_thr defaults to the dist.pct percentile of the distance between the two closest datasets.
+                
+                Default = '0.8'"),
+  #
+  make_option(c("-r", "--k_weight"), default="100",
+              help="Number of neighbors to consider when weighting anchors
+                
+                Default = '100'"),
   #
   make_option(c("-u", "--number_cores"), default="MAX",
               help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
@@ -199,6 +199,8 @@ Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions_anchors))
 KFilter                 <- as.numeric(opt$k_filter)
+DistThr                 <- as.numeric(opt$dist_thr)
+KWeight                 <- as.numeric(opt$k_weight)
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 RunsCwl                 <- as.numeric(opt$run_cwl)
@@ -241,7 +243,6 @@ writeLines("\n*** Create outdirs ***\n")
 
 FILE_TYPE_OUT_DIRECTORIES = c(
   "LOG_FILES",
-  "PSEUDO_BULK",
   "ANCHORS"
 )
 
@@ -336,8 +337,8 @@ if (NumbCoresToUse == 1) {
   stop(paste0("Unexpected --number_cores = ", NumbCoresToUse))
 }
 
-### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
-### allocate 4GiB of global variables identified (4000*1024^2), use: `options(future.globals.maxSize = 4000 * 1024^2)`
+### Allocation of global variables allows to handle memory errors
+### 4GiB (4000*1024^2) are assigned as: `options(future.globals.maxSize = 4000 * 1024^2)`
 options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 
 ####################################
@@ -348,7 +349,8 @@ options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 DefaultParameters <- list(
 
   ### Parameters for STACAS
-  StacasVarGenesIntegratedN = 500,
+  StacasVarGenesIntegratedN = 800,
+  StacasNGenes = 500,
   DigitsForRoundMedianDist = 3,
   
   ### Parameters for plots
@@ -369,26 +371,16 @@ listAssaySuffixForOutfiles <- list(RNA="RNA", SCT="SCT", integrated="INT")
 ####################################
 writeLines("\n*** Check anchor parameters are compatible with each other ***\n")
 
-if (regexpr("^Seurta$|^STACAS$", AnchorsFunction, ignore.case = T)[1] == 1) {
-  if (regexpr("^NA$", AnchorsInFile, ignore.case = T)[1] == 1) {
-    print("Ok")
-  }else{
-    stop(paste("ERROR!!! parameters -y ", AnchorsFunction, " and -k ", AnchorsInFile, " are incompatible with each other"))
+if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
+
+  if (regexpr("^Seurat_CCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
+    ReductionForFindIntegrationAnchors <- "cca"
+  } else if (regexpr("^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
+    ReductionForFindIntegrationAnchors <- "rpca"
   }
-}else if (regexpr("^precomputed$", AnchorsFunction, ignore.case = T)[1] == 1) {
-  if (regexpr("^NA$", AnchorsInFile, ignore.case = T)[1] == 1) {
-    stop(paste("ERROR!!! parameters -y ", AnchorsFunction, " and -k ", AnchorsInFile, " are incompatible with each other"))
-  }else{
-    if (regexpr("^STACAS$", AnchorsInFile, ignore.case = T)[1] == 1) {
-      if (regexpr("^NA$", SampleTreeInFile, ignore.case = T)[1] == 1) {
-        stop(paste("ERROR!!! parameters -k ", AnchorsInFile, " and -l ", SampleTreeInFile, " are incompatible with each other"))
-      }else{
-        print("Ok")
-      }
-    }else{
-      print("Ok")
-    }
-  }
+
+} else {
+  stop(paste("ERROR!!! parameter -y must be 'STACAS', Seurat_CCA' or 'Seurat_RPCA'"))
 }
 
 ################################################################################################################################################
@@ -402,8 +394,8 @@ writeLines("\n**** LOAD DATASETS ****\n")
 ####################################
 ### Load --inputs_list
 ####################################
-if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
-  
+if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
+
   writeLines("\n*** Load --inputs_list ***\n")
   
   if (RunsCwl == 0 || RunsCwl == 2) {
@@ -445,14 +437,15 @@ if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
 ####################################
 ### Load each dataset R object
 ####################################
-if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
+if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
   writeLines("\n*** Load each dataset R object ***\n")
   
   StopWatchStart$LoadRDSEachDataset  <- Sys.time()
+
+  seurat.object.list <- list()
   
   if (RunsCwl == 1) {
     RObjects <- list.files(InfileRObjects, pattern="*_QC_Normalization.rds", full.names=T)
-    seurat.object.list <- list()
     for (object in RObjects) {
       MinioID <- str_extract(basename(object), regex("[^.]*"))
       for (dataset in rownames(InputsTable)) {
@@ -464,19 +457,19 @@ if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
       }
     }
   }else{
-    seurat.object.list <- list()
     for (dataset in rownames(InputsTable)) {
       print(dataset)
       DatasetIndexInInputsTable <- which(x = rownames(InputsTable) == dataset)
       InputRobject <- InputsTable[dataset,"PathToRObject"]
       seurat.object.list[[DatasetIndexInInputsTable]] <- readRDS(InputRobject)
+      print(seurat.object.list[[DatasetIndexInInputsTable]])
     }
   }
   
   StopWatchEnd$LoadRDSEachDataset  <- Sys.time()
   
 }
-  
+
 ################################################################################################################################################
 ################################################################################################################################################
 ### HERE ARE THE FUNCTIONS TO INTEGRATE DATASETS
@@ -486,16 +479,15 @@ if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
 writeLines("\n**** INTEGRATE DATASETS ****\n")
 
 ####################################
-### Get correlation between datasets using pseudo-bulk
+### Merge datasets
 ####################################
-if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
-  writeLines("\n*** Get correlation between datasets using pseudo-bulk ***\n")
+if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
+  writeLines("\n*** Merge datasets ***\n")
   
-  StopWatchStart$GetCorrelBetweenDatasetsUsingPseudoBulk  <- Sys.time()
+  StopWatchStart$MergeDatasets  <- Sys.time()
   
-  SeuratObjectsFilteredAndNormalized <- seurat.object.list
-  FirstSeuratObject   <- SeuratObjectsFilteredAndNormalized[[1]]
-  RestOfSeuratObjectsFiltered <- SeuratObjectsFilteredAndNormalized[c(2:NumberOfDatasets)]
+  FirstSeuratObject   <- seurat.object.list[[1]]
+  RestOfSeuratObjectsFiltered <- seurat.object.list[c(2:NumberOfDatasets)]
   RestOfDatasetsIds    <- unlist(DatasetIds[c(2:NumberOfDatasets)])
   
   seurat.object.merged.normalized <- merge(FirstSeuratObject, y = RestOfSeuratObjectsFiltered, 
@@ -503,40 +495,20 @@ if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
                                            project = PrefixOutfiles)
   
   seurat.object.list.normalized <- SplitObject(seurat.object.merged.normalized, split.by = "dataset")
-  
-  for (assay_expression in DefaultParameters$AssaysForPseudoBulk) {
-    
-    ### Get pseudo-bulk matrices
-    mat_for_correl_all_cells.df <- data.frame(row.names = rownames(seurat.object.list.normalized[[1]]@assays[[assay_expression]]))
-    for (dataset in rownames(InputsTable)) {
-      mat_for_correl_all_cells.df[[dataset]] <- rowSums(as.matrix(seurat.object.list.normalized[[dataset]]@assays[[assay_expression]][,]))
-    }
-    
-    OutfilePathName <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2")
-    Outfile.con <- bzfile(OutfilePathName, "w")
-    Headers<-paste(paste0("PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]]), paste(colnames(mat_for_correl_all_cells.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
-    write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
-    write.table(mat_for_correl_all_cells.df,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-    close(Outfile.con)
-  
-    ### Get correlation
-    mat_for_correl_all_cells.cor <- round(cor(mat_for_correl_all_cells.df), digits = 3)
-    OutfilePathName <- paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor", ".tsv.bz2")
-    Outfile.con <- bzfile(OutfilePathName, "w")
-    Headers<-paste(paste0("PseudoBulk_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], "_cor"), paste(colnames(mat_for_correl_all_cells.cor), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
-    write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
-    write.table(mat_for_correl_all_cells.cor,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-    close(Outfile.con)
-    
-  }
-  
-  StopWatchEnd$GetCorrelBetweenDatasetsUsingPseudoBulk  <- Sys.time()
+
+  StopWatchEnd$MergeDatasets  <- Sys.time()
+}
+
+for (i in 1:length(seurat.object.list.normalized)) {
+  dataset <- rownames(InputsTable)[[i]]
+  print(dataset)
+  seurat.object.list.normalized[[i]] <- SCTransform(seurat.object.list.normalized[[i]], verbose = T)
 }
 
 ####################################
 ### Get reference datasets
 ####################################
-if (regexpr("^Seurat$|^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
+if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
   writeLines("\n*** Get reference datasets ***\n")
 
   StopWatchStart$GetReferenceDatasets <- Sys.time()
@@ -571,12 +543,33 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   ####################################
   writeLines("\n*** Get anchors with STACAS ***\n")
   
+  StopWatchStart$SelectIntegrationFeatures  <- Sys.time()
+  
+  writeLines("\n*** Run SelectIntegrationFeatures() ***\n")
+  seurat.object.integratedfeatures <- SelectIntegrationFeatures(object.list = seurat.object.list.normalized,
+                                                                nfeatures = DefaultParameters$IntegrationNFeatures)
+  
+  StopWatchEnd$SelectIntegrationFeatures  <- Sys.time()
+  
+  StopWatchStart$PrepSCTIntegration  <- Sys.time()
+  
+  writeLines("\n*** Run PrepSCTIntegration() ***\n")
+  seurat.object.list.normalized <- PrepSCTIntegration(object.list = seurat.object.list.normalized,
+                                           anchor.features = seurat.object.integratedfeatures,
+                                           verbose = T)
+  
+  StopWatchEnd$PrepSCTIntegration  <- Sys.time()
+  
   StopWatchStart$FindIntegrationAnchorsStacas  <- Sys.time()
   
-  seurat.object.anchors.unfiltered <- FindAnchors.STACAS(object.list = seurat.object.list, dims=PcaDimsUse,
-                                                         anchor.features=DefaultParameters$StacasVarGenesIntegratedN, 
-                                                         reference = ReferenceDatasets.indices, verbose = T)
+  seurat.object.anchors.unfiltered <- FindAnchors.STACAS(object.list = seurat.object.list.normalized,
+                                                         dims=PcaDimsUse,
+                                                         anchor.features=DefaultParameters$StacasVarGenesIntegratedN,
+                                                         normalization.method = "SCT",
+                                                         reference = ReferenceDatasets.indices,
+                                                         verbose = T)
   
+    
   StopWatchEnd$FindIntegrationAnchorsStacas  <- Sys.time()
   
   ####################################
@@ -586,13 +579,13 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   StopWatchStart$GetDistancesStacas <- Sys.time()
   
-  DensityPlots <- PlotAnchors.STACAS(seurat.object.anchors.unfiltered, obj.names=names(seurat.object.list))
+  DensityPlots <- PlotAnchors.STACAS(seurat.object.anchors.unfiltered, obj.names=names(seurat.object.list.normalized))
   
   OutfileStacasDistances <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_distances.tsv.bz2")
   Outfile.con <- bzfile(OutfileStacasDistances, "w")
   Headers<-paste("dataset1", "dataset2", "cell1", "cell2", "score", "dist1.2", "dist2.1", "dist.mean", sep = "\t", collapse = "")
   write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
-  lapply(1:length(seurat.object.list), function(DatasetNumber) {
+  lapply(1:length(seurat.object.list.normalized), function(DatasetNumber) {
     write.table(file = Outfile.con, x = DensityPlots[[DatasetNumber]]$data[,c("dataset1", "dataset2", "cell1", "cell2", "score", "dist1.2", "dist2.1", "dist.mean")],
                 quote = F, sep = "\t", row.names = F, col.names = F, append = T)
   })
@@ -641,14 +634,14 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   StopWatchStart$GetListAnchorsStacas <- Sys.time()
   
-  TableAnchorNumbers <- function(so.anchors,sos.list,OutfilesTsv,OutfilePdf,HeaderPlot) {
-    anchor.stats<-table(so.anchors@anchors[,c("dataset1","dataset2")])
-    rownames(anchor.stats) <- names(sos.list)
-    colnames(anchor.stats) <- names(sos.list)
+  TableAnchorNumbers <- function(seurat.object.anchors.final,seurat.object.list.normalized,OutfilesTsv,OutfilePdf,HeaderPlot) {
+    anchor.stats<-table(seurat.object.anchors.final@anchors[,c("dataset1","dataset2")])
+    rownames(anchor.stats) <- names(seurat.object.list.normalized)
+    colnames(anchor.stats) <- names(seurat.object.list.normalized)
     
     OutfilePathName<-OutfilesTsv
     Outfile.con <- bzfile(OutfilePathName, "w")
-    write(x=paste0("Dataset", "\t", paste(names(sos.list), sep = "\t", collapse = "\t")), file=Outfile.con)
+    write(x=paste0("Dataset", "\t", paste(names(seurat.object.list.normalized), sep = "\t", collapse = "\t")), file=Outfile.con)
     write.table(x=anchor.stats, file=Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
     close(Outfile.con)
     
@@ -674,9 +667,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   OutfilesTsv <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.tsv.bz2")
   OutfilePdf  <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_all_anchor_numbers.pdf")
-  so.anchors  <- seurat.object.anchors.unfiltered
-  sos.list    <- seurat.object.list
-  TableAnchorNumbers(so.anchors,sos.list,OutfilesTsv,OutfilePdf,"BEFORE")
+  TableAnchorNumbers(seurat.object.anchors.unfiltered,seurat.object.list.normalized,OutfilesTsv,OutfilePdf,"BEFORE")
   
   StopWatchEnd$GetAllAnchorsStacas <- Sys.time()
   
@@ -687,13 +678,11 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   StopWatchStart$GetFilteredAnchorsStacas <- Sys.time()
   
-  seurat.object.anchors <- FilterAnchors.STACAS(seurat.object.anchors.unfiltered)
+  seurat.object.anchors.final <- FilterAnchors.STACAS(seurat.object.anchors.unfiltered, dist.thr = DistThr)
 
   OutfilesTsv <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.tsv.bz2")
   OutfilePdf  <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.pdf")
-  so.anchors  <- seurat.object.anchors
-  sos.list    <- seurat.object.list
-  TableAnchorNumbers(so.anchors,sos.list,OutfilesTsv,OutfilePdf,"AFTER")
+  TableAnchorNumbers(seurat.object.anchors.final,seurat.object.list.normalized,OutfilesTsv,OutfilePdf,"AFTER")
   
   StopWatchEnd$GetFilteredAnchorsStacas <- Sys.time()
   
@@ -704,22 +693,22 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   StopWatchStart$GetOptimalIntegrationTreeStacas <- Sys.time()
   
-  all.genes <- row.names(seurat.object.list[[1]])
-  lapply(2:length(seurat.object.list), function(DatasetNumber) {
-    all.genes <- intersect(all.genes, row.names(seurat.object.list[[DatasetNumber]]))
+  all.genes <- row.names(seurat.object.list.normalized[[1]])
+  lapply(2:length(seurat.object.list.normalized), function(DatasetNumber) {
+    all.genes <- intersect(all.genes, row.names(seurat.object.list.normalized[[DatasetNumber]]))
   })
   
-  SampleTree <- SampleTree.STACAS(seurat.object.anchors)
+  SampleTree <- SampleTree.STACAS(seurat.object.anchors.final)
   
   OutfileSampleTree <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_SampleTree", ".tsv.bz2")
   Outfile.con <- bzfile(OutfileSampleTree, "w")
   write.table(SampleTree, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
   close(Outfile.con)
-
+  
   StopWatchEnd$GetOptimalIntegrationTreeStacas <- Sys.time()
   
-} else if (regexpr("^Seurat$", AnchorsFunction , ignore.case = T)[1] == 1) {
-  
+} else if (regexpr("^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
+    
   ####################################
   ### Get anchors with Seurat
   ####################################
@@ -728,48 +717,56 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   StopWatchStart$SelectIntegrationFeatures  <- Sys.time()
   
   writeLines("\n*** Run SelectIntegrationFeatures() ***\n")
-  seurat.object.integratedfeatures <- SelectIntegrationFeatures(object.list = seurat.object.list, nfeatures = DefaultParameters$IntegrationNFeatures)
+  seurat.object.integratedfeatures <- SelectIntegrationFeatures(object.list = seurat.object.list.normalized,
+                                                                nfeatures = DefaultParameters$IntegrationNFeatures)
   
   StopWatchEnd$SelectIntegrationFeatures  <- Sys.time()
   
   StopWatchStart$PrepSCTIntegration  <- Sys.time()
   
   writeLines("\n*** Run PrepSCTIntegration() ***\n")
-  seurat.object.list <- PrepSCTIntegration(object.list = seurat.object.list, anchor.features = seurat.object.integratedfeatures, verbose = T)
+  seurat.object.list.normalized <- PrepSCTIntegration(object.list = seurat.object.list.normalized,
+                                                      anchor.features = seurat.object.integratedfeatures,
+                                                      verbose = T)
   
   StopWatchEnd$PrepSCTIntegration  <- Sys.time()
   
+  if (regexpr("^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
+    ####################################
+    ### Run RunPCA() on each dataset
+    ####################################
+    writeLines("\n*** Run RunPCA() on each dataset ***\n")
+  
+    StopWatchStart$RunPCAEachDataset  <- Sys.time()
+  
+    ### This is not needed in Seurat's CCA method
+    seurat.object.list.normalized <- lapply(X = seurat.object.list.normalized, FUN = RunPCA, features = seurat.object.integratedfeatures)
+  
+    StopWatchEnd$RunPCAEachDataset  <- Sys.time()
+  }
+
   StopWatchStart$FindIntegrationAnchors  <- Sys.time()
   
   writeLines("\n*** Run FindIntegrationAnchors() ***\n")
   print(paste0("Using k.filter = ", KFilter))
-  seurat.object.anchors <- FindIntegrationAnchors(object.list = seurat.object.list, k.filter = KFilter, normalization.method = "SCT", dims=PcaDimsUse, anchor.features = seurat.object.integratedfeatures, reference = ReferenceDatasets.indices, verbose = T)
+  seurat.object.anchors.final <- FindIntegrationAnchors(object.list = seurat.object.list.normalized,
+                                                        k.filter = KFilter,
+                                                        normalization.method = "SCT",
+                                                        dims=PcaDimsUse,
+                                                        anchor.features = seurat.object.integratedfeatures,
+                                                        reduction = ReductionForFindIntegrationAnchors,
+                                                        k.anchor = 20,
+                                                        reference = ReferenceDatasets.indices,
+                                                        verbose = T)
+
   SampleTree <- NULL
   
   StopWatchEnd$FindIntegrationAnchors  <- Sys.time()
   
-} else if (regexpr("^precomputed$", AnchorsFunction , ignore.case = T)[1] == 1) {
+} else {
   
-  ####################################
-  ### Load precomputed anchors
-  ####################################
-  writeLines("\n*** Load precomputed anchors ***\n")
+  stop(paste0("ERROR!!! unexpected parameter -y ", AnchorsFunction))
   
-  StopWatchStart$ReadAnchorsInFile  <- Sys.time()
-
-  seurat.object.anchors <- readRDS(AnchorsInFile)
-
-  StopWatchEnd$ReadAnchorsInFile  <- Sys.time()
-  
-  print(AnchorsInFile)
-  
-  if (grepl(AnchorsInFile, "STACAS", fixed = TRUE)) {
-    SampleTree <- read.table(AnchorsInFile, header = F, row.names = F)
-    print(SampleTree)
-    
-  }else{
-    SampleTree <- NULL
-  }
 }
 
 ####################################
@@ -779,8 +776,14 @@ writeLines("\n*** Integrating datasets ***\n")
 
 StopWatchStart$IntegrateData  <- Sys.time()
 
-writeLines("\n*** Run IntegrateData() ***\n")
-seurat.object.integrated <- IntegrateData(anchorset = seurat.object.anchors, normalization.method = "SCT", sample.tree = SampleTree, preserve.order = T, verbose = T)
+seurat.object.integrated <- IntegrateData(anchorset = seurat.object.anchors.final,
+                                          dims = PcaDimsUse,
+                                          k.weight = KWeight,
+                                          normalization.method = "SCT",
+                                          sample.tree = SampleTree,
+                                          preserve.order = T,
+                                          verbose = T
+                                          )
 
 StopWatchEnd$IntegrateData  <- Sys.time()
 
