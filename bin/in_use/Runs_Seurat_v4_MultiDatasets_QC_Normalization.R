@@ -64,7 +64,7 @@ ProgramOutdir  <- "SEURAT"
 
 option_list <- list(
   make_option(c("-i", "--inputs_list"), default="NA",
-              help="Path/name to a <tab> delimited file with one dataset per row and the following 12 columns specifying filters/details for each dataset:
+              help="Path/name to a <tab> delimited file with one dataset per row and the following 13 columns specifying filters/details for each dataset:
                 1) unique dataset ID (e.g. 'd1')
                 2) /path_to/dataset
                 3) dataset type (e.g. 'control' or 'treatment') or use 'type' to skip using dataset types
@@ -77,6 +77,7 @@ option_list <- list(
                 10) dataset maximum number of genes (e.g. '8000')
                 11) dataset minimum number of reads (e.g. '1')
                 12) dataset maximum number of reads (e.g. '80000')
+                13) number of random cells to subsample after QC (e.g. '1000'. Or '-1' to include all QC'ed cells)
 
                 Notes:
                 (a) The order of the list of datasets in --inputs_list may influence the results, including number of clusters,
@@ -314,8 +315,8 @@ if (NumbCoresToUse == 1) {
   stop(paste0("Unexpected --number_cores = ", NumbCoresToUse))
 }
 
-### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
-### allocate 4GiB of global variables identified (4000*1024^2), use: `options(future.globals.maxSize = 4000 * 1024^2)`
+### Allocation of global variables allows to handle memory errors
+### 4GiB (4000*1024^2) are assigned as: `options(future.globals.maxSize = 4000 * 1024^2)`
 options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 
 ####################################
@@ -366,7 +367,7 @@ writeLines("\n*** Load --inputs_list ***\n")
 if (RunsCwl == 0 || RunsCwl == 2) {
   InputsList<-gsub("^~/",paste0(UserHomeDirectory,"/"), InputsList)
   InputsTable<-read.table(InputsList, header = F, row.names = 1, stringsAsFactors = F)
-  colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+  colnames(InputsTable)<-c("PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads","RandomNumbCells")
 }else if (RunsCwl == 1) {
   MinioPaths <- as.list(strsplit(MinioPath, ",")[[1]])
   MinioDataPaths = data.frame(dataset_ID=rep(0, length(MinioPaths)), dataset_path=rep(0, length(MinioPaths)))
@@ -382,7 +383,7 @@ if (RunsCwl == 0 || RunsCwl == 2) {
   MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
   MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
   rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
-  colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads")
+  colnames(MergedInputsTableFilteredFinal) <-c("DatasetMinioID","PathToDataset","DatasetType","DatasetFormat","MinMitoFrac","MaxMitoFrac","MinRiboFrac","MaxRiboFrac","MinNGenes","MaxNGenes","MinNReads","MaxNReads","RandomNumbCells")
   
   InputsTable <- MergedInputsTableFilteredFinal
 }
@@ -410,6 +411,7 @@ list_MinNGenes          <-list()
 list_MaxNGenes          <-list()
 list_MinNReads          <-list()
 list_MaxNReads          <-list()
+list_RandNCells         <-list()
 
 if (RunsCwl == 1) {
   list_DatasetMinioIDs <- list()
@@ -439,6 +441,7 @@ for (dataset in rownames(InputsTable)) {
   list_MaxNGenes[[dataset]]          <- as.numeric(InputsTable[dataset,"MaxNGenes"])
   list_MinNReads[[dataset]]          <- as.numeric(InputsTable[dataset,"MinNReads"])
   list_MaxNReads[[dataset]]          <- as.numeric(InputsTable[dataset,"MaxNReads"])
+  list_RandNCells[[dataset]]         <- as.numeric(InputsTable[dataset,"RandomNumbCells"])
   
   if (RunsCwl == 1) {
     DatasetMinioID <- InputsTable[dataset,"DatasetMinioID"]
@@ -612,6 +615,31 @@ for (dataset in rownames(InputsTable)) {
     print(paste0(dataset, "  filtered"))
     print(seurat.object.f)
     
+    ####################################
+    ### Downsample barcodes (if applicable)
+    ####################################
+    
+    if (list_RandNCells[[dataset]] == -1) {
+      writeLines(paste0("\n*** All barcodes passing QC will be included for ", dataset, " ***\n"))
+    }else if (list_RandNCells[[dataset]] >= 0) {
+      
+      writeLines(paste0("\n*** Downsample barcodes for ", dataset, " ***\n"))
+      
+      StopWatchStart$DownsampleBarcodes[[dataset]]  <- Sys.time()
+      
+      RandNumberOfBarcodes <- min(list_RandNCells[[dataset]], length(colnames(seurat.object.f)))
+      AllBarcodes<-colnames(seurat.object.f)
+      SubsampleBarcodes<-sample(x = AllBarcodes, size = RandNumberOfBarcodes, replace=FALSE)
+      seurat.object.f <- subset(x = seurat.object.f, cells = as.vector(SubsampleBarcodes))
+      
+      print(paste0(dataset, "  downsampled"))
+      print(seurat.object.f)
+      
+      StopWatchEnd$DownsampleBarcodes[[dataset]]  <- Sys.time()
+    }else{
+      stop(paste0("\n*** ERROR!!! unexpected value in column 13 '",  list_RandNCells[[dataset]], "' for dataset ", dataset, " ***\n"))
+    }
+
     ####################################
     ### QC EDA violin plots
     ####################################
