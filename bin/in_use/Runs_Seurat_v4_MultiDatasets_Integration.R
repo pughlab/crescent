@@ -517,11 +517,18 @@ if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case
     writeLines("\n*** Will compare all-vs-all datasets to get anchors ***\n")
     ReferenceDatasets.indices <- c(1:nrow(InputsTable))
   }else{
+
+    if (RunsCwl == 1) {
+      InputsTableReferenceID <- InputsTable$DatasetMinioID
+    } else {
+      InputsTableReferenceID <- rownames(InputsTable)
+    }
+    
     writeLines("\n*** Determine reference dataset indices ***\n")
     ReferenceDatasets.list <- unlist(strsplit(ReferenceDatasets, ","))
-    NumberOfFoundReferenceDatasetIDs <- sum(ReferenceDatasets.list %in% rownames(InputsTable) == T)
+    NumberOfFoundReferenceDatasetIDs <- sum(ReferenceDatasets.list %in% InputsTableReferenceID == T)
     if (NumberOfFoundReferenceDatasetIDs == length(ReferenceDatasets.list)) {
-      ReferenceDatasets.indices <- match(ReferenceDatasets.list, rownames(InputsTable))
+      ReferenceDatasets.indices <- match(ReferenceDatasets.list, InputsTableReferenceID)
     }else{
       stop(paste0("Requested ", length(ReferenceDatasets.list), " datasets as references by parameter `-z`, but found ", NumberOfFoundReferenceDatasetIDs, " in --inputs_list row headers"))
     }
