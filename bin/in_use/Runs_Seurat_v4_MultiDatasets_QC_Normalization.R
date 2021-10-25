@@ -379,7 +379,7 @@ if (RunsCwl == 0 || RunsCwl == 2) {
   InputsTable0 <- read.table(InputsList, header = T, sep = ",", stringsAsFactors = F)
   
   MergedInputsTable <- merge(MinioDataPaths, InputsTable0, by="dataset_ID")
-  MergeFilter <- c("name","dataset_ID","dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max")
+  MergeFilter <- c("name","dataset_ID","dataset_path", "dataset_type", "dataset_format", "mito_min", "mito_max", "ribo_min", "ribo_max", "ngenes_min", "ngenes_max", "nreads_min", "nreads_max", "ncells_random")
   MergedInputsTableFiltered <- MergedInputsTable[MergeFilter]
   MergedInputsTableFilteredFinal <- MergedInputsTableFiltered[,-1]
   rownames(MergedInputsTableFilteredFinal) <- MergedInputsTableFiltered[,1]
