@@ -1547,9 +1547,11 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   StopWatchEnd$SaveRDSFull  <- Sys.time()
   
 }else{
-  
+  if (RunsCwl == 1) {
+    OutfileRDS<-paste0("R_OBJECTS_CWL/", ".empty_object.rds")
+    file.create(OutfileRDS) 
+  }
   writeLines("\n*** Not saving the full run R object ***\n")
-  
 }
 
 ####################################
