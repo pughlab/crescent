@@ -300,9 +300,7 @@ if (RunsCwl == 1 || RunsCwl == 2) {
     "CRESCENT_CLOUD/frontend_counts",
     "CRESCENT_CLOUD/frontend_coordinates",
     "CRESCENT_CLOUD/frontend_groups",
-    "CRESCENT_CLOUD/frontend_metadata",
-    "CRESCENT_CLOUD/frontend_raw",
-    "CRESCENT_CLOUD/frontend_normalized"
+    "CRESCENT_CLOUD/frontend_metadata"
   )
 }
 
