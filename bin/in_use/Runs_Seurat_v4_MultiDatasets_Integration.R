@@ -27,9 +27,9 @@
 
 ####################################
 ### COMMENTS ON USING REFERENCE DATASETS VS. ALL PAIRWISE COMPARISONS TO FIND ANCHORS
-### Using 4 datasets with 3K to 5K compared runs using either `-k NA` or `-k 1,2`
-### Computing time was reduced in step IntegrateData() when using `-k 1,2`. Whereas FindIntegrationAnchors() was similar:
-### Step/time(minutes)      Using_-k_NA   Using_-k_1,2
+### Using 4 datasets with 3K to 5K cells, compared runs using either `-z NA` or `-z 1,2`
+### Computing time was reduced in step IntegrateData() when using `-z 1,2`. Whereas FindIntegrationAnchors() was similar:
+### Step/time(minutes)      Using_-z_NA   Using_-z_1,2
 ### FindIntegrationAnchors	3.336035	    3.118804
 ### IntegrateData           2.968116	    1.666707
 ### In both cases used `-u MAX -b 10000` in a 3.1-GHz Intel Core i5 CPU with 2 cores and 16 GB RAM
@@ -136,12 +136,12 @@ option_list <- list(
 
                 Default = '30'"),
   #
-  make_option(c("-n", "--k_filter"), default="200",
+  make_option(c("-n", "--k_filter"), default="150",
               help="Integrating highly heterogenous datasets can lead to a too small number of anchors,
                 resulting in an error 'Cannot find more nearest neighbours than there are points'
                 This can be avoided by using a -k_filter value smaller than the default (e.g. '150')
                 
-                Default = '200'"),
+                Default = '150'"),
   #
   make_option(c("-q", "--dist_thr"), default="0.8",
               help="Only needed if using '-y STACAS'
@@ -192,8 +192,6 @@ opt <- parse_args(OptionParser(option_list=option_list))
 InputsList              <- opt$inputs_list
 InfileRObjects          <- opt$infile_r_objects
 AnchorsFunction         <- opt$anchors_function
-AnchorsInFile           <- opt$anchors_infile
-SampleTreeInFile        <- opt$sample_tree_infile
 ReferenceDatasets       <- opt$reference_datasets
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
@@ -347,7 +345,7 @@ options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 ### Some of these default parameters are provided by Seurat developers, others are tailored empirically
 
 DefaultParameters <- list(
-
+  
   ### Parameters for STACAS
   StacasVarGenesIntegratedN = 800,
   StacasNGenes = 500,
@@ -355,7 +353,7 @@ DefaultParameters <- list(
   
   ### Parameters for plots
   BaseSizeSinglePlotPdf  = 7,
-
+  
   ### Parameters for datasets integration
   IntegrationNFeatures = 3000,
   
@@ -372,13 +370,13 @@ listAssaySuffixForOutfiles <- list(RNA="RNA", SCT="SCT", integrated="INT")
 writeLines("\n*** Check anchor parameters are compatible with each other ***\n")
 
 if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
-
+  
   if (regexpr("^Seurat_CCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
     ReductionForFindIntegrationAnchors <- "cca"
   } else if (regexpr("^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
     ReductionForFindIntegrationAnchors <- "rpca"
   }
-
+  
 } else {
   stop(paste("ERROR!!! parameter -y must be 'STACAS', Seurat_CCA' or 'Seurat_RPCA'"))
 }
@@ -395,7 +393,7 @@ writeLines("\n**** LOAD DATASETS ****\n")
 ### Load --inputs_list
 ####################################
 if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
-
+  
   writeLines("\n*** Load --inputs_list ***\n")
   
   if (RunsCwl == 0 || RunsCwl == 2) {
@@ -441,7 +439,7 @@ if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case
   writeLines("\n*** Load each dataset R object ***\n")
   
   StopWatchStart$LoadRDSEachDataset  <- Sys.time()
-
+  
   seurat.object.list <- list()
   
   if (RunsCwl == 1) {
@@ -495,7 +493,7 @@ if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case
                                            project = PrefixOutfiles)
   
   seurat.object.list.normalized <- SplitObject(seurat.object.merged.normalized, split.by = "dataset")
-
+  
   StopWatchEnd$MergeDatasets  <- Sys.time()
 }
 
@@ -510,14 +508,14 @@ for (i in 1:length(seurat.object.list.normalized)) {
 ####################################
 if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
   writeLines("\n*** Get reference datasets ***\n")
-
+  
   StopWatchStart$GetReferenceDatasets <- Sys.time()
   
   if (regexpr("^NA$", ReferenceDatasets , ignore.case = T)[1] == 1) {
     writeLines("\n*** Will compare all-vs-all datasets to get anchors ***\n")
     ReferenceDatasets.indices <- c(1:nrow(InputsTable))
   }else{
-
+    
     if (RunsCwl == 1) {
       InputsTableReferenceID <- InputsTable$DatasetMinioID
     } else {
@@ -562,8 +560,8 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   
   writeLines("\n*** Run PrepSCTIntegration() ***\n")
   seurat.object.list.normalized <- PrepSCTIntegration(object.list = seurat.object.list.normalized,
-                                           anchor.features = seurat.object.integratedfeatures,
-                                           verbose = T)
+                                                      anchor.features = seurat.object.integratedfeatures,
+                                                      verbose = T)
   
   StopWatchEnd$PrepSCTIntegration  <- Sys.time()
   
@@ -576,7 +574,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
                                                          reference = ReferenceDatasets.indices,
                                                          verbose = T)
   
-    
+  
   StopWatchEnd$FindIntegrationAnchorsStacas  <- Sys.time()
   
   ####################################
@@ -686,7 +684,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   StopWatchStart$GetFilteredAnchorsStacas <- Sys.time()
   
   seurat.object.anchors.final <- FilterAnchors.STACAS(seurat.object.anchors.unfiltered, dist.thr = DistThr)
-
+  
   OutfilesTsv <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.tsv.bz2")
   OutfilePdf  <- paste0(Tempdir, "/ANCHORS/", PrefixOutfiles, ".", ProgramOutdir, "_STACAS_filtered_anchor_numbers.pdf")
   TableAnchorNumbers(seurat.object.anchors.final,seurat.object.list.normalized,OutfilesTsv,OutfilePdf,"AFTER")
@@ -715,7 +713,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
   StopWatchEnd$GetOptimalIntegrationTreeStacas <- Sys.time()
   
 } else if (regexpr("^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case = T)[1] == 1) {
-    
+  
   ####################################
   ### Get anchors with Seurat
   ####################################
@@ -743,19 +741,25 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
     ### Run RunPCA() on each dataset
     ####################################
     writeLines("\n*** Run RunPCA() on each dataset ***\n")
-  
+    
     StopWatchStart$RunPCAEachDataset  <- Sys.time()
-  
+    
     ### This is not needed in Seurat's CCA method
     seurat.object.list.normalized <- lapply(X = seurat.object.list.normalized, FUN = RunPCA, features = seurat.object.integratedfeatures)
-  
+    
     StopWatchEnd$RunPCAEachDataset  <- Sys.time()
   }
-
+  
   StopWatchStart$FindIntegrationAnchors  <- Sys.time()
   
   writeLines("\n*** Run FindIntegrationAnchors() ***\n")
-  print(paste0("Using k.filter = ", KFilter))
+  MinNcellsPerDataset <- min(sapply(seurat.object.list.normalized, ncol))
+    if (MinNcellsPerDataset < KFilter) {
+      print(paste0("Using --k_filter = ", KFilter, " but the minimum number of cells in your samples = ", MinNcellsPerDataset, ". IF this step fails, try again with --k_filter ", MinNcellsPerDataset))
+    }else{
+      print(paste0("Using --k_filter = ", KFilter))
+    }
+
   seurat.object.anchors.final <- FindIntegrationAnchors(object.list = seurat.object.list.normalized,
                                                         k.filter = KFilter,
                                                         normalization.method = "SCT",
@@ -765,7 +769,7 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
                                                         k.anchor = 20,
                                                         reference = ReferenceDatasets.indices,
                                                         verbose = T)
-
+  
   SampleTree <- NULL
   
   StopWatchEnd$FindIntegrationAnchors  <- Sys.time()
