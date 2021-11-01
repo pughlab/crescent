@@ -173,13 +173,19 @@ option_list <- list(
 
                 Default = 'RNA,SCT'"),
   #
-  make_option(c("-d", "--pca_dimensions"), default="10",
-              help="Max value of PCA dimensions to use for clustering and t-SNE functions
+  make_option(c("-d", "--pca_dimensions"), default="20",
+              help="Max value of PCA dimensions to use for clustering and UMAP/TSNE functions
                 FindClusters(..., dims.use = 1:-d) and RunTSNE(..., dims.use = 1:-d)
-                Typically '10' is enough, if unsure use '10' and afterwards check file:
+                Typically '20' is enough, if unsure use '20' and afterwards check file:
                 *PCElbowPlot.pdf, use the number of PC's where the elbow shows a plateau along the y-axes low numbers
                 
-                Default = '10'"),
+                Default = '20'"),
+  #
+  make_option(c("-e", "--dimension_reductions"), default="TSNE,UMAP",
+              help="Indicates which dimension reduction(s) should be plotted and stored in outfiles
+                Options 'TSNE', 'UMAP', or 'TSNE,UMAP'
+
+                Default = 'TSNE,UMAP'"),
   #
   make_option(c("-u", "--number_cores"), default="MAX",
               help="Indicate the number of cores to use for parellelization (e.g. '4') or type 'MAX' to determine and use all available cores in the system
@@ -232,6 +238,7 @@ InfileSelectedGenes     <- opt$infile_selected_genes
 ApplySelectedGenes      <- opt$apply_list_genes
 AssaysForGenePlots      <- opt$assays_for_gene_plots
 PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
+DimRedForPlotStore      <- opt$dimension_reductions
 NumbCores               <- opt$number_cores
 SaveRObject             <- opt$save_r_object
 AssaysForLoom           <- opt$assays_for_loom
@@ -281,7 +288,6 @@ FILE_TYPE_OUT_DIRECTORIES = c(
   "DIMENSION_REDUCTION_PLOTS",
   "LOG_FILES",
   "QC_PLOTS",
-  "PSEUDO_BULK",
   "SELECTED_GENE_DIMENSION_REDUCTION_PLOTS"
 )
 
@@ -389,8 +395,8 @@ if (NumbCoresToUse == 1) {
   stop(paste0("Unexpected --number_cores = ", NumbCoresToUse))
 }
 
-### To avoid a memmory error with getGlobalsAndPackages() while using ScaleData()
-### allocate 4GiB of global variables identified (4000*1024^2), use: `options(future.globals.maxSize = 4000 * 1024^2)`
+### Allocation of global variables allows to handle memory errors
+### 4GiB (4000*1024^2) are assigned as: `options(future.globals.maxSize = 4000 * 1024^2)`
 options(future.globals.maxSize = MaxGlobalVariables * 1024^2)
 
 ####################################
@@ -407,7 +413,7 @@ DefaultParameters <- list(
   ### Parameters for QC plots
   CellPropertiesToQC = c("nFeature_RNA", "nCount_RNA", "mito.fraction", "ribo.fraction"),
   
-  ### Parameters for dimmension reduction plots
+  ### Parameters for dimension reduction plots
   MinNumberOfCellsToReducePerplexity = 150,
   ReducedPerplexity = 7,
   BaseSizeSinglePlotPdf  = 7,
@@ -417,7 +423,6 @@ DefaultParameters <- list(
 
   ### Parameters for datasets comparison
   AssaysForAverageGETables = c("RNA", "SCT", "integrated"),
-  AssaysForPseudoBulk = c("RNA", "SCT"),
   AssaysForLoom = c("RNA", "SCT")
 )
 
@@ -426,10 +431,19 @@ listAssaySuffixForOutfiles <- list(RNA="RNA", SCT="SCT", integrated="INT")
 
 ### Dimension reduction methods
 DimensionReductionMethods<-list()
-DimensionReductionMethods$umap$name <-"UMAP"
-DimensionReductionMethods$tsne$name <-"TSNE"
-DimensionReductionMethods$umap$run  <-as.function(RunUMAP)
-DimensionReductionMethods$tsne$run  <-as.function(RunTSNE)
+
+if (length(grep('TSNE', DimRedForPlotStore, perl = T, ignore.case = T))) {
+  DimensionReductionMethods$tsne$name <-"TSNE"
+  DimensionReductionMethods$tsne$run  <-as.function(RunTSNE)
+}else{
+  print("Will skip TSNE")
+}
+if (length(grep('UMAP', DimRedForPlotStore, perl = T, ignore.case = T))) {
+  DimensionReductionMethods$umap$name <-"UMAP"
+  DimensionReductionMethods$umap$run  <-as.function(RunUMAP)
+}else{
+  print("Will skip UMAP")
+}
 
 ####################################
 ### Check that optional parameters are compatible with each other
@@ -457,7 +471,6 @@ if ((1 %in% RequestedApplySelectedGenes == T) |
     stop("ERROR!!! options `-m [1|2|3] and -g NA` are incompatible with each other")
   }else{
     writeLines(paste0("\n*** Get list of genes to map in dimension reduction plots ***\n"))
-    
     ListOfGenesForDimRedPlots<-unique(readLines(con = InfileSelectedGenes, skipNul = T))
   }
 }
@@ -561,12 +574,13 @@ if (regexpr("^NA$", InfileSelectBarcodes , ignore.case = T)[1] == 1) {
   writeLines("\nOriginal Seurat object:")
   print(seurat.object.integrated)
   
-  seurat.object.integrated <- SubsetData(object = seurat.object.integrated, cells = paste(AllBarcodesToSelect.tab[,"Dataset"],AllBarcodesToSelect.tab[,"Barcode"], sep = "_"))
-  
+  CellsToSubset <- paste(AllBarcodesToSelect.tab[,"Dataset"],AllBarcodesToSelect.tab[,"Barcode"], sep = "_")
+  seurat.object.integrated  <- subset(seurat.object.integrated,
+                                         cells == CellsToSubset)
+
   writeLines("\nSelected barcodes Seurat object:")
   print(seurat.object.integrated)
-  
-  
+
   StopWatchEnd$SelectBarcodes <- Sys.time()
   
 }
@@ -616,7 +630,7 @@ writeLines("\n*** Obtaining principal components ***\n")
 
 StopWatchStart$RunPCA  <- Sys.time()
 
-seurat.object.integrated <- RunPCA(seurat.object.integrated, verbose = F)
+seurat.object.integrated <- RunPCA(seurat.object.integrated, verbose = F, npcs = PcaDimsUse)
 
 StopWatchEnd$RunPCA  <- Sys.time()
 
@@ -743,49 +757,6 @@ StopWatchStart$SaveGlobalCellClusterIdentities  <- Sys.time()
 seurat.object.integrated$GlobalCellClusterIdentities <- Idents(object = seurat.object.integrated)
 
 StopWatchEnd$SaveGlobalCellClusterIdentities  <- Sys.time()
-
-####################################
-### Generate a matrix with each gene (rows) marginals of SCTransform values from all cells for each dataset cluster (columns)
-####################################
-writeLines("\n*** Generate a matrix with each gene (rows) marginals of SCTransform values from all cells for each dataset cluster (columns) ***\n")
-
-StopWatchStart$SaveSctransformClustersInColumns  <- Sys.time()
-
-Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data[["dataset"]]
-seurat.object.integrated.list <- SplitObject(seurat.object.integrated, split.by = "dataset")
-
-for (assay_expression in DefaultParameters$AssaysForPseudoBulk) {
-  mat_for_correl_each_cluster.df <- data.frame(row.names = rownames(seurat.object.integrated.list[[1]]@assays[[assay_expression]]))
-
-  for (DatasetId in rownames(InputsTable)) {
-    if (exists(x = "seurat.object.each_dataset") == T) {
-      rm(seurat.object.each_dataset)
-    }
-    seurat.object.each_dataset <- subset(x = seurat.object.integrated, subset = dataset == DatasetId)
-
-    for (cluster_number in sort(unique(seurat.object.integrated$GlobalCellClusterIdentities))) {
-      dataset_cluster <- (paste(DatasetId, cluster_number, sep = "_c", collapse = ""))
-      res <- try(subset(x = seurat.object.each_dataset, subset = seurat_clusters == cluster_number), silent = TRUE)
-      if (class(res) == "try-error") {
-        # mat_for_correl_each_cluster.df[[dataset_cluster]] <- NA
-      }else{
-        if (exists(x = "seurat.object.each_dataset.each_cluster") == T) {
-          rm(seurat.object.each_dataset.each_cluster)
-        }
-        seurat.object.each_dataset.each_cluster <- subset(x = seurat.object.each_dataset, subset = seurat_clusters == cluster_number)
-        mat_for_correl_each_cluster.df[[dataset_cluster]] <- rowSums(as.matrix(seurat.object.each_dataset.each_cluster@assays[[assay_expression]][,]))
-      }
-    }
-  }
-  
-  Outfile.con <- bzfile(paste0(Tempdir, "/PSEUDO_BULK/", PrefixOutfiles, ".", ProgramOutdir, "_PseudoBulk_", "EachDatasetCluster_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
-  Headers<-paste("PseudoBulk_EachDatasetCluster", paste(colnames(mat_for_correl_each_cluster.df), sep = "\t", collapse = "\t"), sep = "\t", collapse = "")
-  write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
-  write.table(mat_for_correl_each_cluster.df,  file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
-  close(Outfile.con)
-}
-
-StopWatchEnd$SaveSctransformClustersInColumns  <- Sys.time()
 
 ####################################
 ### FOR EACH DIMENSION REDUCTION TYPE colour plots using integrated data to colour by: a) cell clusters, b) dataset, c) dataset type, d) selected genes and e) metadata
@@ -1005,7 +976,7 @@ Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$
 for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
   cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
   Outfile.con <- bzfile(paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_AllDatasets_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
-  Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+  Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  colnames(as.data.frame(cluster.averages[[assay_expression]])), sep="", collapse="\t"), sep="\t", collapse = "\t")
   write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(data.frame(cluster.averages[[assay_expression]]), file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
   close(Outfile.con)
@@ -1244,7 +1215,7 @@ Idents(object = seurat.object.integrated) <- seurat.object.integrated@meta.data$
 for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
   cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
   Outfile.con <- bzfile(paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_EachDataset_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
-  Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+  Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  colnames(as.data.frame(cluster.averages[[assay_expression]])), sep="", collapse="\t"), sep="\t", collapse = "\t")
   write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
   write.table(data.frame(cluster.averages[[assay_expression]]), file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
   close(Outfile.con)
@@ -1376,7 +1347,7 @@ if (2 %in% RequestedClusteringInputs == T) {
   for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
     cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
     Outfile.con <- bzfile(paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "EachDatasetReclustered", "_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
-    Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+    Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  colnames(as.data.frame(cluster.averages[[assay_expression]])), sep="", collapse="\t"), sep="\t", collapse = "\t")
     write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(data.frame(cluster.averages[[assay_expression]]), file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
     close(Outfile.con)
@@ -1388,12 +1359,8 @@ if (2 %in% RequestedClusteringInputs == T) {
   ### Bzip2 outfiles
   ####################################
   system(paste("bzip2 -f", OutfileEachDatasetClusters, sep = " "))
-  system(paste("rm", OutfileEachDatasetClusters, sep = " "))
   system(paste("bzip2 -f", OutfileEachDatasetNumbClusters, sep = " "))
-  system(paste("rm", OutfileEachDatasetNumbClusters, sep = " "))
   system(paste("bzip2 -f", OutfileEachDatasetNumbCellsPerCluster, sep = " "))
-  system(paste("rm", OutfileEachDatasetNumbCellsPerCluster, sep = " "))
-  
 }
 
 ################################################################################################################################################
@@ -1619,7 +1586,7 @@ if (NumberOfDatasetsTypes >= 1) {
     Idents(object = seurat.object.integrated) <- seurat.object.integrated$EachDatasetTypeGlobalCellClusters
     cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
     Outfile.con <- bzfile(paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "GlobalClustering", "_EachDatasetType_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
-    Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+    Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  colnames(as.data.frame(cluster.averages[[assay_expression]])), sep="", collapse="\t"), sep="\t", collapse = "\t")
     write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
     write.table(data.frame(cluster.averages[[assay_expression]]), file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
     close(Outfile.con)
@@ -1632,10 +1599,8 @@ if (NumberOfDatasetsTypes >= 1) {
   ####################################
   OutfileEachDatasetTypeGlobalClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "EachDatasetType_CellClusters", ".tsv")
   system(paste("bzip2 -f", OutfileEachDatasetTypeGlobalClusters, sep = " "))
-  system(paste("rm", OutfileEachDatasetTypeGlobalClusters, sep = " "))
   OutfileNumbCellsPerClusterPerDatasetType<-paste0(Tempdir, "/CELL_FRACTIONS/", PrefixOutfiles, ".", ProgramOutdir, "_GlobalClustering_", "NumbCellsPerClusterPerDatasetType", ".tsv")
   system(paste("bzip2 -f", OutfileNumbCellsPerClusterPerDatasetType, sep = " "))
-  system(paste("rm", OutfileNumbCellsPerClusterPerDatasetType, sep = " "))
 }
 
 ################################################################################################################################################
@@ -1772,7 +1737,7 @@ if (NumberOfDatasetsTypes >= 1) {
     for (assay_expression in DefaultParameters$AssaysForAverageGETables) {
       cluster.averages<-AverageExpression(object = seurat.object.integrated, use.scale = F, use.counts = F, assays = assay_expression)
       Outfile.con <- bzfile(paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles, ".", ProgramOutdir, "_AverageGeneExpression_", "EachDatasetTypeReclustered_", listAssaySuffixForOutfiles[[assay_expression]], ".tsv.bz2"), "w")
-      Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[[assay_expression]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
+      Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  colnames(as.data.frame(cluster.averages[[assay_expression]])), sep="", collapse="\t"), sep="\t", collapse = "\t")
       write.table(Headers, file = Outfile.con, row.names = F, col.names = F, sep="\t", quote = F)
       write.table(data.frame(cluster.averages[[assay_expression]]), file = Outfile.con, row.names = T, col.names = F, sep="\t", quote = F, append = T)
       close(Outfile.con)
@@ -1785,7 +1750,6 @@ if (NumberOfDatasetsTypes >= 1) {
     ####################################
     OutfileEachDatasetTypeCellReClusters<-paste0(Tempdir, "/CELL_CLUSTER_IDENTITIES/", PrefixOutfiles, ".", ProgramOutdir, "_EachDatasetTypeReclustered_", "CellClusters", ".tsv")
     system(paste("bzip2 -f", OutfileEachDatasetTypeCellReClusters, sep = " "))
-    system(paste("rm", OutfileEachDatasetTypeCellReClusters, sep = " "))
   }
 }else{
   writeLines("\n*** No dataset type analyzes will be conducted because only '1' dataset type was found in -inputs_list ***\n")
