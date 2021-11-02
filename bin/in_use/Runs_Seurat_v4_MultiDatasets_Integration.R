@@ -130,11 +130,11 @@ option_list <- list(
               
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
-  make_option(c("-d", "--pca_dimensions_anchors"), default="30",
-              help="Max value of PCA dimensions to use for anchor detection
-                FindIntegrationAnchors(..., dims = 1:-d)
+  make_option(c("-d", "--pca_dimensions"), default="20",
+              help="Max value of PCA dimensions to use for anchor detection FindIntegrationAnchors(..., dims = 1:-d)
+                and for RunPCA(..., ndims = -d) if using -y Seurat_RPCA
 
-                Default = '30'"),
+                Default = '20'"),
   #
   make_option(c("-n", "--k_filter"), default="150",
               help="Integrating highly heterogenous datasets can lead to a too small number of anchors,
@@ -195,7 +195,7 @@ AnchorsFunction         <- opt$anchors_function
 ReferenceDatasets       <- opt$reference_datasets
 Outdir                  <- opt$outdir
 PrefixOutfiles          <- opt$prefix_outfiles
-PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions_anchors))
+PcaDimsUse              <- c(1:as.numeric(opt$pca_dimensions))
 KFilter                 <- as.numeric(opt$k_filter)
 DistThr                 <- as.numeric(opt$dist_thr)
 KWeight                 <- as.numeric(opt$k_weight)
@@ -744,9 +744,12 @@ if (regexpr("^STACAS$", AnchorsFunction , ignore.case = T)[1] == 1) {
     
     StopWatchStart$RunPCAEachDataset  <- Sys.time()
     
-    ### This is not needed in Seurat's CCA method
-    seurat.object.list.normalized <- lapply(X = seurat.object.list.normalized, FUN = RunPCA, features = seurat.object.integratedfeatures)
-    
+    ### Needed only if using -y Seurat_RPCA
+    print(paste0("Using --pca_dimensions = ", max(PcaDimsUse)))
+    seurat.object.list.normalized <- lapply(X = seurat.object.list.normalized, FUN = function(x) {
+      x <- RunPCA(x, features = seurat.object.integratedfeatures, verbose = FALSE, npcs = max(PcaDimsUse))
+    })
+
     StopWatchEnd$RunPCAEachDataset  <- Sys.time()
   }
   
