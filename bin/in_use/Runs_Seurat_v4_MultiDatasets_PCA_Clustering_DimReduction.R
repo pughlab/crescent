@@ -630,7 +630,8 @@ writeLines("\n*** Obtaining principal components ***\n")
 
 StopWatchStart$RunPCA  <- Sys.time()
 
-seurat.object.integrated <- RunPCA(seurat.object.integrated, verbose = F, npcs = PcaDimsUse)
+print(paste0("Using --pca_dimensions = ", max(PcaDimsUse)))
+seurat.object.integrated <- RunPCA(seurat.object.integrated, verbose = F, npcs = max(PcaDimsUse))
 
 StopWatchEnd$RunPCA  <- Sys.time()
 
