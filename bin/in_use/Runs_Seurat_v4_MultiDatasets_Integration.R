@@ -112,6 +112,8 @@ option_list <- list(
               help="Indicates either of two options to use reference datasets for integration anchors:
                 '<d1,d2,...etc>' = a <comma> delimited list of dataset ID(s), corresponding to --inputs_list column 1, to be used as references
                                    to obtain anchors (e.g. datasets expected to cover most expected cell types, with better QC, etc.)
+                'TOP_X'          = automatically select the top X number of datasets with highest number of cells from --inputs_list
+                                   For example, to use the top 3 datasets use '-z TOP_3'
                 'NA'             = to compare all datatasets against each other to obtain anchors (i.e. no reference/s are used)
                                    Note this increases computing time and memory compared to using references.
 
@@ -514,6 +516,7 @@ if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case
   if (regexpr("^NA$", ReferenceDatasets , ignore.case = T)[1] == 1) {
     writeLines("\n*** Will compare all-vs-all datasets to get anchors ***\n")
     ReferenceDatasets.indices <- c(1:nrow(InputsTable))
+    
   }else{
     
     if (RunsCwl == 1) {
@@ -521,20 +524,32 @@ if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case
     } else {
       InputsTableReferenceID <- rownames(InputsTable)
     }
-    
-    writeLines("\n*** Determine reference dataset indices ***\n")
-    ReferenceDatasets.list <- unlist(strsplit(ReferenceDatasets, ","))
-    NumberOfFoundReferenceDatasetIDs <- sum(ReferenceDatasets.list %in% InputsTableReferenceID == T)
-    if (NumberOfFoundReferenceDatasetIDs == length(ReferenceDatasets.list)) {
-      ReferenceDatasets.indices <- match(ReferenceDatasets.list, InputsTableReferenceID)
+
+    if (regexpr("^TOP_[0-9]+$", ReferenceDatasets , ignore.case = T)[1] == 1) {
+      NumberOfTopDatasets <- as.numeric(strsplit(ReferenceDatasets, "_")[[1]][2])
+      writeLines(paste0("\n*** Will use top ", NumberOfTopDatasets, " datasets as references to get anchors ***\n"))
+      NCellsPerDataset <- sapply(seurat.object.list.normalized, FUN = function(x) {
+        ncol(x)
+      })
+      ReferenceDatasetNames <- names(sort(x = NCellsPerDataset, decreasing = T)[1:min(NumberOfTopDatasets,length(NCellsPerDataset))])
+      ReferenceDatasets.indices <- match(ReferenceDatasetNames, InputsTableReferenceID)
+      print(paste0("Will use datasets: ", paste(as.character(ReferenceDatasets.indices), sep = "", collapse = ",")))
+      
     }else{
-      stop(paste0("Requested ", length(ReferenceDatasets.list), " datasets as references by parameter `-z`, but found ", NumberOfFoundReferenceDatasetIDs, " in --inputs_list row headers"))
+      writeLines(paste0("\n*** Will use ", ReferenceDatasets, " datasets as references to get anchors ***\n"))
+      ReferenceDatasets.list <- unlist(strsplit(ReferenceDatasets, ","))
+      NumberOfFoundReferenceDatasetIDs <- sum(ReferenceDatasets.list %in% InputsTableReferenceID == T)
+      if (NumberOfFoundReferenceDatasetIDs == length(ReferenceDatasets.list)) {
+        ReferenceDatasets.indices <- match(ReferenceDatasets.list, InputsTableReferenceID)
+      }else{
+        stop(paste0("Requested ", length(ReferenceDatasets.list), " datasets as references by parameter `-z`, but found ", NumberOfFoundReferenceDatasetIDs, " in --inputs_list row headers"))
+      }
+      print(paste0("Will use datasets: ", paste(as.character(ReferenceDatasets.indices), sep = "", collapse = ",")))
     }
-    print(paste0("Will use datasets: ", paste(as.character(ReferenceDatasets.indices), sep = "", collapse = ",")))
   }
-  
   StopWatchEnd$GetReferenceDatasets <- Sys.time()
 }
+print(ReferenceDatasets.indices)
 
 ####################################
 ### Get integration anchors
