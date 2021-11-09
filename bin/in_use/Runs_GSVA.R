@@ -364,7 +364,7 @@ for (columnNumber in 1:ncol(EnrichmentScores)){
 }
 
 ### Index and print out GSVA p.Val and FDR
-dataEPQ <- read.table(file = OutfileAllScores,row.names = NULL ,header = T)
+dataEPQ <- read.table(file = OutfileAllScores,row.names = NULL ,header = T, sep = "\t")
 #
 ForPvaluesMat<- data.frame(x=dataEPQ[,"CLASS"], y=dataEPQ[,"ColumnHeader"], z=dataEPQ[,"p.Val"])
 PvaluesMat<-xtabs(z~x+y, data=ForPvaluesMat)
