@@ -47,11 +47,12 @@ oldw <- getOption("warn")
 options( warn = -1 )
 
 ThisScriptName <- "Runs_GSVA.R"
+ProgramOutdir  <- "GSVA"
 
 ####################################
 ### Get inputs from command line argumets
 ####################################
-
+#####
 option_list <- list(
   make_option(c("-i", "--infile_mat"), default="NA",
               help="A path/name to a <tab> delimited *file* with genes in rows and arrays (e.g. clusters or conditions) in columns, like:
@@ -60,12 +61,14 @@ option_list <- list(
                 FAM14  0.0077  0.0175  0.0082
                 NOC2L  0.0800  0.1532  0.0745
                 ...etc
+                
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-t", "--infile_mat_type"), default="DGE",
               help="Indicates either 'DGE' or 'MTX' if --infile_mat is either:
                 a) a <tab> delimited digital gene expression 'DGE' *file* with genes in rows vs. cell barcodes or cell clusters in columns, or
                 b) a MTX *directory* with barcodes.tsv.gz, features.tsv.gz and matrix.mtx.gz files
+                
                 Default = 'DGE'"),
   #
   make_option(c("-c", "--infile_gmt"), default="NA",
@@ -73,48 +76,68 @@ option_list <- list(
                 GeneSet1_ID  GeneSet1_Name  Gene1 Gene2 Gene3
                 GeneSet2_ID  GeneSet2_Name  Gene4 Gene5
                 ... etc
+                
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-o", "--outdir"), default="NA",
               help="A path/name for the results directory
+              
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-p", "--prefix_outfiles"), default="NA",
               help="A prefix for outfile names, e.g. your project ID
+              
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
   make_option(c("-e", "--pvalue_cutoff"), default="0.05",
               help="This script produce a *filtered.tsv matrix with pairs passing -e and -f filters and unfiltered outfiles
+              
                 Default = 0.05"),
   #
   make_option(c("-f", "--fdr_cutoff"), default="0.1",
               help="Same as -e option, but for FDR scores
+              
                 Default = 0.1"),
-  #
-  make_option(c("-w", "--run_cwl"), default="N",
-              help="Indicates if this script is running inside a virtual machine container, such that outfiles are written directly into the 'HOME' . Type 'y/Y' or 'n/N'.
-                Note, if using 'y/Y' this supersedes option -o
-                Default = 'N'"),
   #
   make_option(c("-u", "--number_cores"), default="MAX",
               help="Indicates one of three options:
                 a) Type the number of cores to use for parellelization (e.g. '4')
                 b) Type 'MAX' to determine and use all available cores in the system
-                Default = 'MAX'")
-  
+                
+                Default = 'MAX'"),
+  #
+  make_option(c("-w", "--run_cwl"), default="0",
+              help="Indicates if this script should produce 'frontend' files for crescent.cloud
+                0 = no frontend files should be produced
+                1 = frontend files should be produced and '--minio_path path' is provided
+                2 = frontend files should be produced but '--minio_path path' is not provided (i.e local run)
+
+                Default = '0'")
 )
 
 opt <- parse_args(OptionParser(option_list=option_list))
 
-InfileMat       <- opt$infile_mat
-InfileMatType   <- opt$infile_mat_type
-InfileGmt       <- opt$infile_gmt
-Outdir          <- opt$outdir
-PrefixOutfiles  <- opt$prefix_outfiles
-PvalueCutoff    <- as.numeric(opt$pvalue_cutoff)
-FdrCutoff       <- as.numeric(opt$fdr_cutoff)
-RunsCwl         <- opt$run_cwl
-NumbCores       <- opt$number_cores
+InfileMat          <- opt$infile_mat
+InfileMatType      <- opt$infile_mat_type
+InfileGmt          <- opt$infile_gmt
+Outdir             <- opt$outdir
+PrefixOutfiles     <- opt$prefix_outfiles
+PvalueCutoff       <- as.numeric(opt$pvalue_cutoff)
+FdrCutoff          <- as.numeric(opt$fdr_cutoff)
+RunsCwl            <- as.numeric(opt$run_cwl)
+MaxGlobalVariables <- as.numeric(opt$max_global_variables)
+NumbCores          <- opt$number_cores
+
+#####
+
+opt <- parse_args(OptionParser(option_list=option_list))
+
+OneLineCommands <- paste0("\n", "One-line-commands used:", "\n", "`Rscript /path_to/", ThisScriptName)
+for (optionInput in option_list) {
+  OneLineCommands <- paste0(OneLineCommands, paste0(" ", optionInput@short_flag, " ", opt[optionInput@dest]))
+}
+OneLineCommands <- paste0(OneLineCommands, paste0("`\n"))
+writeLines(OneLineCommands)
 
 ####################################
 ### Start stopwatches
@@ -156,40 +179,27 @@ for (param in ListMandatory) {
 ####################################
 writeLines("\n*** Create outdirs ***\n")
 
-ProgramOutdir <- "GSVA"
+FILE_TYPE_OUT_DIRECTORIES = c(
+  "GSVA",
+  "LOG_FILES"
+)
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  ### Using `-w Y` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
+if (RunsCwl == 1) {
+  ### Using `-w 1` will make Tempdir, which takes the value of ProgramOutdir, and it will be the final out-directory
+  ### for most outfiles, except R objects, which will be written into R_OBJECTS_CWL
   Tempdir         <- ProgramOutdir
-  dir.create(file.path(Tempdir), showWarnings = F) 
-  
-}else{
-  ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
+  dir.create(file.path(Tempdir), showWarnings = F)
+}else if (RunsCwl == 0 || RunsCwl == 2) {
+  ## Using `-w 0` or `-w 2` will create a Tempdir/DIRECTORY for temporary storage of outfiles because sometimes
+  ## long paths of outdirectories casuse R to leave outfiles unfinished
   ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
   ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
-  
-  ### Checking if the system follows a mirror /scratch vs. /home structure
-  ### If that's the case, this script will use Tempdir at /scratch, not at /home
-  ### This is because systems like SciNet (Compute Canada) using 'Slurm Workload Manager'
-  ### only allow to write in /scratch when using slave nodes, not in /home
-  ### Comment the following '4' lines if you have a mirror structure and still want to use /home (called /Users in Mac)
-  ### If you don't have a mirror structure just ignore this
-  ## Using `Tempdir/DIRECTORY` for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
-  ## 'DIRECTORY' is one of the directories specified at FILE_TYPE_OUT_DIRECTORIES
-  ## Then at the end of the script they'll be moved into `Outdir/ProgramOutdir`
-  
-  Tempdir         <- "~/temp" ## Using this for temporary storage of outfiles because sometimes long paths of outdirectories casuse R to leave outfiles unfinished
-  
-  ScratchTempdir<-gsub("home","scratch", Tempdir)
-  if (dir.exists(ScratchTempdir)[1] == 1) {
-    Tempdir<-ScratchTempdir
-  }
+  ## The difference between `-w 0` and `-w 2` is that the first one doesn't produce frontend outfiles for crescent.cloud
+  Tempdir           <- "~/temp"
+  UserHomeDirectory <- Sys.getenv("HOME")[[1]]
   #
-  CommandsToGetUserHomeDirectory<-("eval echo \"~$USER\"")
-  UserHomeDirectory<-system(command = CommandsToGetUserHomeDirectory, input = NULL, wait = T, intern = T)
-  #
-  Outdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Outdir)
-  Tempdir<-gsub("^~/",paste(c(UserHomeDirectory,"/"), sep = "", collapse = ""), Tempdir)
+  Outdir<-gsub("^~/",paste0(UserHomeDirectory,"/"), Outdir)
+  Tempdir<-gsub("^~/",paste0(UserHomeDirectory,"/"), Tempdir)
   Outdir<-gsub("/+", "/", Outdir, perl = T)
   Tempdir<-gsub("/+", "/", Tempdir, perl = T)
   Outdir<-gsub("/$", "", Outdir)
@@ -197,20 +207,9 @@ if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
   #
   dir.create(file.path(Outdir, ProgramOutdir), recursive = T)
   dir.create(file.path(Tempdir), showWarnings = F, recursive = T)
+}else{
+  stop(paste0("ERROR unexpected option '-w ", RunsCwl))
 }
-
-OutfileEnrichmentScores  <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_enrichment_scores.tsv", sep="")
-OutfileEnrichScorsClust  <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_enrichment_scores_sorted.tsv", sep="")
-OutfilePvalues           <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_pvalues.tsv", sep="")
-OutfileFdrvalues         <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_fdr_values.tsv", sep="")
-OutfileAllScores         <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_all_scores_table.tsv", sep="")
-OutfileFilteredES        <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_filtered.tsv", sep="")
-OutfileClusterFinalLabel <-paste(Tempdir, "/GSVA_RESULTS/", PrefixOutfiles, ".GSVA_cluster_final_label.tsv", sep="")
-
-FILE_TYPE_OUT_DIRECTORIES = c(
-  "GSVA_RESULTS", 
-  "LOG_FILES"
-)
 
 sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(eachdir) {
   dir.create(file.path(paste0(Tempdir, "/", eachdir)), showWarnings = F, recursive = T)
@@ -223,7 +222,7 @@ writeLines("\n*** Report used options ***\n")
 
 StopWatchStart$ReportUsedOptions  <- Sys.time()
 
-OutfileOptionsUsed<-paste(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_UsedOptions.txt", sep="")
+OutfileOptionsUsed<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles,".", ProgramOutdir, "_UsedOptions.txt")
 
 TimeOfRun<-format(Sys.time(), "%a %b %d %Y %X")
 write(file = OutfileOptionsUsed, x=paste0("Run started: ", TimeOfRun, "\n"))
@@ -233,14 +232,18 @@ for (optionInput in option_list) {
   write(file = OutfileOptionsUsed, x=(paste(optionInput@short_flag, optionInput@dest, opt[optionInput@dest], sep="\t", collapse="\t")),append = T)
 }
 
-cat(file = OutfileOptionsUsed, x=paste("\n", "One-line-commands used:", "\n", "`Rscript /path_to/", ThisScriptName, sep = ""), append = T)
-for (optionInput in option_list) {
-  cat(file = OutfileOptionsUsed, x=(paste(" ", optionInput@short_flag, " ", opt[optionInput@dest], sep="", collapse = "")),append = T)
-}
-cat(file = OutfileOptionsUsed, x="`\n", append = T)
+write(file = OutfileOptionsUsed, x = OneLineCommands)
 
 StopWatchEnd$ReportUsedOptions  <- Sys.time()
 
+####################################
+### Report R sessionInfo
+####################################
+writeLines("\n*** Report R sessionInfo ***\n")
+
+OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/", PrefixOutfiles, ".", ProgramOutdir, "_LogFiles_", "RSessionInfo", ".txt")
+writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
+capture.output(sessionInfo())
 
 ####################################
 ### Define number of cores for parallelization
@@ -314,6 +317,7 @@ SortedRowNames<-rownames(EnrichmentScores)
 SortedColNames<-colnames(EnrichmentScores)
 #
 EnrichmentScores<-EnrichmentScores[SortedRowNames,SortedColNames]
+OutfileEnrichmentScores<-paste0(Tempdir, "/GSVA/", PrefixOutfiles, ".GSVA_enrichment_scores.tsv")
 write.table(data.frame("ENRICHMENT"=colnames(EnrichmentScores), t(round(x=EnrichmentScores, digits = DefaultParameters$DigitsForRound))), OutfileEnrichmentScores, row.names = F,sep="\t",quote = F)
 
 ### maps gene set members from gmt2
@@ -347,6 +351,7 @@ StopWatchStart$GetPvalAndFdr  <- Sys.time()
 HeaderCutoff<-paste(c("PassCutoff", "_p", PvalueCutoff, "_fdr", FdrCutoff) , sep="",collapse = "")
 HeaderCutoff
 HeadersForPandQvalues<-paste("CLASS","ColumnHeader","EnrichmentScore","p.Val","FDR", HeaderCutoff ,sep="\t",collapse = "")
+OutfileAllScores<-paste0(Tempdir, "/GSVA/", PrefixOutfiles, ".GSVA_all_scores_table.tsv")
 write(x=HeadersForPandQvalues,file=OutfileAllScores)
 
 for (columnNumber in 1:ncol(EnrichmentScores)){
@@ -365,6 +370,7 @@ ForPvaluesMat<- data.frame(x=dataEPQ[,"CLASS"], y=dataEPQ[,"ColumnHeader"], z=da
 PvaluesMat<-xtabs(z~x+y, data=ForPvaluesMat)
 PvaluesMat<-PvaluesMat[SortedRowNames,SortedColNames]
 HeadersForPvalues<-paste(c("PVALUES", colnames(PvaluesMat)), sep="\t", collapse = "\t")
+OutfilePvalues<-paste0(Tempdir, "/GSVA/", PrefixOutfiles, ".GSVA_pvalues.tsv")
 write(x=HeadersForPvalues,file=OutfilePvalues)
 write.table(x=PvaluesMat, file=OutfilePvalues, row.names = T, sep="\t", quote = F, col.names = F, append = T)
 #
@@ -372,12 +378,14 @@ ForFDRvaluesMat <- data.frame(x=dataEPQ[,"CLASS"], y=dataEPQ[,"ColumnHeader"], z
 FdrvaluesMat<-xtabs(z~x+y, data=ForFDRvaluesMat)
 FdrvaluesMat<-FdrvaluesMat[SortedRowNames,SortedColNames]
 HeadersForFdrvalues<-paste(c("FDR_VALUES", colnames(FdrvaluesMat)), sep="\t", collapse = "\t")
+OutfileFdrvalues <-paste0(Tempdir, "/GSVA/", PrefixOutfiles, ".GSVA_fdr_values.tsv")
 write(x=HeadersForFdrvalues,file=OutfileFdrvalues)
 write.table(x=FdrvaluesMat, file=OutfileFdrvalues, row.names = T, sep="\t", quote = F, col.names = F, append = T)
 #
 FilteredESMatLogical<-(PvaluesMat<=PvalueCutoff & FdrvaluesMat<=FdrCutoff)
 FilteredESMatLogical<-FilteredESMatLogical[SortedRowNames,SortedColNames]
 FilteredESMatValues<-ifelse(FilteredESMatLogical==TRUE,EnrichmentScores,NA)
+OutfileFilteredES <-paste0(Tempdir, "/GSVA/", PrefixOutfiles, ".GSVA_filtered.tsv")
 write.table(data.frame("ENRICHMENT_FILTERED"=rownames(EnrichmentScores), round(x=FilteredESMatValues, digits = DefaultParameters$DigitsForRound)),OutfileFilteredES, row.names = F,sep="\t",quote = F)
 
 StopWatchEnd$GetPvalAndFdr  <- Sys.time()
@@ -398,6 +406,7 @@ predictions.classes.clust <- agnes(x = predictions.mat.t, metric = "manhattan")
 predictions.classes.order <- rownames(predictions.mat.t)[predictions.classes.clust$order]
 predictions.mat.ordered   <- predictions.mat[predictions.clusters.order,predictions.classes.order]
 
+OutfileEnrichScorsClust <-paste0(Tempdir, "/GSVA/", PrefixOutfiles, ".GSVA_enrichment_scores_sorted.tsv")
 write.table(data.frame("ENRICHMENT"=predictions.clusters.order, predictions.mat.ordered), OutfileEnrichScorsClust, row.names = F,sep="\t",quote = F)
 
 StopWatchEnd$SortGSVAERmatrix  <- Sys.time()
@@ -420,6 +429,7 @@ HighestScoreLabels.df <- as.data.frame(cbind(row.names(predictions.mat.ordered),
 colnames(HighestScoreLabels.df)[1] <- "cluster"
 
 # just to clean-up OutfileFinalLabel if there is a pre-existing run
+OutfileClusterFinalLabel<-paste0(Tempdir, "/GSVA/", PrefixOutfiles, ".GSVA_cluster_final_label.tsv")
 close(file(OutfileClusterFinalLabel, open="w"))
 
 sapply(row.names(HighestScoreLabels.df), FUN=function(eachClusterN) {
@@ -437,21 +447,13 @@ sapply(row.names(HighestScoreLabels.df), FUN=function(eachClusterN) {
 StopWatchEnd$GetFinalLabel  <- Sys.time()
 
 ####################################
-### Report R sessionInfo
-####################################
-writeLines("\n*** Report R sessionInfo ***\n")
-
-OutfileRSessionInfo<-paste(Tempdir, "/LOG_FILES/" , PrefixOutfiles, ".", ProgramOutdir, "_RSessionInfo.txt", sep="")
-writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
-
-####################################
 ### Obtain computing time used
 ####################################
-writeLines("\n*** Obtain computing time used***\n")
+writeLines("\n*** Obtain computing time used ***\n")
 
 StopWatchEnd$Overall  <- Sys.time()
 
-OutfileCPUusage<-paste(Tempdir, "/LOG_FILES/" , PrefixOutfiles, ".", ProgramOutdir, "_CPUusage.txt", sep="")
+OutfileCPUusage<-paste0(Tempdir, "/LOG_FILES/" , PrefixOutfiles, ".", ProgramOutdir, "_CPUusage.txt")
 write(file = OutfileCPUusage, x = paste("Number_of_cores_used", NumbCoresToUse, sep = "\t", collapse = ""))
 Headers<-paste("Step", "Time(minutes)", sep="\t")
 write.table(Headers,file = OutfileCPUusage, row.names = F, col.names = F, sep="\t", quote = F, append = T)
@@ -484,23 +486,26 @@ for (stepToClock in names(StopWatchStart)) {
 ### Moving outfiles into outdir or keeping them at tempdir (if using CWL)
 ####################################
 
-### using two steps instead of just 'file.rename' to avoid issues with path to ~/temp in cluster systems
+writeLines("\n*** Moving outfiles into outdir or keeping them at tempdir (if using CWL) ***\n")
 
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+### using two steps to copy files (`file.copy` and `file.remove`) instead of just `file.rename` to avoid issues with path to Tempdir in cluster systems
+if (RunsCwl == 1) {
   writeLines("\n*** Keeping files at: ***\n")
-  
-  writeLines(paste(Tempdir, sep="", collapse = ""))
-} else {
+  writeLines(Tempdir)
+}else{
   writeLines("\n*** Moving outfiles into outdir ***\n")
-  
   sapply(FILE_TYPE_OUT_DIRECTORIES, FUN=function(DirName) {
     TempdirWithData <- paste0(Tempdir, "/", DirName)
     OutdirFinal <- paste0(Outdir, "/", ProgramOutdir, "/", DirName)
     print(OutdirFinal)
     dir.create(file.path(OutdirFinal), showWarnings = F, recursive = T)
-    sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(eachFileName) {
-      file.copy(from=paste0(TempdirWithData, "/", eachFileName), to=paste0(OutdirFinal, "/", eachFileName), overwrite=T)
-      file.remove(paste0(TempdirWithData, "/", eachFileName))
+    sapply(list.files(TempdirWithData, pattern = paste0("^", PrefixOutfiles, ".", ProgramOutdir), full.names = F), FUN=function(EachFileName) {
+      file.copy(from=paste0(TempdirWithData, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+      file.remove(paste0(TempdirWithData, "/", EachFileName))
+    })
+    sapply(list.files(TempdirWithData, pattern = paste0("^", "infercnv"), full.names = F), FUN=function(EachFileName) {
+      file.copy(from=paste0(TempdirWithData, "/", EachFileName), to=paste0(OutdirFinal, "/", EachFileName), overwrite=T)
+      file.remove(paste0(TempdirWithData, "/", EachFileName))
     })
   })
 }
