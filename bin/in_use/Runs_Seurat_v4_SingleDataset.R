@@ -110,7 +110,7 @@ option_list <- list(
                 Cell Ranger v2 produces unzipped files and there is a genes.tsv instead of features.tsv.gz
                 Default = 'No default. It's mandatory to specify this parameter'"),
   #
-  make_option(c("-j", "--inputs_remove_barcodes"), default="NA",
+  make_option(c("-j", "--infile_remove_barcodes"), default="NA",
               help="Path/name to a <tab> delimited list of barcodes to be removed from analysis, like:
                 dataset1_id  AAACCTGAGCTCCCAG
                 dataset2_id  AAACCTGTCACCATAG
@@ -221,7 +221,7 @@ opt <- parse_args(OptionParser(option_list=option_list))
 
 Input                   <- opt$input
 InputType               <- opt$input_type
-InfileRemoveBarcodes    <- opt$inputs_remove_barcodes
+InfileRemoveBarcodes    <- opt$infile_remove_barcodes
 NormalizeAndScale       <- as.numeric(opt$normalize_and_scale_sample)
 SaveFilteredData        <- opt$save_filtered_data
 SaveUnFilteredData      <- opt$save_unfiltered_data 
@@ -366,6 +366,7 @@ writeLines("\n*** Report R sessionInfo ***\n")
 
 OutfileRSessionInfo<-paste0(Tempdir, "/LOG_FILES/" , PrefixOutfiles, ".", ProgramOutdir, "_RSessionInfo.txt")
 writeLines(capture.output(sessionInfo()), OutfileRSessionInfo)
+capture.output(sessionInfo())
 
 ####################################
 ### Define default parameters
@@ -1211,9 +1212,9 @@ StopWatchStart$AverageGeneExpression  <- Sys.time()
 
 cluster.averages<-AverageExpression(object = seurat.object.f, use.scale = F, use.counts = F)
 OutfileClusterAverages<-paste0(Tempdir, "/AVERAGE_GENE_EXPRESSION_TABLES/", PrefixOutfiles,".", ProgramOutdir, "_AverageGeneExpressionPerCluster.tsv")
-Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("C", names(cluster.averages$RNA), sep="", collapse="\t"), sep="\t", collapse = "\t")
+Headers<-paste("AVERAGE_GENE_EXPRESSION", paste("r", Resolution, "_C",  names(cluster.averages[["RNA"]]), sep="", collapse="\t"), sep="\t", collapse = "\t")
 write.table(Headers,file = OutfileClusterAverages, row.names = F, col.names = F, sep="\t", quote = F)
-write.table(data.frame(cluster.averages$RNA),file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
+write.table(data.frame(cluster.averages[["RNA"]]),file = OutfileClusterAverages, row.names = T, col.names = F, sep="\t", quote = F, append = T)
 
 StopWatchEnd$AverageGeneExpression  <- Sys.time()
 
@@ -1321,7 +1322,7 @@ for (dim_red_method in names(DimensionReductionMethods)) {
     # Thus each property plot is written to a separate page of a single *pdf outfile
     pdf(file=paste0(Tempdir, "/DIMENSION_REDUCTION_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_ColourByMetadata.pdf"), width = DefaultParameters$BaseSizeSinglePlotPdf, height = DefaultParameters$BaseSizeSinglePlotPdf)
     for (property in colnames(ExtraCellProperties)) {
-      print(DimPlot(object = seurat.object.f, reduction = dim_red_method, group.by = property, combine = T, legend = "none") + ggtitle(property))
+      print(DimPlot(object = seurat.object.f, reduction = dim_red_method, group.by = property, combine = T) + ggtitle(property))
     }
     dev.off()
     
@@ -1361,33 +1362,33 @@ for (dim_red_method in names(DimensionReductionMethods)) {
   }
 }
 
-####################################
-### Finding differentially expressed genes for each cell cluster
-####################################
-writeLines("\n*** Finding differentially expressed genes for each cell cluster ***\n")
-
-print(paste0("NumberOfClusters=", NumberOfClusters))
-
-StopWatchStart$FindDiffMarkers  <- Sys.time()
-
-FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.f@meta.data))
-
-seurat.object.markers <- FindAllMarkers(object = seurat.object.f, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
-
-SimplifiedDiffExprGenes.df <- seurat.object.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
-write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles,".", ProgramOutdir, "_MarkersPerCluster.tsv"), row.names = F, sep="\t", quote = F)
-
-### Get top-2 genes sorted by cluster, then by avg_logFC
-top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% top_n(DefaultParameters$NumberOfGenesPerClusterToPlotTsne, avg_logFC))
-NumberOfClusters<-length(unique(seurat.object.markers[["cluster"]]))
-
-StopWatchEnd$FindDiffMarkers  <- Sys.time()
-
-if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
-  top_6_genes_by_cluster<-(seurat.object.markers %>% group_by(cluster) %>% top_n(6, avg_logFC))
-  markers_file <- top_6_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
-  write.table(markers_file, paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_markers/","TopTwoMarkersPerCluster.tsv"),row.names = F,sep="\t",quote = F)
-} 
+# ####################################
+# ### Finding differentially expressed genes for each cell cluster
+# ####################################
+# writeLines("\n*** Finding differentially expressed genes for each cell cluster ***\n")
+# 
+# print(paste0("NumberOfClusters=", NumberOfClusters))
+# 
+# StopWatchStart$FindDiffMarkers  <- Sys.time()
+# 
+# FindMarkers.Pseudocount  <- 1/length(rownames(seurat.object.f@meta.data))
+# 
+# seurat.object.markers <- FindAllMarkers(object = seurat.object.f, only.pos = T, min.pct = DefaultParameters$FindAllMarkers.MinPct, return.thresh = ThreshReturn, logfc.threshold = DefaultParameters$FindAllMarkers.ThreshUse, pseudocount.use = FindMarkers.Pseudocount)
+# 
+# SimplifiedDiffExprGenes.df <- seurat.object.markers[,c("cluster","gene","p_val","p_val_adj","avg_logFC")]
+# write.table(x = data.frame(SimplifiedDiffExprGenes.df), file = paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TABLES/", PrefixOutfiles,".", ProgramOutdir, "_MarkersPerCluster.tsv"), row.names = F, sep="\t", quote = F)
+# 
+# ### Get top-2 genes sorted by cluster, then by avg_logFC
+# top_genes_by_cluster_for_tsne<-(seurat.object.markers %>% group_by(cluster) %>% top_n(DefaultParameters$NumberOfGenesPerClusterToPlotTsne, avg_logFC))
+# NumberOfClusters<-length(unique(seurat.object.markers[["cluster"]]))
+# 
+# StopWatchEnd$FindDiffMarkers  <- Sys.time()
+# 
+# if (regexpr("^Y$", RunsCwl, ignore.case = T)[1] == 1) {
+#   top_6_genes_by_cluster<-(seurat.object.markers %>% group_by(cluster) %>% top_n(6, avg_logFC))
+#   markers_file <- top_6_genes_by_cluster[,c("gene","cluster","p_val","avg_logFC")]
+#   write.table(markers_file, paste0(Tempdir,"/","CRESCENT_CLOUD/frontend_markers/","TopTwoMarkersPerCluster.tsv"),row.names = F,sep="\t",quote = F)
+# } 
 
 ####################################
 ### Saving the R object
@@ -1410,48 +1411,48 @@ if (regexpr("^Y$", SaveRObject, ignore.case = T)[1] == 1) {
   
 }
 
-####################################
-### Violin plots for top genes
-####################################
-writeLines("\n*** Violin plots for top genes ***\n")
+# ####################################
+# ### Violin plots for top genes
+# ####################################
+# writeLines("\n*** Violin plots for top genes ***\n")
+# 
+# StopWatchStart$DiffMarkerViolinPlots  <- Sys.time()
+# 
+# NumberOfPanesForFeaturesPlot<-(NumberOfClusters*DefaultParameters$NumberOfGenesPerClusterToPlotTsne)
+# top_genes_by_cluster_for_tsne.list<-top_genes_by_cluster_for_tsne[c(1:NumberOfPanesForFeaturesPlot),"gene"][[1]]
+# pdfWidth<-7
+# pdfHeight<-NumberOfClusters*1.5
+# 
+# ### Here need to program a better way to control the y-axis labels
+# pdf(file=paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_VlnPlot_CountsLog10_AfterClusters.pdf"), width=pdfWidth, height=pdfHeight)
+# print(VlnPlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), slot = 'counts', log = T, adjust = 1, pt.size = 0.5))
+# dev.off()
+# 
+# pdf(file=paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_VlnPlot_Norm_AfterClusters.pdf"), width=pdfWidth, height=pdfHeight)
+# print(VlnPlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), adjust = 1, pt.size = 0.5))
+# dev.off()
+# 
+# StopWatchEnd$DiffMarkerViolinPlots  <- Sys.time()
 
-StopWatchStart$DiffMarkerViolinPlots  <- Sys.time()
-
-NumberOfPanesForFeaturesPlot<-(NumberOfClusters*DefaultParameters$NumberOfGenesPerClusterToPlotTsne)
-top_genes_by_cluster_for_tsne.list<-top_genes_by_cluster_for_tsne[c(1:NumberOfPanesForFeaturesPlot),"gene"][[1]]
-pdfWidth<-7
-pdfHeight<-NumberOfClusters*1.5
-
-### Here need to program a better way to control the y-axis labels
-pdf(file=paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_VlnPlot_CountsLog10_AfterClusters.pdf"), width=pdfWidth, height=pdfHeight)
-print(VlnPlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), slot = 'counts', log = T, adjust = 1, pt.size = 0.5))
-dev.off()
-
-pdf(file=paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_VlnPlot_Norm_AfterClusters.pdf"), width=pdfWidth, height=pdfHeight)
-print(VlnPlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), adjust = 1, pt.size = 0.5))
-dev.off()
-
-StopWatchEnd$DiffMarkerViolinPlots  <- Sys.time()
-
-####################################
-### Plot dimension reductions showing each cluster top genes
-####################################
-writeLines("\n*** Plot dimension reductions showing each cluster top genes ***\n")
-
-for (dim_red_method in names(DimensionReductionMethods)) {
-  
-  ####################################
-  ### Dimension reduction plots showing each cluster top genes
-  ####################################
-  writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by each cluster top genes ***\n"))
-  
-  pdfWidth  <- 4 * DefaultParameters$BaseSizeMultiplePlotPdfWidth
-  pdfHeight <- NumberOfClusters * DefaultParameters$BaseSizeMultiplePlotPdfHeight / 2
-  pdf(file=paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_EachClusterTop2DEGs.pdf"), width=pdfWidth, height=pdfHeight)
-  print(FeaturePlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), cols = c("lightgrey", "blue"), reduction = dim_red_method, order = T))
-  dev.off()
-  
-}
+# ####################################
+# ### Plot dimension reductions showing each cluster top genes
+# ####################################
+# writeLines("\n*** Plot dimension reductions showing each cluster top genes ***\n")
+# 
+# for (dim_red_method in names(DimensionReductionMethods)) {
+#   
+#   ####################################
+#   ### Dimension reduction plots showing each cluster top genes
+#   ####################################
+#   writeLines(paste0("\n*** Colour ", DimensionReductionMethods[[dim_red_method]][["name"]], " plot by each cluster top genes ***\n"))
+#   
+#   pdfWidth  <- 4 * DefaultParameters$BaseSizeMultiplePlotPdfWidth
+#   pdfHeight <- NumberOfClusters * DefaultParameters$BaseSizeMultiplePlotPdfHeight / 2
+#   pdf(file=paste0(Tempdir, "/DIFFERENTIAL_GENE_EXPRESSION_TOP_2_GENE_PLOTS/", PrefixOutfiles,".", ProgramOutdir, "_", DimensionReductionMethods[[dim_red_method]][["name"]], "Plot_EachClusterTop2DEGs.pdf"), width=pdfWidth, height=pdfHeight)
+#   print(FeaturePlot(object = seurat.object.f, ncol = 4, features = c(top_genes_by_cluster_for_tsne.list), cols = c("lightgrey", "blue"), reduction = dim_red_method, order = T))
+#   dev.off()
+#   
+# }
 
 ####################################
 ### Obtain computing time used
