@@ -285,8 +285,12 @@ if (regexpr("^MTX$", InfileMatType, ignore.case = T)[1] == 1) {
   fullmat <- as.matrix(Read10X(data.dir = InfileMat))
 }else if (regexpr("^DGE$", InfileMatType, ignore.case = T)[1] == 1) {
   print("Loading Digital Gene Expression matrix")
-  ## Note `check.names = F` is needed for both `fread` and `data.frame`
-  fullmat <- as.matrix(data.frame(fread(InfileMat, check.names = F), row.names=1, check.names = F))
+  ### Using read.table() because fread() in R v4.1.0 (Ubuntu) produces a rowVars() error when --infile_mat contains Inf values,
+  ### reported as sporadic output from Seurat's SCTransform.
+  ### fread() in R v4.0.1 (Mac) doesn't produce this issue, but for portability across systems, decided to switch to read.table()
+  ### Also, changing Inf to the highest non-Inf value in the matrix. This produces no major differences in the outputs.
+  fullmat <- as.matrix(read.table(InfileMat, check.names = F, row.names=1, header=T))
+  fullmat[fullmat == Inf] <- min(fullmat[fullmat != Inf])
 }else{
   stop(paste("Unexpected type of input: ", InfileMatType, "\n\nFor help type:\n\nRscript obtains_GSVA_for_MatrixColumns.R -h\n\n", sep=""))
 }
