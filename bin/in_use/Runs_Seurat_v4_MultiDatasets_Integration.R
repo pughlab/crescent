@@ -469,7 +469,9 @@ if (regexpr("^STACAS$|^Seurat_CCA$|^Seurat_RPCA$", AnchorsFunction , ignore.case
   StopWatchEnd$LoadRDSEachDataset  <- Sys.time()
   
 }
-
+### Arna Modification of switching to Harmony instead of Seurat Integration to save resources ######
+### After this line need to run the following steps:
+## 1) Make 
 ################################################################################################################################################
 ################################################################################################################################################
 ### HERE ARE THE FUNCTIONS TO INTEGRATE DATASETS
